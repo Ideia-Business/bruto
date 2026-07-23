@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { artifacts, jobs, videos } from "@/db/schema";
-import { getVideoDetail, setVideoCategory } from "@/db/queries";
+import { getVideoDetail, setVideoCategory, setVideoTitle } from "@/db/queries";
 import { videoDir } from "@/pipeline/lib/paths";
 
 /** GET /api/videos/[id] → detalhe + conteúdo das abas. */
@@ -17,11 +17,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 /** PATCH /api/videos/[id] { categoryId } → edita a categoria. */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const body = (await req.json().catch(() => ({}))) as { categoryId?: number };
-  if (typeof body.categoryId !== "number") {
-    return NextResponse.json({ error: "categoryId obrigatório" }, { status: 400 });
+  const body = (await req.json().catch(() => ({}))) as { categoryId?: number; title?: string };
+
+  let touched = false;
+  if (typeof body.categoryId === "number") {
+    setVideoCategory(id, body.categoryId);
+    touched = true;
   }
-  setVideoCategory(id, body.categoryId);
+  if (typeof body.title === "string") {
+    const title = body.title.trim();
+    if (!title) return NextResponse.json({ error: "O título não pode ficar vazio." }, { status: 400 });
+    setVideoTitle(id, title.slice(0, 300));
+    touched = true;
+  }
+  if (!touched) {
+    return NextResponse.json({ error: "Nada para atualizar (title ou categoryId)." }, { status: 400 });
+  }
   return NextResponse.json({ ok: true });
 }
 

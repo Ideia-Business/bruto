@@ -14,8 +14,12 @@ import {
   FileType,
   ExternalLink,
   GraduationCap,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -136,6 +140,34 @@ export function VideoDetail({
     }
   }
 
+  // Edição inline do título cadastrado.
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(data.video.title);
+  async function saveTitle() {
+    const title = titleDraft.trim();
+    if (!title) {
+      toast.error("O título não pode ficar vazio.");
+      return;
+    }
+    if (title === data.video.title) {
+      setEditingTitle(false);
+      return;
+    }
+    const res = await fetch(`/api/videos/${data.video.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    });
+    if (res.ok) {
+      toast.success("Título atualizado.");
+      setEditingTitle(false);
+      router.refresh();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      toast.error(d.error ?? "Não foi possível renomear.");
+    }
+  }
+
   async function changeCategory(categoryId: string) {
     const res = await fetch(`/api/videos/${data.video.id}`, {
       method: "PATCH",
@@ -187,7 +219,10 @@ export function VideoDetail({
       <div className="relative overflow-hidden rounded-xl">
         <div className="absolute inset-0">
           <Thumb videoId={data.video.id} alt={data.video.title} className="h-full w-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background/40" />
+          {/* Gradientes reforçados: a thumbnail fica só como atmosfera, o título
+              e os metadados ficam totalmente legíveis (vertical + horizontal). */}
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/90 to-background/55" />
+          <div className="absolute inset-0 bg-gradient-to-r from-background/95 via-background/70 to-background/20" />
         </div>
         <div className="relative space-y-3 p-6 sm:p-8">
           <Button variant="ghost" size="sm" asChild className="gap-1.5 -ml-2">
@@ -195,9 +230,59 @@ export function VideoDetail({
               <ArrowLeft className="size-4" /> Catálogo
             </a>
           </Button>
-          <h1 className="max-w-3xl text-2xl font-black leading-tight sm:text-3xl">
-            {data.video.title}
-          </h1>
+
+          {editingTitle ? (
+            <div className="flex max-w-3xl flex-col gap-2">
+              <Input
+                autoFocus
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveTitle();
+                  if (e.key === "Escape") {
+                    setTitleDraft(data.video.title);
+                    setEditingTitle(false);
+                  }
+                }}
+                className="h-auto bg-background/70 py-2 text-xl font-black sm:text-2xl"
+                placeholder="Título do vídeo"
+              />
+              <div className="flex gap-2">
+                <Button size="sm" onClick={saveTitle} className="gap-1.5">
+                  <Check className="size-4" /> Salvar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setTitleDraft(data.video.title);
+                    setEditingTitle(false);
+                  }}
+                  className="gap-1.5"
+                >
+                  <X className="size-4" /> Cancelar
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="group flex max-w-3xl items-start gap-2">
+              <h1 className="text-2xl font-black leading-tight [text-shadow:0_2px_12px_rgba(0,0,0,0.7)] sm:text-3xl">
+                {data.video.title}
+              </h1>
+              <button
+                onClick={() => {
+                  setTitleDraft(data.video.title);
+                  setEditingTitle(true);
+                }}
+                title="Renomear"
+                aria-label="Renomear título"
+                className="mt-1 shrink-0 rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-white/10 hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+              >
+                <Pencil className="size-4" />
+              </button>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <span>{data.video.channel}</span>
             {data.video.durationSec ? <span>· {formatDuration(data.video.durationSec)}</span> : null}

@@ -192,3 +192,8 @@ export function listCategories(): Category[] {
 export function setVideoCategory(videoId: string, categoryId: number): void {
   db.update(videos).set({ categoryId }).where(eq(videos.id, videoId)).run();
 }
+
+/** Renomeia o título cadastrado de um vídeo (edição manual na UI). */
+export function setVideoTitle(videoId: string, title: string): void {
+  db.update(videos).set({ title }).where(eq(videos.id, videoId)).run();
+}

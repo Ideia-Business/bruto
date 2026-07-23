@@ -13,15 +13,15 @@ export function HeroBanner({ video }: { video: VideoCard }) {
     <section className="relative overflow-hidden rounded-xl">
       <div className="absolute inset-0">
         <Thumb videoId={video.id} alt={video.title} className="h-full w-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-r from-background via-background/85 to-background/30" />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-background via-background/90 to-background/40" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
       </div>
       <div className="relative flex min-h-[300px] max-w-2xl flex-col justify-end gap-4 p-6 sm:min-h-[360px] sm:p-10">
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-widest text-primary">
             Último resumo
           </p>
-          <h1 className="text-3xl font-black leading-tight tracking-tight sm:text-4xl">
+          <h1 className="text-3xl font-black leading-tight tracking-tight [text-shadow:0_2px_12px_rgba(0,0,0,0.7)] sm:text-4xl">
             {video.title}
           </h1>
           <p className="text-sm text-muted-foreground">
