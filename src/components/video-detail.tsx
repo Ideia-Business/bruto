@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Markdown } from "./markdown";
+import { CopyButton } from "./copy-button";
 import { TranscriptView } from "./transcript-view";
 import { JobProgressBar, useJobProgress } from "./job-progress";
 import { Thumb } from "./thumb";
@@ -215,7 +216,12 @@ export function VideoDetail({ data }: { data: DetailData }) {
 
             <TabsContent value="summary" className="pt-4">
               {data.content.summaryMd ? (
-                <Markdown>{data.content.summaryMd}</Markdown>
+                <div className="space-y-3">
+                  <div className="flex justify-end">
+                    <CopyButton text={data.content.summaryMd} label="Copiar resumo" />
+                  </div>
+                  <Markdown>{data.content.summaryMd}</Markdown>
+                </div>
               ) : (
                 <Empty>Resumo ainda não gerado.</Empty>
               )}
@@ -235,8 +241,13 @@ export function VideoDetail({ data }: { data: DetailData }) {
 
             <TabsContent value="mindmap" className="pt-4">
               {data.content.mindmapMd ? (
-                <div className="h-[65vh] overflow-hidden rounded-xl border border-border bg-card/40">
-                  <MindmapViewer markdown={data.content.mindmapMd} />
+                <div className="space-y-3">
+                  <div className="flex justify-end">
+                    <CopyButton text={data.content.mindmapMd} label="Copiar mapa (markdown)" />
+                  </div>
+                  <div className="h-[65vh] overflow-hidden rounded-xl border border-border bg-card/40">
+                    <MindmapViewer markdown={data.content.mindmapMd} />
+                  </div>
                 </div>
               ) : (
                 <Empty>Mapa mental ainda não gerado.</Empty>

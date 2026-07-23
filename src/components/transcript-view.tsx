@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Copy, Check, Clock } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Clock } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { CopyButton } from "./copy-button";
 
 /**
  * Visualização da transcrição com toggle de timestamps, busca interna e copiar.
@@ -19,7 +19,6 @@ export function TranscriptView({
 }) {
   const [mode, setMode] = useState<"plain" | "ts" | "pt">(plain ? "plain" : "ts");
   const [query, setQuery] = useState("");
-  const [copied, setCopied] = useState(false);
 
   const text = mode === "ts" ? timestamped : mode === "pt" ? translated : plain;
 
@@ -31,13 +30,6 @@ export function TranscriptView({
       .filter((l) => l.toLowerCase().includes(query.toLowerCase()))
       .join("\n");
   }, [text, query]);
-
-  async function copy() {
-    if (!text) return;
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }
 
   return (
     <div className="space-y-3">
@@ -66,10 +58,7 @@ export function TranscriptView({
           onChange={(e) => setQuery(e.target.value)}
           className="h-8 max-w-xs"
         />
-        <Button variant="outline" size="sm" onClick={copy} className="ml-auto gap-1.5">
-          {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-          {copied ? "Copiado" : "Copiar"}
-        </Button>
+        <CopyButton text={text ?? ""} className="ml-auto" />
       </div>
       <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-card/40 p-4 text-sm leading-relaxed text-foreground/90">
         {filtered || "Nenhuma linha corresponde à busca."}
