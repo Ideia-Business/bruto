@@ -11,7 +11,8 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/db/seed.ts",
     "doctor": "tsx src/scripts/doctor.ts",
-    "process": "tsx src/scripts/process-cli.ts"
+    "process": "tsx src/scripts/process-cli.ts",
+    "app": "bash launcher/serve.sh"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.1",

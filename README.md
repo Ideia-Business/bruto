@@ -22,10 +22,23 @@ npm run db:push && npm run db:seed  # cria o banco e as categorias
 npm run doctor                     # confere as dependências
 ```
 
-## Uso
+## Abrir como aplicativo (macOS)
+
+Para ter um ícone clicável no Launchpad que sobe o servidor e abre em janela de app:
 
 ```bash
-npm run dev                        # app em http://localhost:3000
+bash launcher/install-app.sh
+```
+
+Isso cria **"Resume Video"** em `~/Applications`. Dê duplo-clique — ele inicia o
+servidor (se preciso) e abre numa janela dedicada do Chrome (sem barra, cara de
+app). Também dá para instalar como PWA pelo próprio Chrome (⋮ → "Instalar Resume Video").
+
+## Uso (desenvolvimento)
+
+```bash
+npm run dev                        # app em http://localhost:3000 (hot reload)
+npm run app                        # sobe produção e abre a janela de app
 ```
 
 Ou via CLI, sem a interface:

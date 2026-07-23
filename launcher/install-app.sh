@@ -1,0 +1,63 @@
+#!/bin/bash
+# Cria (ou recria) o app "Resume Video.app" no ~/Applications, com ícone próprio.
+# Depois é só dar duplo-clique — ele sobe o servidor e abre em janela de app.
+#
+# Uso:  bash launcher/install-app.sh
+# Requisitos (já presentes no macOS): sips, iconutil, osacompile. O ícone é
+# gerado a partir de launcher/icon.svg usando o Chromium do Playwright do projeto.
+
+set -eu
+APP_DIR="/Users/gustavolopespaiva/dev/Resume_Video"
+DEST="$HOME/Applications/Resume Video.app"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+cd "$APP_DIR"
+export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:$PATH"
+
+echo "→ Gerando ícone…"
+cat > "$WORK/_gen.mjs" <<NODE
+import { chromium } from 'playwright';
+import fs from 'node:fs';
+const svg = fs.readFileSync('$APP_DIR/launcher/icon.svg','utf8');
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 1024, height: 1024 } });
+await p.setContent('<!doctype html><html><body style="margin:0">'+svg+'</body></html>', { waitUntil:'load' });
+await p.locator('svg').screenshot({ path: '$WORK/icon-1024.png', omitBackground: true });
+await b.close();
+NODE
+cp "$WORK/_gen.mjs" "$APP_DIR/_gen_tmp.mjs"
+node "$APP_DIR/_gen_tmp.mjs"
+rm -f "$APP_DIR/_gen_tmp.mjs"
+
+echo "→ Montando ícones (PWA + macOS)…"
+SRC="$WORK/icon-1024.png"
+sips -z 192 192 "$SRC" --out "$APP_DIR/public/icon-192.png" >/dev/null
+sips -z 512 512 "$SRC" --out "$APP_DIR/public/icon-512.png" >/dev/null
+sips -z 180 180 "$SRC" --out "$APP_DIR/public/apple-touch-icon.png" >/dev/null
+
+ICONSET="$WORK/RV.iconset"; mkdir -p "$ICONSET"
+sips -z 16 16   "$SRC" --out "$ICONSET/icon_16x16.png" >/dev/null
+sips -z 32 32   "$SRC" --out "$ICONSET/icon_16x16@2x.png" >/dev/null
+sips -z 32 32   "$SRC" --out "$ICONSET/icon_32x32.png" >/dev/null
+sips -z 64 64   "$SRC" --out "$ICONSET/icon_32x32@2x.png" >/dev/null
+sips -z 128 128 "$SRC" --out "$ICONSET/icon_128x128.png" >/dev/null
+sips -z 256 256 "$SRC" --out "$ICONSET/icon_128x128@2x.png" >/dev/null
+sips -z 256 256 "$SRC" --out "$ICONSET/icon_256x256.png" >/dev/null
+sips -z 512 512 "$SRC" --out "$ICONSET/icon_256x256@2x.png" >/dev/null
+sips -z 512 512 "$SRC" --out "$ICONSET/icon_512x512.png" >/dev/null
+cp "$SRC" "$ICONSET/icon_512x512@2x.png"
+iconutil -c icns "$ICONSET" -o "$WORK/ResumeVideo.icns"
+
+echo "→ Criando o app…"
+cat > "$WORK/launcher.applescript" <<'OSA'
+do shell script "/bin/bash '/Users/gustavolopespaiva/dev/Resume_Video/launcher/serve.sh' >/tmp/resume-video-launch.log 2>&1"
+OSA
+rm -rf "$DEST"
+mkdir -p "$HOME/Applications"
+osacompile -o "$DEST" "$WORK/launcher.applescript"
+cp "$WORK/ResumeVideo.icns" "$DEST/Contents/Resources/applet.icns"
+touch "$DEST"
+
+echo "✅ Pronto: \"$DEST\""
+echo "   Abra o Launchpad (ou ~/Applications) e clique em \"Resume Video\"."

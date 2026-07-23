@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Source_Serif_4, Fraunces, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
@@ -32,6 +32,20 @@ export const metadata: Metadata = {
   title: "Resume Video — resumos, transcrições e mapas mentais",
   description:
     "Cole um link do YouTube e receba resumo, transcrição e mapa mental — organizados como um catálogo.",
+  manifest: "/manifest.webmanifest",
+  applicationName: "Resume Video",
+  appleWebApp: { capable: true, title: "Resume Video", statusBarStyle: "default" },
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#faf7f2",
 };
 
 export default function RootLayout({
