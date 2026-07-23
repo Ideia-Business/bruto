@@ -7,8 +7,9 @@ Sistema local-first: cole um link do YouTube e receba **resumo**, **transcriçã
 1. `yt-dlp` baixa metadados + legendas (idioma original) sem baixar o vídeo; fallback para áudio → Whisper local quando não há legenda.
 2. `claude -p` (headless, sua subscription — sem API key) gera resumo, mapa mental e classifica a categoria, tudo em PT-BR.
 3. Vídeos em outro idioma podem ter tudo traduzido para PT-BR (opção "Traduzir tudo").
-4. Exports: `.docx` (lib docx) e `.pdf` (Chromium headless), com o mapa mental renderizado como imagem (markmap via Playwright).
-5. Catálogo em SQLite; arquivos em `~/.resume-video/library/<id>/`.
+4. **Estudar** (sob demanda): monta uma aula didática — objetivos, conceitos explicados do zero, glossário, teste de fixação interativo e referências para aprofundar.
+5. Exports: `.docx` (lib docx) e `.pdf` (Chromium headless), com o mapa mental renderizado como imagem (markmap via Playwright).
+6. Catálogo em SQLite; arquivos em `~/.resume-video/library/<id>/`.
 
 ## Setup
 

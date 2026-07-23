@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { VideoDetail } from "@/components/video-detail";
-import { getVideoDetail } from "@/db/queries";
+import { getVideoDetail, listCategories } from "@/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -19,12 +19,13 @@ export default async function VideoPage({
 
   // Serializa para o client component (datas viram string via JSON).
   const data = JSON.parse(JSON.stringify({ ...detail, defaultTab: tab }));
+  const categories = listCategories();
 
   return (
     <>
       <SiteHeader />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">
-        <VideoDetail data={data} />
+        <VideoDetail data={data} categories={categories} />
       </main>
     </>
   );

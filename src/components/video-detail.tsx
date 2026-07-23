@@ -13,10 +13,18 @@ import {
   FileText,
   FileType,
   ExternalLink,
+  GraduationCap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Markdown } from "./markdown";
 import { CopyButton } from "./copy-button";
 import { TranscriptView } from "./transcript-view";
@@ -41,6 +49,11 @@ interface Artifact {
   sizeBytes: number | null;
 }
 
+interface Category {
+  id: number;
+  name: string;
+}
+
 interface DetailData {
   video: {
     id: string;
@@ -50,8 +63,9 @@ interface DetailData {
     durationSec: number | null;
     uploadDate: string | null;
     transcriptSource: string | null;
+    categoryId: number | null;
   };
-  category: { name: string } | null;
+  category: { id: number; name: string } | null;
   artifacts: Artifact[];
   latestJob: {
     id: string;
@@ -64,6 +78,7 @@ interface DetailData {
     transcript: string | null;
     transcriptTs: string | null;
     transcriptTranslated: string | null;
+    studyMd: string | null;
   };
   defaultTab?: string;
 }
@@ -72,6 +87,7 @@ const EXPORT_META: Record<string, { label: string; icon: React.ReactNode }> = {
   docx: { label: "Word (.docx)", icon: <FileType className="size-4" /> },
   pdf: { label: "PDF", icon: <FileText className="size-4" /> },
   summary_md: { label: "Resumo (.md)", icon: <FileText className="size-4" /> },
+  study_md: { label: "Aula didática (.md)", icon: <GraduationCap className="size-4" /> },
   mindmap_md: { label: "Mapa mental (.md)", icon: <FileText className="size-4" /> },
   mindmap_svg: { label: "Mapa mental (.svg)", icon: <FileText className="size-4" /> },
   mindmap_png: { label: "Mapa mental (.png)", icon: <FileText className="size-4" /> },
@@ -86,7 +102,13 @@ function humanSize(bytes: number | null): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function VideoDetail({ data }: { data: DetailData }) {
+export function VideoDetail({
+  data,
+  categories,
+}: {
+  data: DetailData;
+  categories: Category[];
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const isActive = data.latestJob?.status === "queued" || data.latestJob?.status === "running";
@@ -94,6 +116,39 @@ export function VideoDetail({ data }: { data: DetailData }) {
     onDone: () => router.refresh(),
     onError: () => router.refresh(),
   });
+
+  const [studyBusy, setStudyBusy] = useState(false);
+  async function generateStudy() {
+    setStudyBusy(true);
+    try {
+      const res = await fetch(`/api/videos/${data.video.id}/study`, { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(d.error ?? "Não foi possível montar a aula.");
+        return;
+      }
+      toast.success("Aula pronta!");
+      router.refresh();
+    } catch {
+      toast.error("Erro de rede ao montar a aula.");
+    } finally {
+      setStudyBusy(false);
+    }
+  }
+
+  async function changeCategory(categoryId: string) {
+    const res = await fetch(`/api/videos/${data.video.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ categoryId: Number(categoryId) }),
+    });
+    if (res.ok) {
+      toast.success("Categoria atualizada.");
+      router.refresh();
+    } else {
+      toast.error("Não foi possível mudar a categoria.");
+    }
+  }
 
   async function action(path: string, okMsg: string) {
     setBusy(true);
@@ -147,7 +202,21 @@ export function VideoDetail({ data }: { data: DetailData }) {
             <span>{data.video.channel}</span>
             {data.video.durationSec ? <span>· {formatDuration(data.video.durationSec)}</span> : null}
             {data.video.uploadDate ? <span>· {formatUploadDate(data.video.uploadDate)}</span> : null}
-            {data.category && <Badge variant="secondary">{data.category.name}</Badge>}
+            <Select
+              value={data.video.categoryId ? String(data.video.categoryId) : undefined}
+              onValueChange={changeCategory}
+            >
+              <SelectTrigger size="sm" className="h-7 w-auto gap-1 border-border/60 bg-secondary/50 text-xs">
+                <SelectValue placeholder="Categoria" />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {data.video.transcriptSource && (
               <Badge variant="outline">
                 {TRANSCRIPT_SOURCE_LABEL[data.video.transcriptSource] ?? data.video.transcriptSource}
@@ -209,6 +278,7 @@ export function VideoDetail({ data }: { data: DetailData }) {
           <Tabs defaultValue={data.defaultTab ?? "summary"}>
             <TabsList>
               <TabsTrigger value="summary">Resumo</TabsTrigger>
+              <TabsTrigger value="study">Estudar</TabsTrigger>
               <TabsTrigger value="transcript">Transcrição</TabsTrigger>
               <TabsTrigger value="mindmap">Mapa Mental</TabsTrigger>
               <TabsTrigger value="exports">Exportações</TabsTrigger>
@@ -224,6 +294,61 @@ export function VideoDetail({ data }: { data: DetailData }) {
                 </div>
               ) : (
                 <Empty>Resumo ainda não gerado.</Empty>
+              )}
+            </TabsContent>
+
+            <TabsContent value="study" className="pt-4">
+              {data.content.studyMd ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      Aula gerada a partir do conteúdo do vídeo.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={studyBusy}
+                        onClick={generateStudy}
+                        className="gap-1.5"
+                      >
+                        <RefreshCw className="size-3.5" /> Refazer
+                      </Button>
+                      <CopyButton text={data.content.studyMd} label="Copiar aula" />
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card/30 p-5 sm:p-6">
+                    <Markdown allowHtml>{data.content.studyMd}</Markdown>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border py-16 text-center">
+                  <GraduationCap className="size-10 text-primary" />
+                  <div className="max-w-md space-y-1">
+                    <h3 className="text-lg font-semibold">Estudar sobre o conteúdo</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Monte uma aula didática que ensina o que importa do zero — com
+                      objetivos, conceitos explicados, teste de fixação e referências
+                      para aprofundar.
+                    </p>
+                  </div>
+                  <Button disabled={studyBusy} onClick={generateStudy} className="gap-1.5">
+                    {studyBusy ? (
+                      <>
+                        <RefreshCw className="size-4 animate-spin" /> Montando aula…
+                      </>
+                    ) : (
+                      <>
+                        <GraduationCap className="size-4" /> Montar aula didática
+                      </>
+                    )}
+                  </Button>
+                  {studyBusy && (
+                    <p className="text-xs text-muted-foreground">
+                      Isso leva cerca de um minuto — estou preparando a aula.
+                    </p>
+                  )}
+                </div>
               )}
             </TabsContent>
 

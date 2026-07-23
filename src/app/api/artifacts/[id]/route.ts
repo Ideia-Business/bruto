@@ -7,6 +7,7 @@ const DOWNLOAD_LABEL: Record<string, (title: string) => string> = {
   docx: (t) => `Resumo - ${t}.docx`,
   pdf: (t) => `Resumo - ${t}.pdf`,
   summary_md: (t) => `Resumo - ${t}.md`,
+  study_md: (t) => `Aula - ${t}.md`,
   mindmap_md: (t) => `Mapa Mental - ${t}.md`,
   mindmap_svg: (t) => `Mapa Mental - ${t}.svg`,
   mindmap_png: (t) => `Mapa Mental - ${t}.png`,

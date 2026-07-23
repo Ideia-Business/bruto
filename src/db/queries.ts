@@ -104,6 +104,7 @@ export interface VideoDetail {
     transcript: string | null;
     transcriptTs: string | null;
     transcriptTranslated: string | null;
+    studyMd: string | null;
   };
 }
 
@@ -144,6 +145,7 @@ export function getVideoDetail(id: string): VideoDetail | null {
       transcript: readIfExists(byKind("transcript")),
       transcriptTs: readIfExists(byKind("transcript_ts")),
       transcriptTranslated: readIfExists(byKind("transcript_translated")),
+      studyMd: readIfExists(byKind("study_md")),
     },
   };
 }
