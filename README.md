@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Resume Video
 
-## Getting Started
+Sistema local-first: cole um link do YouTube e receba **resumo**, **transcrição** e **mapa mental** — exportáveis em **.docx** e **.pdf** — organizados num catálogo estilo Netflix, por categoria.
 
-First, run the development server:
+## Como funciona
+
+1. `yt-dlp` baixa metadados + legendas (idioma original) sem baixar o vídeo; fallback para áudio → Whisper local quando não há legenda.
+2. `claude -p` (headless, sua subscription — sem API key) gera resumo, mapa mental e classifica a categoria, tudo em PT-BR.
+3. Vídeos em outro idioma podem ter tudo traduzido para PT-BR (opção "Traduzir tudo").
+4. Exports: `.docx` (lib docx) e `.pdf` (Chromium headless), com o mapa mental renderizado como imagem (markmap via Playwright).
+5. Catálogo em SQLite; arquivos em `~/.resume-video/library/<id>/`.
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+brew install yt-dlp                # obrigatório
+uv tool install mlx-whisper        # opcional (vídeos sem legenda / transcrição fiel)
+npm install
+npx playwright install chromium    # para exports pdf + imagem do mapa
+npm run db:push && npm run db:seed  # cria o banco e as categorias
+npm run doctor                     # confere as dependências
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Uso
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run dev                        # app em http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Ou via CLI, sem a interface:
 
-## Learn More
+```bash
+npm run process -- "https://www.youtube.com/watch?v=<id>" [--whisper] [--traduzir]
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Stack
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Next.js 16 · TypeScript · Tailwind + shadcn/ui · Drizzle + better-sqlite3 · yt-dlp · Whisper (vt.sh) · Claude CLI · docx · Playwright · markmap.

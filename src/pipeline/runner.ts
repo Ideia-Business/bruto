@@ -9,6 +9,9 @@ import { runTranslate } from "./steps/06-translate";
 import { runSummary } from "./steps/03-summary";
 import { runMindmap } from "./steps/04-mindmap";
 import { runCategory } from "./steps/05-category";
+import { runExport } from "./steps/06-export";
+import fs from "node:fs";
+import { artifactPaths } from "./lib/paths";
 import {
   PipelineError,
   type ErrorCode,
@@ -140,18 +143,32 @@ export async function processJob(jobId: string): Promise<void> {
     }
 
     // 3) summary
-    update(jobId, { currentStep: "summary", progressPct: 58 });
-    await runSummary(meta, transcript.text);
+    update(jobId, { currentStep: "summary", progressPct: 55 });
+    const summaryMd = await runSummary(meta, transcript.text);
 
     // 4) mindmap
-    update(jobId, { currentStep: "mindmap", progressPct: 72 });
-    await runMindmap(meta, transcript.text);
+    update(jobId, { currentStep: "mindmap", progressPct: 66 });
+    const mindmapMd = await runMindmap(meta, transcript.text);
 
     // 5) category
-    update(jobId, { currentStep: "category", progressPct: 82 });
+    update(jobId, { currentStep: "category", progressPct: 74 });
     await runCategory(meta, transcript.text);
 
-    // (export = Fase 3)
+    // 6) export — docx, pdf e imagem do mapa mental
+    update(jobId, { currentStep: "export", progressPct: 80 });
+    const translatedPath = artifactPaths(meta.id).dir + "/transcript.pt-BR.txt";
+    const transcriptTranslated = fs.existsSync(translatedPath)
+      ? fs.readFileSync(translatedPath, "utf8")
+      : null;
+    await runExport({
+      meta,
+      summaryMd,
+      mindmapMd,
+      transcript: transcript.text,
+      transcriptTranslated,
+      onTick: (pct) => update(jobId, { progressPct: 80 + Math.round((pct / 100) * 18) }),
+    });
+
     update(jobId, {
       status: "done",
       currentStep: null,
