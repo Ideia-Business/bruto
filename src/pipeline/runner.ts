@@ -156,13 +156,17 @@ export async function processJob(jobId: string): Promise<void> {
 
     // 6) export — docx, pdf e imagem do mapa mental
     update(jobId, { currentStep: "export", progressPct: 80 });
-    const translatedPath = artifactPaths(meta.id).dir + "/transcript.pt-BR.txt";
+    const dir = artifactPaths(meta.id).dir;
+    const translatedPath = dir + "/transcript.pt-BR.txt";
     const transcriptTranslated = fs.existsSync(translatedPath)
       ? fs.readFileSync(translatedPath, "utf8")
       : null;
+    const studyPath = dir + "/study.md";
+    const studyMd = fs.existsSync(studyPath) ? fs.readFileSync(studyPath, "utf8") : null;
     await runExport({
       meta,
       summaryMd,
+      studyMd,
       mindmapMd,
       transcript: transcript.text,
       transcriptTranslated,

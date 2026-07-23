@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { getBrowser } from "./browser";
-import { parseMarkdownBlocks, escapeHtml, type InlineToken } from "./md-blocks";
+import { parseMarkdownBlocks, studyMdForDocs, escapeHtml, type InlineToken } from "./md-blocks";
 import { formatDuration, formatUploadDate } from "@/lib/format";
 import type { VideoMetadata } from "@/pipeline/types";
 
@@ -53,6 +53,7 @@ function transcriptHtml(text: string): string {
 export interface PdfInput {
   meta: VideoMetadata;
   summaryMd: string | null;
+  studyMd: string | null;
   mindmapPngPath: string | null;
   transcript: string | null;
   transcriptTranslated: string | null;
@@ -64,6 +65,9 @@ export async function buildPdf(input: PdfInput): Promise<string> {
   const { meta } = input;
   const transcript = input.transcriptTranslated ?? input.transcript;
   const transcriptLabel = input.transcriptTranslated ? "Transcrição (PT-BR)" : "Transcrição";
+  const studyBlock = input.studyMd
+    ? `<section class="page-break"><h1>Aula de estudo</h1>${summaryHtml(studyMdForDocs(input.studyMd))}</section>`
+    : "";
 
   let mindmapImg = "";
   if (input.mindmapPngPath && fs.existsSync(input.mindmapPngPath)) {
@@ -102,6 +106,7 @@ export async function buildPdf(input: PdfInput): Promise<string> {
       <div class="meta">Link: <a href="${escapeHtml(meta.url)}">${escapeHtml(meta.url)}</a></div>
     </div>
     ${input.summaryMd ? `<section><h1>Resumo</h1>${summaryHtml(input.summaryMd)}</section>` : ""}
+    ${studyBlock}
     ${mindmapImg}
     ${transcript ? `<section class="page-break"><h1>${transcriptLabel}</h1>${transcriptHtml(transcript)}</section>` : ""}
   </body></html>`;

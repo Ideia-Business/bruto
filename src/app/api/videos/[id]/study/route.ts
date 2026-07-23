@@ -3,8 +3,13 @@ import { NextResponse } from "next/server";
 import { getVideoById } from "@/db/queries";
 import { artifactPaths } from "@/pipeline/lib/paths";
 import { runStudy } from "@/pipeline/steps/07-study";
+import { runExport } from "@/pipeline/steps/06-export";
 import { PipelineError } from "@/pipeline/types";
 import { ERROR_HINT } from "@/lib/format";
+
+function readOrNull(p: string): string | null {
+  return fs.existsSync(p) ? fs.readFileSync(p, "utf8") : null;
+}
 
 // Geração pode levar ~30-120s; sem cache.
 export const dynamic = "force-dynamic";
@@ -32,6 +37,22 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   try {
     const md = await runStudy(meta, transcript);
+
+    // Regenera docx/pdf para incluir a aula recém-criada (best-effort —
+    // a aula já está salva mesmo se o re-export falhar).
+    try {
+      await runExport({
+        meta,
+        summaryMd: readOrNull(paths.summary),
+        studyMd: md,
+        mindmapMd: readOrNull(paths.mindmap),
+        transcript: readOrNull(paths.transcript),
+        transcriptTranslated: readOrNull(`${paths.dir}/transcript.pt-BR.txt`),
+      });
+    } catch {
+      /* re-export best-effort */
+    }
+
     return NextResponse.json({ ok: true, studyMd: md });
   } catch (err) {
     const code = err instanceof PipelineError ? err.code : "UNKNOWN";

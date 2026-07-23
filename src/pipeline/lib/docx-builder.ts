@@ -9,7 +9,7 @@ import {
   TextRun,
   ExternalHyperlink,
 } from "docx";
-import { parseMarkdownBlocks, type InlineToken } from "./md-blocks";
+import { parseMarkdownBlocks, studyMdForDocs, type InlineToken } from "./md-blocks";
 import { formatDuration } from "@/lib/format";
 import type { VideoMetadata } from "@/pipeline/types";
 
@@ -37,6 +37,7 @@ function summaryParagraphs(summaryMd: string): Paragraph[] {
 export interface DocxInput {
   meta: VideoMetadata;
   summaryMd: string | null;
+  studyMd: string | null;
   mindmapPngPath: string | null;
   transcript: string | null;
   /** Transcrição traduzida (quando o vídeo não é PT-BR e foi pedida). */
@@ -78,6 +79,20 @@ export async function buildDocx(input: DocxInput): Promise<string> {
   if (input.summaryMd) {
     children.push(new Paragraph({ text: "Resumo", heading: HeadingLevel.HEADING_1, spacing: { after: 120 } }));
     children.push(...summaryParagraphs(input.summaryMd));
+  }
+
+  // ── Aula de estudo ─────────────────────────────────────────────────────
+  if (input.studyMd) {
+    children.push(
+      new Paragraph({
+        text: "Aula de estudo",
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 240, after: 120 },
+        pageBreakBefore: true,
+      }),
+    );
+    // studyMdForDocs remove o title "# 🎓 Aula: ..." duplicado? Mantemos, vira H2.
+    children.push(...summaryParagraphs(studyMdForDocs(input.studyMd)));
   }
 
   // ── Mapa mental (imagem) ───────────────────────────────────────────────

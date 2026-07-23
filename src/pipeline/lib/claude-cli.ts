@@ -38,6 +38,12 @@ export interface RunClaudeOptions {
   model?: "sonnet" | "haiku" | "opus";
   /** Timeout por tentativa em ms. Default: 180_000. */
   timeoutMs?: number;
+  /**
+   * Ferramentas a habilitar (ex.: ["WebSearch"]). Quando fornecido, o CLI roda
+   * o agent loop com essas ferramentas em vez do modo só-texto (--tools "").
+   * Use com parcimônia: adiciona latência e custo de server tools.
+   */
+  allowedTools?: string[];
 }
 
 /** Timeout padrão por tentativa (ms). */
@@ -84,6 +90,7 @@ function spawnClaude(
 ): Promise<SpawnOutcome> {
   return new Promise((resolve, reject) => {
     const model = opts.model ?? "sonnet";
+    const useTools = opts.allowedTools && opts.allowedTools.length > 0;
     const args = [
       "-p",
       opts.prompt,
@@ -91,8 +98,11 @@ function spawnClaude(
       "json",
       "--model",
       model,
-      "--tools",
-      "", // string vazia = desabilita todas as ferramentas
+      // Modo só-texto (--tools "") por padrão; com ferramentas, permite apenas
+      // as solicitadas (ex.: WebSearch) e roda o agent loop.
+      ...(useTools
+        ? ["--allowed-tools", ...(opts.allowedTools as string[])]
+        : ["--tools", ""]),
       "--no-session-persistence",
       "--strict-mcp-config",
       "--disable-slash-commands",

@@ -57,6 +57,24 @@ export function parseMarkdownBlocks(md: string): MdBlock[] {
   return blocks;
 }
 
+/**
+ * Converte o markdown da aula (que usa <details>/<summary> para os spoilers de
+ * fixação) em markdown estático para documentos, onde não há interatividade:
+ * a resposta fica visível, rotulada. Remove as tags de HTML.
+ */
+export function studyMdForDocs(md: string): string {
+  return md
+    // <details><summary>Ver resposta</summary> → rótulo "Resposta:"
+    .replace(/<details>\s*<summary>[^<]*<\/summary>/gi, "\n**Resposta:** ")
+    // quaisquer tags residuais
+    .replace(/<\/?details>/gi, "")
+    .replace(/<summary>[^<]*<\/summary>/gi, "**Resposta:** ")
+    .replace(/<\/?summary>/gi, "")
+    // colapsa 3+ linhas em branco
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /** Escapa texto para HTML (usado no template do PDF). */
 export function escapeHtml(s: string): string {
   return s

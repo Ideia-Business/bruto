@@ -9,6 +9,7 @@ import type { VideoMetadata } from "@/pipeline/types";
 export interface ExportInput {
   meta: VideoMetadata;
   summaryMd: string | null;
+  studyMd: string | null;
   mindmapMd: string | null;
   transcript: string | null;
   transcriptTranslated: string | null;
@@ -49,6 +50,7 @@ export async function runExport(input: ExportInput): Promise<void> {
     await buildDocx({
       meta,
       summaryMd: input.summaryMd,
+      studyMd: input.studyMd,
       mindmapPngPath,
       transcript: input.transcript,
       transcriptTranslated: input.transcriptTranslated,
@@ -65,6 +67,7 @@ export async function runExport(input: ExportInput): Promise<void> {
     await buildPdf({
       meta,
       summaryMd: input.summaryMd,
+      studyMd: input.studyMd,
       mindmapPngPath,
       transcript: input.transcript,
       transcriptTranslated: input.transcriptTranslated,
