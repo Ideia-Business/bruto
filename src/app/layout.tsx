@@ -1,16 +1,31 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, Source_Serif_4, Fraunces, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+// Inter opera a UI (nav, botões, metadados); Source Serif 4 é a fonte de
+// leitura (aula, resumo, transcrição); Fraunces dá gravitas aos títulos.
+// latin-ext garante a acentuação PT-BR (ã õ ç á é í ó ú).
+const inter = Inter({
+  variable: "--font-sans",
+  subsets: ["latin", "latin-ext"],
+  display: "swap",
 });
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const sourceSerif = Source_Serif_4({
+  variable: "--font-reading",
+  subsets: ["latin", "latin-ext"],
+  display: "swap",
+});
+const fraunces = Fraunces({
+  variable: "--font-heading",
+  subsets: ["latin", "latin-ext"],
+  axes: ["opsz"],
+  display: "swap",
+});
+const mono = JetBrains_Mono({
+  variable: "--font-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -24,13 +39,13 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Tema dark fixo (visual Netflix) — a classe `dark` ativa as design tokens escuras.
+  // Tema claro "Papel Calmo" por padrão (serviço de leitura/estudo).
   return (
     <html
       lang="pt-BR"
-      className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${sourceSerif.variable} ${fraunces.variable} ${mono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground">
+      <body className="min-h-full flex flex-col bg-background font-sans text-foreground">
         {children}
         <Toaster richColors position="top-center" />
       </body>

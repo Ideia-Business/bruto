@@ -3,12 +3,12 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
+import { ChevronRight } from "lucide-react";
 
 /**
- * Renderiza markdown com estilos tipográficos consistentes.
- * `allowHtml` habilita HTML embutido (usado na aula "Estudar" para os
- * <details> das perguntas de fixação). O conteúdo é sempre gerado localmente
- * pelo Claude — não há entrada de terceiros, então é seguro.
+ * Renderiza markdown como PROSA DE LEITURA (serif, 18px/1.7, coluna estreita).
+ * É o coração do produto — resumo e aula devem se ler sem fadiga.
+ * `allowHtml` habilita os <details> da fixação (conteúdo é sempre local, seguro).
  */
 export function Markdown({
   children,
@@ -18,35 +18,48 @@ export function Markdown({
   allowHtml?: boolean;
 }) {
   return (
-    <div className="prose-custom max-w-none space-y-3 text-sm leading-relaxed">
+    <div className="prose-custom space-y-4 font-reading text-[1.125rem] leading-[1.7] text-foreground">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={allowHtml ? [rehypeRaw] : []}
         components={{
-          h1: (p) => <h1 className="mt-2 mb-2 text-2xl font-black" {...p} />,
+          h1: (p) => <h1 className="mt-2 mb-3 font-heading text-3xl font-semibold" {...p} />,
           h2: (p) => (
-            <h2 className="mt-6 border-b border-border/60 pb-1 text-lg font-bold" {...p} />
+            <h2
+              className="mt-10 mb-3 border-b border-border pb-2 font-heading text-2xl font-semibold"
+              {...p}
+            />
           ),
-          h3: (p) => <h3 className="mt-4 text-base font-semibold text-foreground" {...p} />,
-          p: (p) => <p className="text-foreground/90" {...p} />,
-          ul: (p) => <ul className="list-disc space-y-1.5 pl-5" {...p} />,
-          ol: (p) => <ol className="list-decimal space-y-1.5 pl-5" {...p} />,
-          li: (p) => <li className="text-foreground/90" {...p} />,
-          strong: (p) => <strong className="font-semibold text-foreground" {...p} />,
+          h3: (p) => <h3 className="mt-6 mb-2 font-heading text-xl font-semibold" {...p} />,
+          p: (p) => <p {...p} />,
+          ul: (p) => <ul className="list-disc space-y-2 pl-6" {...p} />,
+          ol: (p) => <ol className="list-decimal space-y-2 pl-6" {...p} />,
+          li: (p) => <li {...p} />,
+          strong: (p) => <strong className="font-semibold" {...p} />,
           em: (p) => <em className="italic" {...p} />,
-          a: (p) => <a className="text-primary underline" {...p} />,
-          blockquote: (p) => (
-            <blockquote className="border-l-2 border-primary/50 pl-3 text-foreground/80 italic" {...p} />
+          a: (p) => (
+            <a
+              className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+              {...p}
+            />
           ),
-          code: (p) => <code className="rounded bg-muted px-1 py-0.5 text-xs" {...p} />,
+          blockquote: (p) => (
+            <blockquote className="border-l-[3px] border-primary/40 pl-4 text-muted-foreground" {...p} />
+          ),
+          code: (p) => (
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.9em]" {...p} />
+          ),
           details: (p) => (
             <details
-              className="my-2 rounded-md border border-border bg-card/50 px-3 py-2 [&[open]]:bg-card"
+              className="group/d my-4 rounded-lg border border-border bg-muted/60 px-4 py-3 open:bg-accent/40"
               {...p}
             />
           ),
           summary: (p) => (
-            <summary className="cursor-pointer select-none text-sm font-medium text-primary marker:text-primary" {...p} />
+            <summary className="flex cursor-pointer list-none items-center gap-2 font-sans text-[0.95rem] font-semibold text-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronRight className="size-4 shrink-0 text-primary transition-transform duration-200 group-open/d:rotate-90" />
+              {p.children}
+            </summary>
           ),
         }}
       >

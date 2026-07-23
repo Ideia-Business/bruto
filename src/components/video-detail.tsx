@@ -17,6 +17,9 @@ import {
   Pencil,
   Check,
   X,
+  Languages,
+  ScrollText,
+  Network,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +36,6 @@ import { Markdown } from "./markdown";
 import { CopyButton } from "./copy-button";
 import { TranscriptView } from "./transcript-view";
 import { JobProgressBar, useJobProgress } from "./job-progress";
-import { Thumb } from "./thumb";
 import {
   formatDuration,
   formatUploadDate,
@@ -214,108 +216,101 @@ export function VideoDetail({
   const exportable = data.artifacts.filter((a) => EXPORT_META[a.kind]);
 
   return (
-    <div className="space-y-6">
-      {/* Banner */}
-      <div className="relative overflow-hidden rounded-xl">
-        <div className="absolute inset-0">
-          <Thumb videoId={data.video.id} alt={data.video.title} className="h-full w-full object-cover" />
-          {/* Gradientes reforçados: a thumbnail fica só como atmosfera, o título
-              e os metadados ficam totalmente legíveis (vertical + horizontal). */}
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/90 to-background/55" />
-          <div className="absolute inset-0 bg-gradient-to-r from-background/95 via-background/70 to-background/20" />
-        </div>
-        <div className="relative space-y-3 p-6 sm:p-8">
-          <Button variant="ghost" size="sm" asChild className="gap-1.5 -ml-2">
-            <a href="/">
-              <ArrowLeft className="size-4" /> Catálogo
-            </a>
-          </Button>
+    <div className="space-y-8">
+      {/* Cabeçalho de documento — claro, sem imagem de fundo nem gradiente. */}
+      <div className="space-y-3">
+        <Button variant="ghost" size="sm" asChild className="-ml-2 gap-1.5 text-muted-foreground">
+          <a href="/">
+            <ArrowLeft className="size-4" /> Catálogo
+          </a>
+        </Button>
 
-          {editingTitle ? (
-            <div className="flex max-w-3xl flex-col gap-2">
-              <Input
-                autoFocus
-                value={titleDraft}
-                onChange={(e) => setTitleDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") saveTitle();
-                  if (e.key === "Escape") {
-                    setTitleDraft(data.video.title);
-                    setEditingTitle(false);
-                  }
-                }}
-                className="h-auto bg-background/70 py-2 text-xl font-black sm:text-2xl"
-                placeholder="Título do vídeo"
-              />
-              <div className="flex gap-2">
-                <Button size="sm" onClick={saveTitle} className="gap-1.5">
-                  <Check className="size-4" /> Salvar
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setTitleDraft(data.video.title);
-                    setEditingTitle(false);
-                  }}
-                  className="gap-1.5"
-                >
-                  <X className="size-4" /> Cancelar
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="group flex max-w-3xl items-start gap-2">
-              <h1 className="text-2xl font-black leading-tight [text-shadow:0_2px_12px_rgba(0,0,0,0.7)] sm:text-3xl">
-                {data.video.title}
-              </h1>
-              <button
+        {editingTitle ? (
+          <div className="flex max-w-3xl flex-col gap-2">
+            <Input
+              autoFocus
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveTitle();
+                if (e.key === "Escape") {
+                  setTitleDraft(data.video.title);
+                  setEditingTitle(false);
+                }
+              }}
+              className="h-auto py-2 font-heading text-2xl font-semibold sm:text-3xl"
+              placeholder="Título do vídeo"
+            />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={saveTitle} className="gap-1.5">
+                <Check className="size-4" /> Salvar
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
                 onClick={() => {
                   setTitleDraft(data.video.title);
-                  setEditingTitle(true);
+                  setEditingTitle(false);
                 }}
-                title="Renomear"
-                aria-label="Renomear título"
-                className="mt-1 shrink-0 rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-white/10 hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+                className="gap-1.5"
               >
-                <Pencil className="size-4" />
-              </button>
+                <X className="size-4" /> Cancelar
+              </Button>
             </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            <span>{data.video.channel}</span>
-            {data.video.durationSec ? <span>· {formatDuration(data.video.durationSec)}</span> : null}
-            {data.video.uploadDate ? <span>· {formatUploadDate(data.video.uploadDate)}</span> : null}
-            <Select
-              value={data.video.categoryId ? String(data.video.categoryId) : undefined}
-              onValueChange={changeCategory}
-            >
-              <SelectTrigger size="sm" className="h-7 w-auto gap-1 border-border/60 bg-secondary/50 text-xs">
-                <SelectValue placeholder="Categoria" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {data.video.transcriptSource && (
-              <Badge variant="outline">
-                {TRANSCRIPT_SOURCE_LABEL[data.video.transcriptSource] ?? data.video.transcriptSource}
-              </Badge>
-            )}
-            <a
-              href={data.video.url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 hover:text-foreground"
-            >
-              <ExternalLink className="size-3.5" /> YouTube
-            </a>
           </div>
+        ) : (
+          <div className="group flex max-w-3xl items-start gap-2">
+            <h1 className="font-heading text-3xl font-semibold leading-tight text-foreground">
+              {data.video.title}
+            </h1>
+            <button
+              onClick={() => {
+                setTitleDraft(data.video.title);
+                setEditingTitle(true);
+              }}
+              title="Renomear"
+              aria-label="Renomear título"
+              className="mt-1.5 shrink-0 rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+            >
+              <Pencil className="size-4" />
+            </button>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted-foreground">
+          <span>{data.video.channel}</span>
+          {data.video.durationSec ? (
+            <span className="tabular-nums">· {formatDuration(data.video.durationSec)}</span>
+          ) : null}
+          {data.video.uploadDate ? <span>· {formatUploadDate(data.video.uploadDate)}</span> : null}
+          <Select
+            value={data.video.categoryId ? String(data.video.categoryId) : undefined}
+            onValueChange={changeCategory}
+          >
+            <SelectTrigger size="sm" className="h-7 w-auto gap-1 border-border bg-secondary text-xs">
+              <SelectValue placeholder="Categoria" />
+            </SelectTrigger>
+            <SelectContent>
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={String(c.id)}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {data.video.transcriptSource && (
+            <Badge variant="outline">
+              {TRANSCRIPT_SOURCE_LABEL[data.video.transcriptSource] ?? data.video.transcriptSource}
+            </Badge>
+          )}
+          <a
+            href={data.video.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 hover:text-foreground"
+          >
+            <ExternalLink className="size-3.5" /> YouTube
+          </a>
         </div>
       </div>
 
@@ -351,7 +346,7 @@ export function VideoDetail({
             </Button>
             {!data.content.transcriptTranslated && (
               <Button size="sm" variant="outline" disabled={busy} onClick={() => action(`/api/videos/${data.video.id}/retry?traduzir=1`, "Traduzindo para PT-BR…")}>
-                🇧🇷 Traduzir tudo
+                <Languages className="mr-1.5 size-4" /> Traduzir tudo
               </Button>
             )}
             <Button size="sm" variant="ghost" disabled={busy} onClick={remove} className="ml-auto text-destructive hover:text-destructive">
@@ -359,33 +354,46 @@ export function VideoDetail({
             </Button>
           </div>
 
-          {/* Abas */}
+          {/* Abas — estilo sublinhado (underline), sem preenchimento pesado. */}
           <Tabs defaultValue={data.defaultTab ?? "summary"}>
-            <TabsList>
-              <TabsTrigger value="summary">Resumo</TabsTrigger>
-              <TabsTrigger value="study">Estudar</TabsTrigger>
-              <TabsTrigger value="transcript">Transcrição</TabsTrigger>
-              <TabsTrigger value="mindmap">Mapa Mental</TabsTrigger>
-              <TabsTrigger value="exports">Exportações</TabsTrigger>
+            <TabsList className="h-auto w-full justify-start gap-1 rounded-none border-b border-border bg-transparent p-0">
+              {[
+                { v: "summary", label: "Resumo", Icon: FileText },
+                { v: "study", label: "Estudar", Icon: GraduationCap },
+                { v: "transcript", label: "Transcrição", Icon: ScrollText },
+                { v: "mindmap", label: "Mapa Mental", Icon: Network },
+                { v: "exports", label: "Exportações", Icon: Download },
+              ].map(({ v, label, Icon }) => (
+                <TabsTrigger
+                  key={v}
+                  value={v}
+                  className="gap-1.5 rounded-none border-0 border-b-2 border-transparent bg-transparent px-3 py-2.5 text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                >
+                  <Icon className="size-4" />
+                  {label}
+                </TabsTrigger>
+              ))}
             </TabsList>
 
-            <TabsContent value="summary" className="pt-4">
+            <TabsContent value="summary" className="pt-6">
               {data.content.summaryMd ? (
                 <div className="space-y-3">
-                  <div className="flex justify-end">
+                  <div className="mx-auto flex max-w-[42rem] justify-end">
                     <CopyButton text={data.content.summaryMd} label="Copiar resumo" />
                   </div>
-                  <Markdown>{data.content.summaryMd}</Markdown>
+                  <article className="mx-auto max-w-[42rem]">
+                    <Markdown>{data.content.summaryMd}</Markdown>
+                  </article>
                 </div>
               ) : (
                 <Empty>Resumo ainda não gerado.</Empty>
               )}
             </TabsContent>
 
-            <TabsContent value="study" className="pt-4">
+            <TabsContent value="study" className="pt-6">
               {data.content.studyMd ? (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="mx-auto flex max-w-[42rem] items-center justify-between gap-2">
                     <p className="text-xs text-muted-foreground">
                       Aula gerada a partir do conteúdo do vídeo.
                     </p>
@@ -402,9 +410,9 @@ export function VideoDetail({
                       <CopyButton text={data.content.studyMd} label="Copiar aula" />
                     </div>
                   </div>
-                  <div className="rounded-xl border border-border bg-card/30 p-5 sm:p-6">
+                  <article className="mx-auto max-w-[42rem]">
                     <Markdown allowHtml>{data.content.studyMd}</Markdown>
-                  </div>
+                  </article>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border py-16 text-center">
@@ -449,13 +457,13 @@ export function VideoDetail({
               )}
             </TabsContent>
 
-            <TabsContent value="mindmap" className="pt-4">
+            <TabsContent value="mindmap" className="pt-6">
               {data.content.mindmapMd ? (
                 <div className="space-y-3">
                   <div className="flex justify-end">
                     <CopyButton text={data.content.mindmapMd} label="Copiar mapa (markdown)" />
                   </div>
-                  <div className="h-[65vh] overflow-hidden rounded-xl border border-border bg-card/40">
+                  <div className="h-[65vh] overflow-hidden rounded-xl border border-border bg-card">
                     <MindmapViewer markdown={data.content.mindmapMd} />
                   </div>
                 </div>
@@ -464,14 +472,14 @@ export function VideoDetail({
               )}
             </TabsContent>
 
-            <TabsContent value="exports" className="pt-4">
+            <TabsContent value="exports" className="pt-6">
               {exportable.length > 0 ? (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {exportable.map((a) => (
                     <a
                       key={a.id}
                       href={`/api/artifacts/${a.id}`}
-                      className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:border-white/20"
+                      className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-xs transition-[border-color,box-shadow] hover:border-ring/40 hover:shadow-sm"
                     >
                       {EXPORT_META[a.kind].icon}
                       <div className="min-w-0 flex-1">
