@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Resume_Video — dados em runtime ficam em ~/.resume-video (fora do repo)
+/drizzle/meta/_journal.json.bak
