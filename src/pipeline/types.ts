@@ -35,6 +35,7 @@ export class PipelineError extends Error {
 export interface VideoMetadata {
   id: string;
   url: string;
+  platform: "youtube" | "instagram" | "tiktok";
   title: string;
   channel: string | null;
   durationSec: number | null;

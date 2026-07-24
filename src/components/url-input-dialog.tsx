@@ -72,13 +72,14 @@ export function UrlInputDialog({
         <DialogHeader>
           <DialogTitle>Novo vídeo</DialogTitle>
           <DialogDescription>
-            Cole o link do YouTube. Geramos resumo, transcrição e mapa mental.
+            Cole um link do YouTube, Instagram (reel) ou TikTok. Geramos resumo,
+            transcrição e mapa mental.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <Input
             autoFocus
-            placeholder="https://www.youtube.com/watch?v=..."
+            placeholder="YouTube, Instagram ou TikTok…"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !loading && submit()}

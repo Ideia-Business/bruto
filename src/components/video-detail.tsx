@@ -40,6 +40,7 @@ import {
   formatDuration,
   formatUploadDate,
   TRANSCRIPT_SOURCE_LABEL,
+  PLATFORM_LABEL,
   ERROR_HINT,
 } from "@/lib/format";
 
@@ -64,6 +65,7 @@ interface DetailData {
   video: {
     id: string;
     url: string;
+    platform: string;
     title: string;
     channel: string | null;
     durationSec: number | null;
@@ -298,6 +300,9 @@ export function VideoDetail({
               ))}
             </SelectContent>
           </Select>
+          <Badge variant="secondary">
+            {PLATFORM_LABEL[data.video.platform] ?? data.video.platform}
+          </Badge>
           {data.video.transcriptSource && (
             <Badge variant="outline">
               {TRANSCRIPT_SOURCE_LABEL[data.video.transcriptSource] ?? data.video.transcriptSource}
@@ -309,7 +314,7 @@ export function VideoDetail({
             rel="noreferrer"
             className="inline-flex items-center gap-1 hover:text-foreground"
           >
-            <ExternalLink className="size-3.5" /> YouTube
+            <ExternalLink className="size-3.5" /> Ver original
           </a>
         </div>
       </div>

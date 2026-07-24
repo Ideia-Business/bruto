@@ -20,7 +20,7 @@ export async function runMetadata(url: string): Promise<VideoMetadata> {
   // info.json bruto — útil para depuração e re-processamento offline.
   fs.writeFileSync(paths.infoJson, JSON.stringify(meta, null, 2));
 
-  await downloadThumbnail(meta.id, paths.thumb);
+  await downloadThumbnail(meta.thumbnailUrl, paths.thumb);
 
   // Categoria provisória: "outros" (a etapa 5 reclassifica).
   const outros = db
@@ -36,6 +36,7 @@ export async function runMetadata(url: string): Promise<VideoMetadata> {
     db.update(videos)
       .set({
         url: meta.url,
+        platform: meta.platform,
         title: meta.title,
         channel: meta.channel,
         durationSec: meta.durationSec,
@@ -50,6 +51,7 @@ export async function runMetadata(url: string): Promise<VideoMetadata> {
       .values({
         id: meta.id,
         url: meta.url,
+        platform: meta.platform,
         title: meta.title,
         channel: meta.channel,
         durationSec: meta.durationSec,

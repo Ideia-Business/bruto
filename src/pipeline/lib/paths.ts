@@ -41,10 +41,24 @@ export function artifactPaths(youtubeId: string) {
  * Extrai o youtube_id (11 chars) de qualquer formato de URL do YouTube.
  * Aceita: watch?v=, youtu.be/, shorts/, embed/, live/.
  */
-export function parseYoutubeUrl(input: string): string | null {
+export type Platform = "youtube" | "instagram" | "tiktok";
+
+export interface MediaRef {
+  platform: Platform;
+  /** ID canônico da plataforma. Vazio quando a URL não o expõe (ex.: short
+   *  links do TikTok) — nesse caso o pipeline usa o id devolvido pelo yt-dlp. */
+  id: string;
+}
+
+/**
+ * Reconhece uma URL de YouTube, Instagram (reel/post) ou TikTok e extrai a
+ * plataforma + o ID. Retorna null se a URL não for de uma plataforma suportada.
+ */
+export function parseMediaUrl(input: string): MediaRef | null {
   const trimmed = input.trim();
-  // ID puro
-  if (/^[A-Za-z0-9_-]{11}$/.test(trimmed)) return trimmed;
+  // ID puro de 11 chars → assume YouTube (compatibilidade).
+  if (/^[A-Za-z0-9_-]{11}$/.test(trimmed)) return { platform: "youtube", id: trimmed };
+
   let url: URL;
   try {
     url = new URL(trimmed);
@@ -52,15 +66,40 @@ export function parseYoutubeUrl(input: string): string | null {
     return null;
   }
   const host = url.hostname.replace(/^www\.|^m\./, "");
+
+  // ── YouTube ────────────────────────────────────────────────────────────
   if (host === "youtu.be") {
     const id = url.pathname.slice(1).split("/")[0];
-    return /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+    return /^[A-Za-z0-9_-]{11}$/.test(id) ? { platform: "youtube", id } : null;
   }
   if (host === "youtube.com" || host === "music.youtube.com") {
     const v = url.searchParams.get("v");
-    if (v && /^[A-Za-z0-9_-]{11}$/.test(v)) return v;
+    if (v && /^[A-Za-z0-9_-]{11}$/.test(v)) return { platform: "youtube", id: v };
     const m = url.pathname.match(/^\/(?:shorts|embed|live)\/([A-Za-z0-9_-]{11})/);
-    if (m) return m[1];
+    if (m) return { platform: "youtube", id: m[1] };
+    return null;
   }
+
+  // ── Instagram (reel / reels / post / tv) ───────────────────────────────
+  if (host === "instagram.com" || host.endsWith(".instagram.com")) {
+    const m = url.pathname.match(/^\/(?:reel|reels|p|tv)\/([A-Za-z0-9_-]+)/);
+    if (m) return { platform: "instagram", id: m[1] };
+    return null;
+  }
+
+  // ── TikTok (/@user/video/<id>, /video/<id>, ou short links) ────────────
+  if (host === "tiktok.com" || host.endsWith(".tiktok.com")) {
+    const m = url.pathname.match(/\/video\/(\d+)/);
+    if (m) return { platform: "tiktok", id: m[1] };
+    // Short links (vm./vt.tiktok.com/<code>) — id resolvido depois pelo yt-dlp.
+    if (host !== "tiktok.com") return { platform: "tiktok", id: "" };
+    return null;
+  }
+
   return null;
+}
+
+/** Compat: só o ID (usado onde a plataforma é irrelevante). */
+export function parseYoutubeUrl(input: string): string | null {
+  return parseMediaUrl(input)?.id || null;
 }

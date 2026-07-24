@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCatalog, getHistory, getHeroVideo, getActiveJobs, searchVideos, isVideoDone } from "@/db/queries";
-import { parseYoutubeUrl } from "@/pipeline/lib/paths";
+import { parseMediaUrl } from "@/pipeline/lib/paths";
 import { enqueue } from "@/pipeline/runner";
 
 /** GET /api/videos?q=... (busca) ou catálogo completo (hero + rows + histórico + ativos). */
@@ -27,12 +27,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
   const url = (body.url ?? "").trim();
-  const videoId = parseYoutubeUrl(url);
-  if (!videoId) {
-    return NextResponse.json({ error: "URL do YouTube inválida" }, { status: 400 });
+  const ref = parseMediaUrl(url);
+  if (!ref) {
+    return NextResponse.json(
+      { error: "Link inválido. Aceito YouTube, Instagram (reel/post) ou TikTok." },
+      { status: 400 },
+    );
   }
+  const videoId = ref.id;
   // Dedupe: vídeo já processado → 409 com o id para a UI redirecionar.
-  if (isVideoDone(videoId)) {
+  // (short links sem id extraível pulam esta checagem — o pipeline dedupa pelo id do yt-dlp.)
+  if (videoId && isVideoDone(videoId)) {
     return NextResponse.json(
       { error: "Vídeo já processado", videoId, duplicate: true },
       { status: 409 },

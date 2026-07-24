@@ -6,6 +6,7 @@ import type { Artifact, Category, Job, Video } from "./schema";
 
 export interface VideoCard {
   id: string;
+  platform: string;
   title: string;
   channel: string | null;
   durationSec: number | null;
@@ -23,6 +24,7 @@ export interface CategoryRow {
 function toCard(v: Video): VideoCard {
   return {
     id: v.id,
+    platform: v.platform,
     title: v.title,
     channel: v.channel,
     durationSec: v.durationSec,

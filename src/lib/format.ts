@@ -19,6 +19,13 @@ export function formatUploadDate(yyyymmdd: string | null | undefined): string {
   return `${d} ${meses[m - 1] ?? "?"} ${y}`;
 }
 
+/** Rótulo da plataforma de origem (badge). */
+export const PLATFORM_LABEL: Record<string, string> = {
+  youtube: "YouTube",
+  instagram: "Instagram",
+  tiktok: "TikTok",
+};
+
 /** Rótulo amigável da fonte da transcrição (badge de qualidade). */
 export const TRANSCRIPT_SOURCE_LABEL: Record<string, string> = {
   manual_subs: "Legenda oficial",

@@ -95,6 +95,32 @@ interface RawDumpJson {
   subtitles?: Record<string, unknown>;
   automatic_captions?: Record<string, unknown>;
   thumbnail?: string;
+  extractor?: string;
+  extractor_key?: string;
+  webpage_url_domain?: string;
+}
+
+/** Deriva a plataforma a partir dos campos do yt-dlp. */
+function detectPlatform(raw: RawDumpJson): VideoMetadata["platform"] {
+  const hint = `${raw.extractor ?? ""} ${raw.extractor_key ?? ""} ${raw.webpage_url_domain ?? ""} ${raw.webpage_url ?? ""}`.toLowerCase();
+  if (hint.includes("instagram")) return "instagram";
+  if (hint.includes("tiktok")) return "tiktok";
+  return "youtube";
+}
+
+/** Título amigável: reels/tiktoks às vezes vêm sem título "de verdade". */
+function friendlyTitle(raw: RawDumpJson, platform: VideoMetadata["platform"]): string {
+  const t = (raw.title ?? "").trim();
+  const author = (raw.channel ?? raw.uploader ?? "").trim();
+  if (t && !/^video by /i.test(t)) return t;
+  // Fallback: usa a descrição curta ou o autor.
+  const desc = (raw.description ?? "").trim().split("\n")[0];
+  if (desc) return desc.slice(0, 100);
+  if (author) {
+    const label = platform === "instagram" ? "Reel" : platform === "tiktok" ? "TikTok" : "Vídeo";
+    return `${label} de ${author}`;
+  }
+  return t || "Vídeo sem título";
 }
 
 /** Busca metadata do vídeo via --dump-json (sem baixar mídia). */
@@ -108,10 +134,12 @@ export async function fetchMetadata(url: string): Promise<VideoMetadata> {
     throw new PipelineError("UNKNOWN", "yt-dlp retornou JSON inválido no --dump-json");
   }
 
+  const platform = detectPlatform(raw);
   return {
     id: raw.id ?? "",
     url: raw.webpage_url ?? url,
-    title: raw.title ?? "",
+    platform,
+    title: friendlyTitle(raw, platform),
     channel: raw.channel ?? raw.uploader ?? null,
     durationSec: raw.duration ?? null,
     uploadDate: raw.upload_date ?? null,
@@ -217,19 +245,23 @@ export async function downloadAudio(url: string, workdir: string): Promise<strin
 }
 
 /**
- * Baixa a thumbnail hqdefault do vídeo. Falha NÃO é fatal:
- * apenas loga warning e resolve (thumbnail é cosmética).
+ * Baixa a thumbnail a partir da URL do metadata (funciona para YouTube,
+ * Instagram e TikTok). Falha NÃO é fatal: loga warning e resolve.
  */
-export async function downloadThumbnail(videoId: string, destPath: string): Promise<void> {
+export async function downloadThumbnail(
+  thumbnailUrl: string | null,
+  destPath: string,
+): Promise<void> {
+  if (!thumbnailUrl) return;
   try {
-    const res = await fetch(`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
+    const res = await fetch(thumbnailUrl);
     if (!res.ok) {
-      console.warn(`downloadThumbnail: HTTP ${res.status} para ${videoId}`);
+      console.warn(`downloadThumbnail: HTTP ${res.status}`);
       return;
     }
     const buf = Buffer.from(await res.arrayBuffer());
     fs.writeFileSync(destPath, buf);
   } catch (err) {
-    console.warn(`downloadThumbnail: falha não-fatal para ${videoId}:`, err);
+    console.warn(`downloadThumbnail: falha não-fatal:`, err);
   }
 }

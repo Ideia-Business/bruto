@@ -8,7 +8,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { jobs, videos, artifacts, categories } from "@/db/schema";
-import { parseYoutubeUrl, artifactPaths } from "@/pipeline/lib/paths";
+import { parseMediaUrl, artifactPaths } from "@/pipeline/lib/paths";
 import { bus } from "@/pipeline/bus";
 import { runJobSync } from "@/pipeline/runner";
 import type { JobProgress } from "@/pipeline/types";
@@ -36,11 +36,11 @@ const STEP_LABEL: Record<string, string> = {
 async function main(): Promise<void> {
   const { url, whisper, translate } = parseArgs(process.argv.slice(2));
   if (!url) {
-    console.error('Uso: npm run process -- "<url do youtube>" [--whisper] [--traduzir]');
+    console.error('Uso: npm run process -- "<url YouTube/Instagram/TikTok>" [--whisper] [--traduzir]');
     process.exit(1);
   }
-  if (!parseYoutubeUrl(url)) {
-    console.error(`URL inválida do YouTube: ${url}`);
+  if (!parseMediaUrl(url)) {
+    console.error(`URL inválida (aceito YouTube, Instagram ou TikTok): ${url}`);
     process.exit(1);
   }
 

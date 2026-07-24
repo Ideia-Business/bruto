@@ -13,6 +13,8 @@ export const videos = sqliteTable(
     // youtube_id (11 chars) — PK natural: reprocessar substitui, nunca duplica
     id: text("id").primaryKey(),
     url: text("url").notNull(),
+    // 'youtube' | 'instagram' | 'tiktok'
+    platform: text("platform").notNull().default("youtube"),
     title: text("title").notNull(),
     channel: text("channel"),
     durationSec: integer("duration_sec"),

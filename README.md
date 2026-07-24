@@ -1,6 +1,6 @@
 # Resume Video
 
-Sistema local-first: cole um link do YouTube e receba **resumo**, **transcrição** e **mapa mental** — exportáveis em **.docx** e **.pdf** — organizados num catálogo estilo Netflix, por categoria.
+Sistema local-first: cole um link do **YouTube, Instagram (reel) ou TikTok** e receba **resumo**, **transcrição** e **mapa mental** — exportáveis em **.docx** e **.pdf** — organizados num catálogo estilo Netflix, por categoria.
 
 ## Como funciona
 

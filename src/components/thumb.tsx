@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { Play } from "lucide-react";
 
 /**
- * Thumbnail com fallback: tenta a rota local (offline-first) e, se falhar,
- * cai para a thumbnail do YouTube. Renderiza um placeholder enquanto/erro.
+ * Thumbnail offline-first: busca a imagem local (a rota /api/media resolve o
+ * fallback do YouTube quando aplicável). Em erro, mostra um placeholder sóbrio.
  */
 export function Thumb({
   videoId,
@@ -15,7 +16,6 @@ export function Thumb({
   alt: string;
   className?: string;
 }) {
-  const [src, setSrc] = useState(`/api/media/${videoId}/thumb`);
   const [failed, setFailed] = useState(false);
 
   if (failed) {
@@ -23,7 +23,7 @@ export function Thumb({
       <div
         className={`flex items-center justify-center bg-muted text-muted-foreground ${className ?? ""}`}
       >
-        <span className="text-2xl">▶</span>
+        <Play className="size-6" />
       </div>
     );
   }
@@ -31,17 +31,11 @@ export function Thumb({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={src}
+      src={`/api/media/${videoId}/thumb`}
       alt={alt}
       loading="lazy"
       className={className}
-      onError={() => {
-        if (src.includes("/api/media/")) {
-          setSrc(`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
-        } else {
-          setFailed(true);
-        }
-      }}
+      onError={() => setFailed(true)}
     />
   );
 }

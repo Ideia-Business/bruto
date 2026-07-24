@@ -2,6 +2,7 @@
 
 export interface VideoCard {
   id: string;
+  platform: string;
   title: string;
   channel: string | null;
   durationSec: number | null;
