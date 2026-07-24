@@ -235,10 +235,15 @@ export async function downloadBestVtt(
   };
 }
 
-/** Baixa o melhor áudio e extrai para audio.m4a no workdir. */
+/**
+ * Baixa o melhor áudio e extrai para audio.m4a no workdir.
+ * `bestaudio/best`: prefere faixa só-áudio (YouTube), mas cai para o melhor
+ * formato combinado (TikTok/Instagram não têm áudio isolado) — o ffmpeg (`-x`)
+ * extrai a trilha de áudio de qualquer um.
+ */
 export async function downloadAudio(url: string, workdir: string): Promise<string> {
   await runYtdlp(
-    ["-f", "bestaudio", "-x", "--audio-format", "m4a", "-o", "audio.%(ext)s", "-P", workdir, url],
+    ["-f", "bestaudio/best", "-x", "--audio-format", "m4a", "-o", "audio.%(ext)s", "-P", workdir, url],
     AUDIO_TIMEOUT_MS,
   );
   return path.join(workdir, "audio.m4a");
