@@ -42,3 +42,15 @@ next-env.d.ts
 
 # Resume_Video — dados em runtime ficam em ~/.resume-video (fora do repo)
 /drizzle/meta/_journal.json.bak
+node_modules/
+.aiox/
+.aiox-core/
+.antigravity/
+.gemini/
+.kimi/
+.cursor/rules/agents/
+.github/agents/
+.codex/*
+!.codex/agents/
+.codex/agents/*
+!.codex/agents/*.toml
