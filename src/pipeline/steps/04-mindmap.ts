@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { runClaude, stripFences } from "@/pipeline/lib/claude-cli";
+import { runLLMText, stripFences } from "@/pipeline/lib/llm";
 import { mindmapPrompt, validateMindmap } from "@/pipeline/prompts/mindmap";
 import { artifactPaths } from "@/pipeline/lib/paths";
 import { recordArtifact } from "@/pipeline/lib/artifacts";
@@ -14,10 +14,11 @@ export async function runMindmap(
   meta: VideoMetadata,
   transcriptText: string,
 ): Promise<string> {
-  const raw = await runClaude({
+  const raw = await runLLMText({
+      task: "mindmap",
     prompt: mindmapPrompt(meta),
-    stdin: transcriptText,
-    model: "sonnet",
+    input: transcriptText,
+    tier: "balanced",
   });
 
   const md = validateMindmap(stripFences(raw));

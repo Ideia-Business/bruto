@@ -41,16 +41,30 @@ npm run db:push && npm run db:seed
 npm run doctor                      # confere as dependências
 ```
 
-### O modelo de linguagem
+### O modelo de linguagem — a sua chave, o seu custo
 
-O Bruto precisa de um modelo para resumir. **Hoje ele usa o [Claude Code CLI](https://claude.ai/code)**, que autentica pela sua própria sessão — nenhuma chave de API é necessária, e nenhum custo passa por nós.
+O Bruto precisa de um modelo para resumir. **Você escolhe qual, e a chave é sua.** Copie o exemplo e preencha **uma** linha:
 
 ```bash
-# se ainda não tiver:  npm i -g @anthropic-ai/claude-code  &&  claude login
-claude --version                    # o `npm run doctor` também confere
+cp .env.example .env
 ```
 
-> **Transparência sobre o roadmap:** o suporte a **chave própria** de Anthropic, OpenAI e Google (BYOK) é a próxima entrega e vai remover a dependência do CLI. Enquanto não sai, o Claude Code CLI é obrigatório — está escrito aqui para você não descobrir isso depois de clonar.
+| Provedor | Variável | Onde pegar |
+|---|---|---|
+| Anthropic | `ANTHROPIC_API_KEY` | console.anthropic.com |
+| OpenAI | `OPENAI_API_KEY` | platform.openai.com |
+| OpenRouter | `OPENROUTER_API_KEY` | openrouter.ai — um cadastro, centenas de modelos |
+| Ollama Cloud | `OLLAMA_API_KEY` | ollama.com — modelos abertos, hospedados |
+| Google Gemini | `GOOGLE_API_KEY` | aistudio.google.com |
+| Claude Code CLI | *nenhuma* | já autenticado na sua máquina |
+
+Se você **já usa o Claude Code**, não precisa de chave nenhuma: o Bruto detecta o CLI e usa sua sessão. É o caminho de zero configuração.
+
+A chave fica no seu `.env`, que está no `.gitignore`. Ela nunca sai da sua máquina, nunca vai para o repositório e nunca aparece em mensagem de erro — o texto de erro dos provedores é descartado no transporte, e só o código de status atravessa.
+
+**Modelo:** o Bruto pede um *tier* (`fast` para classificar, `balanced` para resumo, mapa, aula e tradução) e cada provedor traduz para um modelo seu. Sobrescreva com `BRUTO_MODEL_BALANCED` se quiser outro — recomendado no OpenRouter e no Ollama Cloud, cujos catálogos são grandes e mudam com frequência.
+
+`npm run doctor` mostra o estado de todos os provedores e diz qual está ativo.
 
 ## Uso
 

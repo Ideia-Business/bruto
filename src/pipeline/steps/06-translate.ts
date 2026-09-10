@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { runClaude } from "@/pipeline/lib/claude-cli";
+import { runLLMText } from "@/pipeline/lib/llm";
 import { translatePrompt, chunkTranscript } from "@/pipeline/prompts/translate";
 import { artifactPaths } from "@/pipeline/lib/paths";
 import { recordArtifact } from "@/pipeline/lib/artifacts";
@@ -25,10 +25,11 @@ export async function runTranslate(
     const partInfo =
       chunks.length === 1 ? "o texto completo" : `a parte ${i + 1} de ${chunks.length}`;
     tick(Math.round((i / chunks.length) * 100), `Traduzindo ${partInfo}`);
-    const out = await runClaude({
+    const out = await runLLMText({
+      task: "translate",
       prompt: translatePrompt(meta.title, partInfo),
-      stdin: chunks[i],
-      model: "sonnet",
+      input: chunks[i],
+      tier: "balanced",
     });
     translated.push(out.trim());
   }

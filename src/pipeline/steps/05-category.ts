@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { categories, videos } from "@/db/schema";
-import { runClaude } from "@/pipeline/lib/claude-cli";
+import { runLLMText } from "@/pipeline/lib/llm";
 import { categoryPrompt, parseCategorySlug, type CategorySlug } from "@/pipeline/prompts/category";
 import type { VideoMetadata } from "@/pipeline/types";
 
@@ -15,9 +15,10 @@ export async function runCategory(
 ): Promise<CategorySlug> {
   let slug: CategorySlug = "outros";
   try {
-    const raw = await runClaude({
+    const raw = await runLLMText({
+      task: "category",
       prompt: categoryPrompt(meta, transcriptText),
-      model: "haiku",
+      tier: "fast",
       timeoutMs: 60_000,
     });
     slug = parseCategorySlug(raw);

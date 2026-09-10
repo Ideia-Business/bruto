@@ -17,6 +17,10 @@ export type ErrorCode =
   | "YTDLP_OUTDATED"
   | "NO_TRANSCRIPT"
   | "LLM_QUOTA"
+  | "LLM_AUTH"
+  | "LLM_UPSTREAM"
+  | "LLM_CAPABILITY"
+  | "LLM_NOT_CONFIGURED"
   | "UNKNOWN";
 
 export type TranscriptSource = "manual_subs" | "auto_subs" | "yta" | "whisper";

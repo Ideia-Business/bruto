@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { runClaude } from "@/pipeline/lib/claude-cli";
+import { runLLMText } from "@/pipeline/lib/llm";
 import { summaryPrompt } from "@/pipeline/prompts/summary";
 import { artifactPaths } from "@/pipeline/lib/paths";
 import { recordArtifact } from "@/pipeline/lib/artifacts";
@@ -10,10 +10,11 @@ export async function runSummary(
   meta: VideoMetadata,
   transcriptText: string,
 ): Promise<string> {
-  const summary = await runClaude({
+  const summary = await runLLMText({
+      task: "summary",
     prompt: summaryPrompt(meta),
-    stdin: transcriptText,
-    model: "sonnet",
+    input: transcriptText,
+    tier: "balanced",
   });
 
   const paths = artifactPaths(meta.id);

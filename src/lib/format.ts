@@ -54,6 +54,13 @@ export const ERROR_HINT: Record<string, string> = {
     "O extrator do YouTube está desatualizado. Rode: brew upgrade yt-dlp",
   NO_TRANSCRIPT:
     "Vídeo sem legenda e sem Whisper disponível. Instale: uv tool install mlx-whisper",
-  LLM_QUOTA: "Cota do Claude atingida. Tente novamente mais tarde.",
+  LLM_QUOTA: "O provedor de IA respondeu limite de uso. Tente novamente mais tarde.",
+  LLM_AUTH:
+    "O provedor de IA recusou a credencial. Confira a chave no seu .env — veja .env.example.",
+  LLM_UPSTREAM: "O provedor de IA está fora do ar. Tente reprocessar em alguns minutos.",
+  LLM_CAPABILITY:
+    "O provedor configurado não tem um recurso que esta etapa pediu. O resto foi gerado normalmente.",
+  LLM_NOT_CONFIGURED:
+    "Nenhum provedor de IA configurado. Copie .env.example para .env e preencha uma chave, ou instale o Claude Code.",
   UNKNOWN: "Ocorreu um erro inesperado. Tente reprocessar.",
 };

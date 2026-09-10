@@ -1,10 +1,14 @@
 /**
  * doctor — checa as dependências de sistema do pipeline.
  *   npm run doctor
- * Exit 0 se o essencial (yt-dlp, ffmpeg, claude) está presente.
+ * Exit 0 se o essencial está presente: yt-dlp, ffmpeg e ALGUM provedor de IA.
+ *
+ * O `claude` deixou de ser dependência obrigatória: agora é um provedor entre
+ * seis. O que o doctor exige é que exista pelo menos um caminho para o modelo.
  */
 import { spawnSync } from "node:child_process";
 import { vtDoctor, isVtAvailable, VT_SH_PATH } from "@/pipeline/lib/vt-bridge";
+import { listarProvedores, resolverProvedor } from "@/pipeline/lib/llm";
 
 interface Check {
   name: string;
@@ -24,7 +28,6 @@ async function main(): Promise<void> {
   const checks: Check[] = [
     checkBin("yt-dlp", ["--version"], true),
     checkBin("ffmpeg", ["-version"], true),
-    checkBin("claude", ["--version"], true),
     checkBin("uv", ["--version"], false),
   ];
 
@@ -46,13 +49,31 @@ async function main(): Promise<void> {
   }
   if (VT_SH_PATH) console.log(`\n  vt.sh: ${VT_SH_PATH}`);
 
+  // Provedores de IA: mostra o estado de todos, exige que UM esteja pronto.
+  console.log("\n  Provedores de IA:");
+  for (const p of listarProvedores()) {
+    const d = await p.availability();
+    const icon = d.ok ? "✅" : "  ";
+    const detalhe = d.ok ? (p.envVar ? `${p.envVar} definida` : "sessão local") : d.reason;
+    console.log(`  ${icon} ${p.label.padEnd(16)} ${detalhe}`);
+  }
+
+  let provedorAtivo: string | null = null;
+  try {
+    const p = await resolverProvedor();
+    provedorAtivo = p.label;
+  } catch (err) {
+    essentialFail = true;
+    console.log(`\n  ❌ ${err instanceof Error ? err.message : "nenhum provedor disponível"}`);
+  }
+
   if (essentialFail) {
-    console.log("\n✖ Faltam dependências essenciais. Instale:");
+    console.log("\n✖ Faltam dependências essenciais.");
     console.log("    brew install yt-dlp ffmpeg");
-    console.log("    (claude: já vem com o Claude Code)\n");
+    console.log("    e configure um provedor de IA: cp .env.example .env\n");
     process.exit(1);
   }
-  console.log("\n✔ Ambiente pronto para processar vídeos.\n");
+  console.log(`\n✔ Ambiente pronto. Modelo via: ${provedorAtivo}\n`);
   process.exit(0);
 }
 
