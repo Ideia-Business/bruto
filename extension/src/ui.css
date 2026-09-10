@@ -1,0 +1,319 @@
+/* Bruto — folha compartilhada pelo popup e pelas opções.
+   Estrutura à vista: superfície chapada, borda de 1px real, contraste alto.
+   Sem gradiente, sem sombra, sem raio de canto. */
+
+/* Paleta CLARA completa aqui. O bloco escuro só REDEFINE estes tokens —
+   nenhuma cor tem sua única definição dentro da media query. */
+:root {
+  --fundo: #f5f2ec;
+  --superficie: #e6e1d7;
+  --texto: #17140f;
+  --texto2: #6b655c;
+  --acento: #e14a18;
+  --erro: #b32d0f;
+  --sucesso: #4a6b3d;
+  --aviso: #8a6b1f;
+  --borda: #17140f;
+  --borda-fraca: #c3bcae;
+
+  --grotesca: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --serifa: Georgia, "Times New Roman", serif;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fundo: #141210;
+    --superficie: #1e1b18;
+    --texto: #ede8df;
+    --texto2: #9a938a;
+    --acento: #ff6b35;
+    --erro: #ff7a5c;
+    --sucesso: #8fbf77;
+    --aviso: #d9a93a;
+    --borda: #ede8df;
+    --borda-fraca: #3b3733;
+
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--fundo);
+  color: var(--texto);
+  font-family: var(--grotesca);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* --- estrutura ------------------------------------------------------- */
+
+.topo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--borda);
+  background: var(--superficie);
+}
+
+.marca {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.marca span {
+  color: var(--acento);
+}
+
+.tagline {
+  color: var(--texto2);
+  font-size: 11px;
+}
+
+.corpo {
+  padding: 14px;
+}
+
+.tela[hidden] {
+  display: none !important;
+}
+
+.pilha {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.linha {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+h2 {
+  font-size: 14px;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+p {
+  margin: 0;
+}
+
+.secundario {
+  color: var(--texto2);
+}
+
+.caixa {
+  border: 1px solid var(--borda-fraca);
+  background: var(--superficie);
+  padding: 10px 12px;
+}
+
+.dado {
+  font-size: 12px;
+  color: var(--texto2);
+  word-break: break-word;
+}
+
+/* --- controles ------------------------------------------------------- */
+
+button,
+.botao {
+  font-family: var(--grotesca);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--texto);
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: 0;
+  padding: 8px 14px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+
+button:hover,
+.botao:hover {
+  background: var(--fundo);
+}
+
+button:disabled {
+  color: var(--texto2);
+  border-color: var(--borda-fraca);
+  cursor: not-allowed;
+}
+
+button.principal {
+  background: var(--acento);
+  border-color: var(--acento);
+  color: #f5f2ec;
+}
+
+button.principal:hover {
+  background: var(--fundo);
+  color: var(--texto);
+  border-color: var(--borda);
+}
+
+:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.ajuda {
+  color: var(--texto2);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+input[type="text"],
+input[type="password"],
+select {
+  font-family: var(--grotesca);
+  font-size: 13px;
+  width: 100%;
+  padding: 8px 10px;
+  color: var(--texto);
+  background: var(--fundo);
+  border: 1px solid var(--borda);
+  border-radius: 0;
+}
+
+.campo-com-botao {
+  display: flex;
+  gap: 0;
+}
+
+.campo-com-botao input {
+  flex: 1;
+  border-right: 0;
+}
+
+fieldset {
+  border: 1px solid var(--borda-fraca);
+  padding: 10px 12px;
+  margin: 0;
+}
+
+legend {
+  font-weight: 700;
+  padding: 0 4px;
+}
+
+.opcao {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.opcao label {
+  margin: 0;
+  font-weight: 500;
+}
+
+a {
+  color: var(--acento);
+}
+
+/* --- estados --------------------------------------------------------- */
+
+.estado {
+  border-left: 3px solid var(--texto2);
+  padding-left: 10px;
+}
+
+.estado.ok {
+  border-left-color: var(--sucesso);
+  color: var(--sucesso);
+}
+
+.estado.ruim {
+  border-left-color: var(--erro);
+  color: var(--erro);
+}
+
+.estado.atencao {
+  border-left-color: var(--aviso);
+  color: var(--aviso);
+}
+
+/* --- a aula (serifa) -------------------------------------------------
+   A ferramenta se opera em grotesca; a aula se lê em serifa. */
+
+.aula {
+  font-family: var(--serifa);
+  font-size: 14px;
+  line-height: 1.6;
+  border: 1px solid var(--borda-fraca);
+  background: var(--superficie);
+  padding: 12px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.aula h1,
+.aula h2,
+.aula h3 {
+  font-family: var(--grotesca);
+  line-height: 1.25;
+  margin: 14px 0 6px;
+}
+
+.aula h1 {
+  font-size: 16px;
+}
+
+.aula h2 {
+  font-size: 14px;
+}
+
+.aula h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--texto2);
+}
+
+.aula > :first-child {
+  margin-top: 0;
+}
+
+.aula p {
+  margin: 0 0 8px;
+}
+
+.aula ul,
+.aula ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.aula li {
+  margin-bottom: 3px;
+}
+
+.aula code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 12px;
+  border: 1px solid var(--borda-fraca);
+  padding: 0 3px;
+}

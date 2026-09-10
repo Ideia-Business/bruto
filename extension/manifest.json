@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Bruto — vídeo vira aula",
+  "short_name": "Bruto",
+  "version": "0.1.0",
+  "description": "Transforma o vídeo que você está assistindo numa aula em português: resumo, transcrição e mapa mental.",
+  "homepage_url": "https://github.com/Ideia-Business/bruto",
+  "action": {
+    "default_title": "Destrinchar este vídeo",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png",
+      "128": "icons/128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "128": "icons/128.png"
+  },
+  "options_page": "options/options.html",
+  "permissions": ["storage", "scripting", "activeTab", "downloads"],
+  "host_permissions": [
+    "https://api.anthropic.com/*",
+    "https://api.openai.com/*",
+    "https://openrouter.ai/*",
+    "https://ollama.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ]
+}

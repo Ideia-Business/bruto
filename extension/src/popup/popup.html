@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Bruto</title>
+    <link rel="stylesheet" href="../ui.css" />
+    <style>
+      body {
+        width: 400px;
+        max-height: 600px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .corpo {
+        overflow-y: auto;
+        max-height: 540px;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topo">
+      <h1 class="marca">Bru<span>to</span></h1>
+      <span class="tagline">entra bruto, sai entendido</span>
+    </header>
+
+    <main class="corpo">
+      <!-- 1. sem chave configurada -->
+      <section id="tela-sem-config" class="tela pilha" hidden>
+        <h2>Falta a sua chave</h2>
+        <p class="secundario">
+          O Bruto usa a sua chave de IA para destrinchar o vídeo. Ela fica só
+          neste navegador.
+        </p>
+        <div class="linha">
+          <button id="btn-abrir-opcoes" class="principal" type="button">
+            Colocar a chave
+          </button>
+        </div>
+      </section>
+
+      <!-- 2. aba que não é vídeo do YouTube -->
+      <section id="tela-nao-youtube" class="tela pilha" hidden>
+        <h2>Aqui não tem vídeo</h2>
+        <p class="secundario">
+          Abra um vídeo do YouTube e clique no Bruto de novo.
+        </p>
+      </section>
+
+      <!-- 3. pronto para destrinchar -->
+      <section id="tela-pronto" class="tela pilha" hidden>
+        <div class="caixa">
+          <p id="pronto-titulo"></p>
+          <p id="pronto-dado" class="dado"></p>
+        </div>
+        <div class="linha">
+          <button id="btn-destrinchar" class="principal" type="button">
+            Destrinchar
+          </button>
+        </div>
+      </section>
+
+      <!-- 4. rodando -->
+      <section id="tela-rodando" class="tela pilha" hidden>
+        <p id="progresso" class="estado" role="status" aria-live="polite"></p>
+        <div class="linha">
+          <button id="btn-cancelar" type="button">Cancelar</button>
+        </div>
+      </section>
+
+      <!-- 5. aula pronta -->
+      <section id="tela-aula" class="tela pilha" hidden>
+        <div class="linha">
+          <button id="btn-copiar" type="button">Copiar</button>
+          <button id="btn-baixar" type="button">Baixar .md</button>
+          <button id="btn-de-novo" type="button">Outro vídeo</button>
+        </div>
+        <p id="aviso-aula" class="estado ok" role="status" aria-live="polite" hidden></p>
+        <article id="aula" class="aula"></article>
+      </section>
+
+      <!-- 6. erro -->
+      <section id="tela-erro" class="tela pilha" hidden>
+        <h2>Travou</h2>
+        <p id="erro-msg" class="estado ruim" role="alert"></p>
+        <p id="erro-saida" class="secundario"></p>
+        <div class="linha">
+          <button id="btn-tentar" class="principal" type="button">
+            Tentar de novo
+          </button>
+          <button id="btn-opcoes-erro" type="button">Abrir opções</button>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./popup.ts"></script>
+  </body>
+</html>

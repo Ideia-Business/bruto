@@ -74,3 +74,6 @@ STATE.md
 
 # Dados locais de desenvolvimento (BRUTO_DATA_ROOT apontado para dentro do repo)
 /.devdata/
+
+# Build da extensão (gerado por npm run build:ext)
+/extension/dist/

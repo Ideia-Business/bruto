@@ -12,7 +12,9 @@
     "db:seed": "tsx --env-file-if-exists=.env src/db/seed.ts",
     "doctor": "tsx --env-file-if-exists=.env src/scripts/doctor.ts",
     "process": "tsx --env-file-if-exists=.env src/scripts/process-cli.ts",
-    "app": "bash launcher/serve.sh"
+    "app": "bash launcher/serve.sh",
+    "build:ext": "node scripts/build-extension.mjs",
+    "dev:ext": "node scripts/build-extension.mjs --watch"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.1",
@@ -43,10 +45,12 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/chrome": "^0.2.9",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "drizzle-kit": "^0.31.10",
+    "esbuild": "^0.25.12",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
     "tailwindcss": "^4",

@@ -1,4 +1,4 @@
-import type { VideoMetadata } from "../types";
+import type { MetaDoPrompt } from "./summary";
 
 export const MINDMAP_FRONTMATTER = `---
 markmap:
@@ -7,7 +7,7 @@ markmap:
 ---`;
 
 /** Prompt do mapa mental — a transcrição entra via stdin. */
-export function mindmapPrompt(meta: VideoMetadata): string {
+export function mindmapPrompt(meta: MetaDoPrompt): string {
   return `Converta a transcrição recebida via stdin (vídeo "${meta.title}") num mapa mental em markdown hierárquico, em português brasileiro.
 
 CONTRATO DE SAÍDA (obrigatório):

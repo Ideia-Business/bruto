@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!--
+    O Bloco Lascado — símbolo do Bruto.
+    Quadrado sólido com um canto ARRANCADO, não cortado limpo: a aresta que
+    falta é uma linha quebrada em segmentos irregulares. É a lasca que o olho
+    registra, e é ela que vira a gramática de todas as peças da marca.
+    Sem gradiente, sem sombra, sem raio — estrutura à vista.
+  -->
+  <rect width="128" height="128" fill="#F5F2EC"/>
+  <path fill="#E14A18" d="
+    M 20 20
+    L 108 20
+    L 108 70
+    L 94 77
+    L 100 90
+    L 83 97
+    L 87 108
+    L 20 108
+    Z"/>
+</svg>

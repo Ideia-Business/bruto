@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bruto — sua chave</title>
+    <link rel="stylesheet" href="../ui.css" />
+    <style>
+      .folha {
+        max-width: 560px;
+        margin: 0 auto;
+      }
+      .corpo {
+        padding: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="folha">
+      <header class="topo">
+        <h1 class="marca">Bru<span>to</span></h1>
+        <span class="tagline">sua chave, seu navegador</span>
+      </header>
+
+      <main class="corpo pilha">
+        <p class="secundario">
+          A chave fica guardada só neste navegador. O Bruto não tem servidor e
+          nunca manda a sua chave para lugar nenhum além do provedor que você
+          escolher.
+        </p>
+
+        <form id="form" class="pilha" novalidate>
+          <fieldset class="pilha">
+            <legend>Provedor</legend>
+            <div id="provedores"></div>
+            <p class="ajuda">
+              <a id="link-chave" href="#" target="_blank" rel="noreferrer"
+                >Onde pegar a chave</a
+              >
+            </p>
+          </fieldset>
+
+          <div>
+            <label for="chave">Sua chave</label>
+            <div class="campo-com-botao">
+              <input
+                id="chave"
+                name="chave"
+                type="password"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="cole a chave aqui"
+              />
+              <button id="btn-revelar" type="button" aria-pressed="false">
+                Mostrar
+              </button>
+            </div>
+          </div>
+
+          <div id="campo-modelo" hidden>
+            <label for="modelo">Modelo</label>
+            <input
+              id="modelo"
+              name="modelo"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <p class="ajuda" id="ajuda-modelo"></p>
+          </div>
+
+          <div class="linha">
+            <button id="btn-salvar" class="principal" type="submit">
+              Salvar
+            </button>
+            <button id="btn-testar" type="button">Testar credencial</button>
+            <button id="btn-apagar" type="button">Apagar chave</button>
+          </div>
+
+          <p id="estado" class="estado" role="status" aria-live="polite"></p>
+        </form>
+      </main>
+    </div>
+
+    <script type="module" src="./options.ts"></script>
+  </body>
+</html>

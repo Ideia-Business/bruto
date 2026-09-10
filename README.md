@@ -76,6 +76,20 @@ npm run app            # sobe produção e abre em janela de app (macOS)
 npm run process -- "https://www.youtube.com/watch?v=<id>" [--whisper] [--traduzir]
 ```
 
+## Extensão de navegador
+
+Resume o vídeo que você **já está assistindo**, sem sair da aba. Ela lê a legenda da página e chama o modelo com a sua chave — não baixa mídia nenhuma.
+
+```bash
+npm run build:ext
+```
+
+Depois, no Chrome: `chrome://extensions` → **Modo do desenvolvedor** → **Carregar sem compactação** → escolha `extension/dist`. Abra as opções da extensão, escolha o provedor e cole a sua chave.
+
+A chave fica em `chrome.storage.local` — **só neste navegador**, nunca sincronizada com sua conta Google, nunca enviada para servidor nenhum nosso. A extensão fala direto com o provedor que você escolheu.
+
+O resumo usa **exatamente o mesmo prompt** do app local: o build importa de `src/pipeline/prompts/`, então as duas superfícies nunca divergem.
+
 ### App clicável no macOS
 
 ```bash

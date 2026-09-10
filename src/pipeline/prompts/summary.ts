@@ -1,5 +1,20 @@
 import type { VideoMetadata } from "../types";
 
+/**
+ * O mínimo que este prompt precisa saber sobre o bruto.
+ *
+ * Existe porque o prompt é compartilhado com a extensão do navegador, que
+ * captura a legenda da aba e não tem — nem precisa ter — os campos de
+ * pipeline (caminho de arquivo, origem da transcrição, data de publicação).
+ * Exigir o `VideoMetadata` inteiro obrigaria a extensão a inventar campos
+ * vazios só para satisfazer o tipo, e campo inventado vira dado falso.
+ * `VideoMetadata` continua satisfazendo isto por estrutura.
+ */
+export type MetaDoPrompt = Pick<
+  VideoMetadata,
+  "title" | "channel" | "durationSec" | "chapters"
+>;
+
 function formatDuration(sec: number | null): string {
   if (!sec) return "duração desconhecida";
   const h = Math.floor(sec / 3600);
@@ -8,7 +23,7 @@ function formatDuration(sec: number | null): string {
 }
 
 /** Prompt do resumo executivo — a transcrição entra via stdin. */
-export function summaryPrompt(meta: VideoMetadata): string {
+export function summaryPrompt(meta: MetaDoPrompt): string {
   const chaptersBlock =
     meta.chapters.length > 0
       ? `\nCapítulos do vídeo (use como âncora da estrutura):\n${meta.chapters
