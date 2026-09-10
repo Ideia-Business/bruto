@@ -76,7 +76,15 @@ Next.js 16 · TypeScript · Tailwind + shadcn/ui · Drizzle + better-sqlite3 · 
 
 ## Contribuindo
 
-Contribuições são bem-vindas — leia o [CONTRIBUTING.md](CONTRIBUTING.md). Se você só quer relatar um bug ou pedir uma funcionalidade, abra uma issue: isso já ajuda muito.
+Contribuições são bem-vindas — leia o [CONTRIBUTING.md](CONTRIBUTING.md) e, se for mexer em texto de interface ou tela, o [BRAND.md](BRAND.md) (léxico e tom, para os nomes ficarem iguais em todo lugar). Se você só quer relatar um bug ou pedir uma funcionalidade, abra uma issue: isso já ajuda muito.
+
+## Quem faz, e por que é de graça
+
+O Bruto é feito pela [Ideia Business](https://ideiabusiness.com.br), e vai continuar gratuito e MIT — não é isca com prazo, não vira assinatura depois.
+
+Dito isso, sem rodeio: **ele também existe para você conhecer o que mais fazemos.** Nosso produto pago é o [Lapid.ai](https://lapid.ai), que pega uma ideia bruta e a transforma numa especificação de produto acionável. Se em algum momento um vídeo que você destrinchar aqui te der uma ideia, é para lá que ela vai — e você decide se quer ou não.
+
+Achamos que isso é melhor dito na cara do que descoberto depois.
 
 ## Aviso de uso
 
