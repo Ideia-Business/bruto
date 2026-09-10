@@ -351,14 +351,36 @@ function parsearJson3(corpo: string): string {
  * porque o conteúdo de `<text>` pode ter `<br>` e entidades que regex trata mal.
  */
 function parsearXml(corpo: string): string {
-  const doc = new DOMParser().parseFromString(corpo, "text/xml");
-  if (doc.querySelector("parsererror") !== null) return "";
+  try {
+    const doc = new DOMParser().parseFromString(corpo, "text/xml");
+    if (doc.querySelector("parsererror") !== null) return "";
 
+    const pedacos: string[] = [];
+    for (const no of Array.from(doc.getElementsByTagName("text"))) {
+      const bruto = no.textContent;
+      if (bruto === null) continue;
+      pedacos.push(decodificarEntidades(bruto));
+    }
+    return normalizarEspacos(pedacos.join(" "));
+  } catch {
+    // O YouTube usa Trusted Types, e uma política estrita faz o `parseFromString`
+    // lançar. Content script roda em mundo isolado, onde a política da página não
+    // se aplica — mas isso não pôde ser medido automaticamente (injetar exige o
+    // `activeTab`, que só o clique de uma pessoa concede). Como o custo do seguro
+    // é este punhado de linhas, o caminho sem DOM existe. O `<text>` do YouTube
+    // não aninha marcação além de `<br>`, então a extração literal dá conta.
+    return parsearXmlSemDom(corpo);
+  }
+}
+
+/** Mesmo resultado de `parsearXml`, sem tocar em nenhuma API de DOM. */
+function parsearXmlSemDom(corpo: string): string {
   const pedacos: string[] = [];
-  for (const no of Array.from(doc.getElementsByTagName("text"))) {
-    const bruto = no.textContent;
-    if (bruto === null) continue;
-    pedacos.push(decodificarEntidades(bruto));
+  const re = /<text\b[^>]*>([\s\S]*?)<\/text>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(corpo)) !== null) {
+    const conteudo = m[1].replace(/<br\s*\/?>/gi, " ");
+    pedacos.push(decodificarEntidades(decodificarEntidades(conteudo)));
   }
   return normalizarEspacos(pedacos.join(" "));
 }

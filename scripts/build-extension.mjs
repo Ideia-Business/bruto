@@ -114,14 +114,9 @@ function copiarEstaticos({ comIcones }) {
   copiar(css, path.join(destino, "options/ui.css"));
 }
 
-const opcoes = {
-  entryPoints: {
-    "popup/popup": path.join(origem, "src/popup/popup.ts"),
-    "options/options": path.join(origem, "src/options/options.ts"),
-  },
+const comum = {
   outdir: destino,
   bundle: true,
-  format: "esm",
   target: "chrome120",
   platform: "browser",
   // Sem minificação: é uma extensão de código aberto, e quem instala deve
@@ -131,20 +126,45 @@ const opcoes = {
   logLevel: "info",
 };
 
+/** Páginas da extensão (popup e opções) — carregadas por <script type="module">. */
+const opcoesPaginas = {
+  ...comum,
+  entryPoints: {
+    "popup/popup": path.join(origem, "src/popup/popup.ts"),
+    "options/options": path.join(origem, "src/options/options.ts"),
+  },
+  format: "esm",
+};
+
+/**
+ * Content script — build SEPARADO porque o formato precisa ser outro.
+ * `chrome.scripting.executeScript({ files })` não carrega módulo ES; o arquivo
+ * tem de ser autocontido. Daí IIFE, e daí duas chamadas ao esbuild em vez de
+ * uma (o formato é global por build, não por entry point).
+ */
+const opcoesContent = {
+  ...comum,
+  entryPoints: { "content/captura": path.join(origem, "src/content/captura-content.ts") },
+  format: "iife",
+};
+
 async function main() {
   fs.rmSync(destino, { recursive: true, force: true });
 
   if (watch) {
-    const ctx = await context(opcoes);
+    const ctx = await context(opcoesPaginas);
+    const ctxContent = await context(opcoesContent);
     const ic = await gerarIcones();
     copiarEstaticos({ comIcones: ic.ok });
     console.log(ic.msg);
     await ctx.watch();
+    await ctxContent.watch();
     console.log("observando… (Ctrl+C encerra)");
     return;
   }
 
-  await build(opcoes);
+  await build(opcoesPaginas);
+  await build(opcoesContent);
   const ic = await gerarIcones();
   copiarEstaticos({ comIcones: ic.ok });
   console.log(ic.msg);
@@ -157,6 +177,7 @@ async function main() {
     "popup/ui.css",
     "options/options.html",
     "options/options.js",
+    "content/captura.js",
   ];
   const ausentes = exigidos.filter((f) => {
     const p = path.join(destino, f);
