@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     essential: false,
   });
 
-  console.log("\n🩺 Resume_Video — doctor\n");
+  console.log("\n🩺 Bruto — doctor\n");
   let essentialFail = false;
   for (const c of checks) {
     const icon = c.ok ? "✅" : c.essential ? "❌" : "⚠️ ";

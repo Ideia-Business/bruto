@@ -8,5 +8,5 @@ export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   const { recoverOrphans } = await import("@/pipeline/runner");
   const n = recoverOrphans();
-  if (n > 0) console.log(`[resume-video] ${n} job(s) órfão(s) re-enfileirado(s) no boot.`);
+  if (n > 0) console.log(`[bruto] ${n} job(s) órfão(s) re-enfileirado(s) no boot.`);
 }

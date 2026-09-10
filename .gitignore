@@ -40,7 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Resume_Video — dados em runtime ficam em ~/.resume-video (fora do repo)
+# Bruto — dados em runtime ficam em ~/.bruto (fora do repo)
 /drizzle/meta/_journal.json.bak
 node_modules/
 .aiox/
@@ -48,9 +48,26 @@ node_modules/
 .antigravity/
 .gemini/
 .kimi/
-.cursor/rules/agents/
-.github/agents/
-.codex/*
-!.codex/agents/
-.codex/agents/*
-!.codex/agents/*.toml
+
+# Artefatos internos da Ideia Business (IdeiaOS) — nunca vão para o repo público.
+# Sem estas linhas, uma propagação do kernel ou um `git add -A` distraído
+# reintroduz doutrina interna no histórico. Ver CONTRIBUTING.md.
+/.claude/
+/.cursor/
+/.codex/
+/.planning/
+/.security/
+/.aiox-core/
+/.aiox/
+.aiox-ai-config.yaml
+AGENTS.md
+CLAUDE.md
+IDEIAOS.md
+STATE.md
+/docs/ideiaos/
+/docs/CONTINUATION_HANDOFF.md
+
+# Dados locais / segredos
+.env
+.env.*
+!.env.example

@@ -2,8 +2,13 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 
-/** Raiz de dados em runtime — fora do repo; a biblioteca funciona offline. */
-export const DATA_ROOT = path.join(os.homedir(), ".resume-video");
+/**
+ * Raiz de dados em runtime — fora do repo; a biblioteca funciona offline.
+ * Sobrescrevível por `BRUTO_DATA_ROOT` (útil para testes e para quem quer a
+ * biblioteca em outro volume).
+ */
+export const DATA_ROOT =
+  process.env.BRUTO_DATA_ROOT ?? path.join(os.homedir(), ".bruto");
 
 /** Diretório da biblioteca: um subdiretório por youtube_id. */
 export const LIBRARY_ROOT = path.join(DATA_ROOT, "library");

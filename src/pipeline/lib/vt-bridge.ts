@@ -18,19 +18,21 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { PipelineError } from "@/pipeline/types";
 
-/** Candidatos ao vt.sh em ordem de preferência: cópia global > fonte do repo IdeiaOS. */
+/**
+ * Candidatos ao vt.sh, em ordem de preferência:
+ *   1. `$BRUTO_VT_SH` — caminho explícito, para quem mantém o script fora do padrão.
+ *   2. `scripts/vt.sh` do próprio projeto — o caminho suportado por padrão.
+ *   3. cópia global em ~/.claude/skills/ — conveniência para quem já tem a skill.
+ *
+ * debt: o vt.sh ainda não é distribuído junto com este repo (ver #1 no README:
+ * Whisper é opcional e só liga quando o script está presente). Enquanto isso, a
+ * ausência degrada de forma explícita — nunca silenciosa: sem vt.sh, vídeos sem
+ * legenda falham com NO_TRANSCRIPT em vez de produzir resumo vazio.
+ */
 const VT_SH_CANDIDATES: readonly string[] = [
+  ...(process.env.BRUTO_VT_SH ? [process.env.BRUTO_VT_SH] : []),
+  path.join(process.cwd(), "scripts", "vt.sh"),
   path.join(os.homedir(), ".claude", "skills", "video-transcribe", "lib", "vt.sh"),
-  path.join(
-    os.homedir(),
-    "dev",
-    "IdeiaOS",
-    "source",
-    "skills",
-    "video-transcribe",
-    "lib",
-    "vt.sh",
-  ),
 ];
 
 /** Timeout da transcrição — vídeos longos com modelo base podem demorar; 45 min é teto seguro. */

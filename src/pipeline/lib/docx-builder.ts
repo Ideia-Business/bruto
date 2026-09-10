@@ -137,7 +137,7 @@ export async function buildDocx(input: DocxInput): Promise<string> {
   }
 
   const doc = new Document({
-    creator: "Resume Video",
+    creator: "Bruto",
     title: meta.title,
     description: `Resumo, mapa mental e transcrição de "${meta.title}"`,
     sections: [{ children }],

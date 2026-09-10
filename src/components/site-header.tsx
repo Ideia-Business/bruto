@@ -31,7 +31,7 @@ export function SiteHeader() {
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4 sm:px-6">
         <Link href="/" className="flex items-center gap-2">
           <GraduationCap className="size-5 text-primary" />
-          <span className="font-heading text-lg font-semibold tracking-tight">Resume Video</span>
+          <span className="font-heading text-lg font-semibold tracking-tight">Bruto</span>
         </Link>
         <nav className="hidden gap-5 text-[0.95rem] md:flex">
           {navItem("/", "Catálogo")}

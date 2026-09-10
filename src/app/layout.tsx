@@ -29,12 +29,12 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Resume Video — resumos, transcrições e mapas mentais",
+  title: "Bruto — resumos, transcrições e mapas mentais",
   description:
     "Cole um link do YouTube e receba resumo, transcrição e mapa mental — organizados como um catálogo.",
   manifest: "/manifest.webmanifest",
-  applicationName: "Resume Video",
-  appleWebApp: { capable: true, title: "Resume Video", statusBarStyle: "default" },
+  applicationName: "Bruto",
+  appleWebApp: { capable: true, title: "Bruto", statusBarStyle: "default" },
   icons: {
     icon: [
       { url: "/icon-192.png", sizes: "192x192", type: "image/png" },

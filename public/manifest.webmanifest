@@ -1,6 +1,6 @@
 {
-  "name": "Resume Video",
-  "short_name": "Resume Video",
+  "name": "Bruto",
+  "short_name": "Bruto",
   "description": "Resumos, transcrições, mapas mentais e aulas de estudo a partir de vídeos do YouTube.",
   "start_url": "/",
   "scope": "/",

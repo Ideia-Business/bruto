@@ -1,16 +1,18 @@
 #!/bin/bash
-# Resume Video — launcher local.
+# Bruto — launcher local.
 # Garante o servidor de produção rodando em http://localhost:3000 e abre o app
 # em uma janela dedicada do Chrome (cara de aplicativo, sem barra de navegação).
-# Chamado pelo app "Resume Video.app"; também pode ser rodado direto no terminal.
+# Chamado pelo app "Bruto.app"; também pode ser rodado direto no terminal.
 
 set -u
 export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
-APP_DIR="/Users/gustavolopespaiva/dev/Resume_Video"
-PORT=3000
+# Raiz do projeto = diretório pai deste script. Funciona em qualquer clone,
+# de qualquer usuário, sem edição.
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PORT="${BRUTO_PORT:-3000}"
 URL="http://localhost:${PORT}"
-LOG="/tmp/resume-video-server.log"
+LOG="${TMPDIR:-/tmp}/bruto-server.log"
 
 cd "$APP_DIR" || { echo "Projeto não encontrado em $APP_DIR"; exit 1; }
 

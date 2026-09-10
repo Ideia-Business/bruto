@@ -1,5 +1,5 @@
 #!/bin/bash
-# Cria (ou recria) o app "Resume Video.app" no ~/Applications, com ícone próprio.
+# Cria (ou recria) o app "Bruto.app" no ~/Applications, com ícone próprio.
 # Depois é só dar duplo-clique — ele sobe o servidor e abre em janela de app.
 #
 # Uso:  bash launcher/install-app.sh
@@ -7,8 +7,9 @@
 # gerado a partir de launcher/icon.svg usando o Chromium do Playwright do projeto.
 
 set -eu
-APP_DIR="/Users/gustavolopespaiva/dev/Resume_Video"
-DEST="$HOME/Applications/Resume Video.app"
+# Raiz do projeto = diretório pai deste script (funciona em qualquer clone).
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DEST="$HOME/Applications/Bruto.app"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -50,8 +51,8 @@ cp "$SRC" "$ICONSET/icon_512x512@2x.png"
 iconutil -c icns "$ICONSET" -o "$WORK/ResumeVideo.icns"
 
 echo "→ Criando o app…"
-cat > "$WORK/launcher.applescript" <<'OSA'
-do shell script "/bin/bash '/Users/gustavolopespaiva/dev/Resume_Video/launcher/serve.sh' >/tmp/resume-video-launch.log 2>&1"
+cat > "$WORK/launcher.applescript" <<OSA
+do shell script "/bin/bash '$APP_DIR/launcher/serve.sh' >/tmp/bruto-launch.log 2>&1"
 OSA
 rm -rf "$DEST"
 mkdir -p "$HOME/Applications"
@@ -60,4 +61,4 @@ cp "$WORK/ResumeVideo.icns" "$DEST/Contents/Resources/applet.icns"
 touch "$DEST"
 
 echo "✅ Pronto: \"$DEST\""
-echo "   Abra o Launchpad (ou ~/Applications) e clique em \"Resume Video\"."
+echo "   Abra o Launchpad (ou ~/Applications) e clique em \"Bruto\"."
