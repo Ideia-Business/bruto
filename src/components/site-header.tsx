@@ -35,6 +35,7 @@ export function SiteHeader() {
         </Link>
         <nav className="hidden gap-5 text-[0.95rem] md:flex">
           {navItem("/", "Catálogo")}
+          {navItem("/filoes", "Filões")}
           {navItem("/processing", "Processando")}
         </nav>
         <div className="ml-auto flex items-center gap-3">

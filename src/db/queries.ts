@@ -1,8 +1,9 @@
 import fs from "node:fs";
+import { nanoid } from "nanoid";
 import { and, desc, eq, like, or, inArray } from "drizzle-orm";
 import { db } from "./client";
-import { artifacts, categories, jobs, videos } from "./schema";
-import type { Artifact, Category, Job, Video } from "./schema";
+import { artifacts, categories, filaoBrutos, filoes, jobs, videos } from "./schema";
+import type { Artifact, Category, Filao, Job, Video } from "./schema";
 
 export interface VideoCard {
   id: string;
@@ -198,4 +199,137 @@ export function setVideoCategory(videoId: string, categoryId: number): void {
 /** Renomeia o título cadastrado de um vídeo (edição manual na UI). */
 export function setVideoTitle(videoId: string, title: string): void {
   db.update(videos).set({ title }).where(eq(videos.id, videoId)).run();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Filões — agrupamento por assunto, feito por quem usa.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface FilaoRow {
+  filao: Filao;
+  count: number;
+}
+
+/**
+ * Slug a partir do nome: sem acento, minúsculo, hífens. Como o nome é livre,
+ * dois filões podem gerar o mesmo slug ("Direito Adm." e "direito adm") — o
+ * sufixo numérico resolve sem devolver erro para quem está só nomeando coisa.
+ */
+function slugify(name: string): string {
+  const base = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+  return base || "filao";
+}
+
+function uniqueSlug(name: string): string {
+  const base = slugify(name);
+  let candidate = base;
+  let n = 2;
+  while (db.select({ id: filoes.id }).from(filoes).where(eq(filoes.slug, candidate)).get()) {
+    candidate = `${base}-${n++}`;
+  }
+  return candidate;
+}
+
+/** Todos os filões, na ordem definida, cada um com quantos brutos tem. */
+export function listFiloes(): FilaoRow[] {
+  const all = db.select().from(filoes).orderBy(filoes.sortOrder, filoes.name).all();
+  return all.map((filao) => {
+    const rows = db
+      .select({ videoId: filaoBrutos.videoId })
+      .from(filaoBrutos)
+      .where(eq(filaoBrutos.filaoId, filao.id))
+      .all();
+    return { filao, count: rows.length };
+  });
+}
+
+export function getFilaoBySlug(slug: string): Filao | null {
+  return db.select().from(filoes).where(eq(filoes.slug, slug)).get() ?? null;
+}
+
+/** Brutos de um filão, na ordem em que foram adicionados (mais recentes primeiro). */
+export function getFilaoBrutos(filaoId: string): VideoCard[] {
+  const links = db
+    .select()
+    .from(filaoBrutos)
+    .where(eq(filaoBrutos.filaoId, filaoId))
+    .orderBy(desc(filaoBrutos.addedAt))
+    .all();
+  if (links.length === 0) return [];
+  const ids = links.map((l) => l.videoId);
+  const vids = db.select().from(videos).where(inArray(videos.id, ids)).all();
+  // Preserva a ordem dos links (o inArray não garante ordem).
+  const byId = new Map(vids.map((v) => [v.id, v]));
+  return links.flatMap((l) => {
+    const v = byId.get(l.videoId);
+    return v ? [toCard(v)] : [];
+  });
+}
+
+export function createFilao(name: string): Filao {
+  const now = new Date();
+  const last = db
+    .select({ sortOrder: filoes.sortOrder })
+    .from(filoes)
+    .orderBy(desc(filoes.sortOrder))
+    .limit(1)
+    .get();
+  const row = {
+    id: nanoid(),
+    name: name.trim(),
+    slug: uniqueSlug(name),
+    sortOrder: (last?.sortOrder ?? 0) + 1,
+    createdAt: now,
+  };
+  db.insert(filoes).values(row).run();
+  return row;
+}
+
+export function renameFilao(id: string, name: string): void {
+  db.update(filoes).set({ name: name.trim() }).where(eq(filoes.id, id)).run();
+}
+
+/** Remove o filão. Os brutos NÃO são apagados — só deixam de estar agrupados. */
+export function deleteFilao(id: string): void {
+  db.delete(filaoBrutos).where(eq(filaoBrutos.filaoId, id)).run();
+  db.delete(filoes).where(eq(filoes.id, id)).run();
+}
+
+/** Os filões em que um bruto está — usado pelo seletor na página do bruto. */
+export function getFiloesForVideo(videoId: string): string[] {
+  return db
+    .select({ filaoId: filaoBrutos.filaoId })
+    .from(filaoBrutos)
+    .where(eq(filaoBrutos.videoId, videoId))
+    .all()
+    .map((r) => r.filaoId);
+}
+
+/**
+ * Define em quais filões o bruto está, de uma vez (o seletor manda o conjunto
+ * inteiro). Idempotente: reenviar o mesmo conjunto não muda nada.
+ */
+export function setFiloesForVideo(videoId: string, filaoIds: string[]): void {
+  const atual = new Set(getFiloesForVideo(videoId));
+  const alvo = new Set(filaoIds);
+  const now = new Date();
+
+  for (const id of alvo) {
+    if (!atual.has(id)) {
+      db.insert(filaoBrutos).values({ filaoId: id, videoId, addedAt: now }).run();
+    }
+  }
+  for (const id of atual) {
+    if (!alvo.has(id)) {
+      db.delete(filaoBrutos)
+        .where(and(eq(filaoBrutos.filaoId, id), eq(filaoBrutos.videoId, videoId)))
+        .run();
+    }
+  }
 }

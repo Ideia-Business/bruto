@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Markdown } from "./markdown";
+import { FilaoPicker } from "./filao-picker";
 import { CopyButton } from "./copy-button";
 import { TranscriptView } from "./transcript-view";
 import { JobProgressBar, useJobProgress } from "./job-progress";
@@ -300,6 +301,7 @@ export function VideoDetail({
               ))}
             </SelectContent>
           </Select>
+          <FilaoPicker videoId={data.video.id} />
           <Badge variant="secondary">
             {PLATFORM_LABEL[data.video.platform] ?? data.video.platform}
           </Badge>

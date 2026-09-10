@@ -54,3 +54,16 @@ export interface JobProgressEvent {
   errorCode: string | null;
   errorMessage: string | null;
 }
+
+export interface Filao {
+  id: string;
+  name: string;
+  slug: string;
+  sortOrder: number;
+  createdAt: string | number | Date;
+}
+
+export interface FilaoRow {
+  filao: Filao;
+  count: number;
+}

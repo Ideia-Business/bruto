@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text, index } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, index, primaryKey } from "drizzle-orm/sqlite-core";
 
 export const categories = sqliteTable("categories", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -71,7 +71,45 @@ export const artifacts = sqliteTable(
   (t) => [index("artifacts_video_kind_idx").on(t.videoId, t.kind)],
 );
 
+/**
+ * Filão — agrupamento FEITO PELA PESSOA, por assunto. Distinto de `categories`,
+ * que é a classificação automática do passo 05 (uma por bruto, escolhida pela
+ * máquina). Aqui quem decide é quem usa, e um bruto pode estar em vários filões
+ * ao mesmo tempo — daí a tabela de junção.
+ *
+ * debt: no léxico do produto o material chama-se "bruto", não "vídeo"
+ * (ver BRAND.md). A tabela `videos` nasceu antes do nome e renomeá-la é
+ * refactor à parte — as tabelas novas já usam o termo canônico.
+ */
+export const filoes = sqliteTable("filoes", {
+  id: text("id").primaryKey(), // nanoid
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+export const filaoBrutos = sqliteTable(
+  "filao_brutos",
+  {
+    filaoId: text("filao_id")
+      .notNull()
+      .references(() => filoes.id, { onDelete: "cascade" }),
+    videoId: text("video_id")
+      .notNull()
+      .references(() => videos.id, { onDelete: "cascade" }),
+    addedAt: integer("added_at", { mode: "timestamp" }).notNull(),
+  },
+  (t) => [
+    // Um bruto entra uma vez só em cada filão — a PK composta é a garantia,
+    // então a UI pode reenviar sem medo de duplicar.
+    primaryKey({ columns: [t.filaoId, t.videoId] }),
+    index("filao_brutos_video_idx").on(t.videoId),
+  ],
+);
+
 export type Category = typeof categories.$inferSelect;
 export type Video = typeof videos.$inferSelect;
 export type Job = typeof jobs.$inferSelect;
 export type Artifact = typeof artifacts.$inferSelect;
+export type Filao = typeof filoes.$inferSelect;
