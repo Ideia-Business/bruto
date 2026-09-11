@@ -317,3 +317,74 @@ a {
   border: 1px solid var(--borda-fraca);
   padding: 0 3px;
 }
+
+
+/* --- Bancada ---------------------------------------------------------- */
+/* Lista chapada, uma linha por aula. Sem cartão, sem sombra: cada item se
+   separa do vizinho por uma borda de 1px, que é a gramática da marca. */
+.link-topo {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--borda-fraca);
+  color: var(--texto2);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.link-topo:hover {
+  color: var(--acento);
+  border-color: var(--acento);
+}
+.bancada {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--borda-fraca);
+}
+.bancada li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border-bottom: 1px solid var(--borda-fraca);
+  padding: 8px 0;
+}
+.bancada .abrir {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.bancada .abrir:hover .titulo {
+  color: var(--acento);
+}
+.bancada .titulo {
+  display: block;
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bancada .meta {
+  display: block;
+  font-size: 11px;
+  color: var(--texto2);
+}
+.bancada .esquecer {
+  flex: none;
+  background: none;
+  border: 1px solid var(--borda-fraca);
+  color: var(--texto2);
+  font-size: 11px;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+.bancada .esquecer:hover {
+  color: var(--erro);
+  border-color: var(--erro);
+}

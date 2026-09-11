@@ -88,6 +88,8 @@ Depois, no Chrome: `chrome://extensions` → **Modo do desenvolvedor** → **Car
 
 A chave fica em `chrome.storage.local` — **só neste navegador**, nunca sincronizada com sua conta Google, nunca enviada para servidor nenhum nosso. A extensão fala direto com o provedor que você escolheu.
 
+As aulas que você destrincha ficam na **Bancada**, no mesmo lugar: neste navegador, sem conta, sem nuvem. As 60 mais recentes; a bancada esquece a mais antiga quando enche. Fechar o popup não perde mais nada.
+
 O resumo usa **exatamente o mesmo prompt** do app local: o build importa de `src/pipeline/prompts/`, então as duas superfícies nunca divergem.
 
 Passo a passo de instalação e teste, com a tabela de erros comuns: [extension/TESTANDO.md](extension/TESTANDO.md).

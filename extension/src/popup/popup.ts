@@ -15,6 +15,8 @@ import { extrairVideoIdDaUrl } from "../lib/captura";
 import type { BrutoCapturado, CapturaError } from "../lib/captura";
 import { runLLM, LlmError } from "../lib/llm";
 import { lerConfig } from "../lib/config";
+import { guardarAula, listarBancada, esquecerAula, limparBancada } from "../lib/bancada";
+import type { AulaGuardada } from "../lib/bancada";
 import { summaryPrompt } from "../../../src/pipeline/prompts/summary";
 
 type CodigoCaptura = CapturaError["codigo"];
@@ -42,6 +44,7 @@ const telas = {
   pronto: el<HTMLElement>("tela-pronto"),
   rodando: el<HTMLElement>("tela-rodando"),
   aula: el<HTMLElement>("tela-aula"),
+  bancada: el<HTMLElement>("tela-bancada"),
   erro: el<HTMLElement>("tela-erro"),
 } as const;
 
@@ -61,6 +64,8 @@ const erroSaida = el<HTMLParagraphElement>("erro-saida");
 const prontoTitulo = el<HTMLParagraphElement>("pronto-titulo");
 const prontoDado = el<HTMLParagraphElement>("pronto-dado");
 const btnDestrinchar = el<HTMLButtonElement>("btn-destrinchar");
+const bancadaLista = el<HTMLUListElement>("bancada-lista");
+const bancadaVazia = el<HTMLParagraphElement>("bancada-vazia");
 
 // --- estado -----------------------------------------------------------
 
@@ -68,7 +73,8 @@ let abaId: number | null = null;
 let urlDaAba: string | null = null;
 let controle: AbortController | null = null;
 let aulaMd = "";
-let brutoAtual: BrutoCapturado | null = null;
+/** Título da aula em exibição — vem do bruto capturado OU da bancada. */
+let tituloAtual = "aula";
 
 // --- utilidades -------------------------------------------------------
 
@@ -203,6 +209,59 @@ async function pegarBruto(tabId: number): Promise<BrutoCapturado> {
   throw { codigo: resposta.codigo, message: resposta.message };
 }
 
+// --- bancada ----------------------------------------------------------
+
+function quando(em: number): string {
+  const min = Math.round((Date.now() - em) / 60000);
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `há ${h} h`;
+  return new Date(em).toLocaleDateString("pt-BR");
+}
+
+function mostrarAulaGuardada(a: AulaGuardada): void {
+  aulaMd = a.markdown;
+  tituloAtual = a.titulo;
+  aulaBox.innerHTML = renderMarkdown(a.markdown);
+  avisoAula.hidden = true;
+  mostrar("aula");
+}
+
+async function pintarBancada(): Promise<void> {
+  const aulas = await listarBancada();
+  bancadaLista.replaceChildren();
+  bancadaVazia.hidden = aulas.length > 0;
+
+  for (const a of aulas) {
+    const li = document.createElement("li");
+
+    const abrir = document.createElement("button");
+    abrir.type = "button";
+    abrir.className = "abrir";
+    const t = document.createElement("span");
+    t.className = "titulo";
+    t.textContent = a.titulo;
+    const m = document.createElement("span");
+    m.className = "meta";
+    m.textContent = [a.canal, quando(a.em)].filter(Boolean).join(" · ");
+    abrir.append(t, m);
+    abrir.addEventListener("click", () => mostrarAulaGuardada(a));
+
+    const esquecer = document.createElement("button");
+    esquecer.type = "button";
+    esquecer.className = "esquecer";
+    esquecer.textContent = "Esquecer";
+    esquecer.setAttribute("aria-label", `Esquecer ${a.titulo}`);
+    esquecer.addEventListener("click", () => {
+      void esquecerAula(a.videoId).then(pintarBancada);
+    });
+
+    li.append(abrir, esquecer);
+    bancadaLista.append(li);
+  }
+}
+
 // --- mensagens de falha ----------------------------------------------
 
 function falhaDeCaptura(codigo: CodigoCaptura, msg: string): Falha {
@@ -328,7 +387,7 @@ async function destrinchar(): Promise<void> {
     if (urlDaAba !== null) await levarParaRotaComTranscricao(abaId, urlDaAba);
     if (controle.signal.aborted) return;
     const bruto = await pegarBruto(abaId);
-    brutoAtual = bruto;
+    tituloAtual = bruto.titulo;
 
     if (controle.signal.aborted) return;
     passo(`Fala pega: ${bruto.texto.length.toLocaleString("pt-BR")} caracteres. Destrinchando…`);
@@ -357,6 +416,18 @@ async function destrinchar(): Promise<void> {
     aulaBox.innerHTML = renderMarkdown(aulaMd);
     avisoAula.hidden = true;
     mostrar("aula");
+
+    // Guarda ANTES de qualquer outra coisa: a pessoa gastou a chave dela para
+    // produzir isto, e fechar o popup não pode significar perder o trabalho.
+    void guardarAula({
+      videoId: bruto.videoId,
+      titulo: bruto.titulo,
+      canal: bruto.canal,
+      url: `https://www.youtube.com/watch?v=${bruto.videoId}`,
+      markdown: aulaMd,
+      em: Date.now(),
+      provedor: (await lerConfig())?.provedor ?? null,
+    });
   } catch (e: unknown) {
     if (controle?.signal.aborted) {
       mostrar("pronto");
@@ -424,13 +495,28 @@ el<HTMLButtonElement>("btn-copiar").addEventListener("click", () => {
 // Download: link `<a download>` é inerte dentro do popup, então geramos um blob
 // URL na própria extensão e entregamos ao `chrome.downloads` (permissão já
 // declarada no manifest). O URL é revogado quando o popup fecha.
+el<HTMLButtonElement>("btn-bancada").addEventListener("click", () => {
+  void pintarBancada().then(() => mostrar("bancada"));
+});
+
+el<HTMLButtonElement>("btn-voltar").addEventListener("click", () => {
+  // Volta para onde dava para trabalhar: a tela de destrinchar se a aba tem
+  // vídeo, senão o aviso de que não tem.
+  mostrar(abaId === null ? "naoYoutube" : "pronto");
+});
+
+el<HTMLButtonElement>("btn-limpar-bancada").addEventListener("click", () => {
+  if (!confirm("Esvaziar a bancada? As aulas guardadas neste navegador somem.")) return;
+  void limparBancada().then(pintarBancada);
+});
+
 el<HTMLButtonElement>("btn-baixar").addEventListener("click", () => {
   const blob = new Blob([aulaMd], { type: "text/markdown;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   void chrome.downloads
     .download({
       url,
-      filename: nomeArquivo(brutoAtual?.titulo ?? "aula"),
+      filename: nomeArquivo(tituloAtual),
       saveAs: false,
     })
     .then(

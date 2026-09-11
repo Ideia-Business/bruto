@@ -22,6 +22,9 @@
     <header class="topo">
       <h1 class="marca">Bru<span>to</span></h1>
       <span class="tagline">entra bruto, sai entendido</span>
+      <button id="btn-bancada" class="link-topo" type="button" title="O que você já destrinchou">
+        Bancada
+      </button>
     </header>
 
     <main class="corpo">
@@ -79,7 +82,20 @@
         <article id="aula" class="aula"></article>
       </section>
 
-      <!-- 6. erro -->
+      <!-- 6. bancada: o que você já destrinchou, guardado neste navegador -->
+      <section id="tela-bancada" class="tela pilha" hidden>
+        <div class="linha">
+          <button id="btn-voltar" type="button">Voltar</button>
+          <button id="btn-limpar-bancada" type="button">Esvaziar</button>
+        </div>
+        <p id="bancada-vazia" class="secundario" hidden>
+          Nada guardado ainda. As aulas que você destrinchar ficam aqui, neste
+          navegador.
+        </p>
+        <ul id="bancada-lista" class="bancada"></ul>
+      </section>
+
+      <!-- 7. erro -->
       <section id="tela-erro" class="tela pilha" hidden>
         <h2>Travou</h2>
         <p id="erro-msg" class="estado ruim" role="alert"></p>

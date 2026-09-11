@@ -85,6 +85,8 @@ Você só precisa do domínio do provedor que vai usar — deixar os outros desl
 
 O esperado: *"Pegando a fala…"*, depois *"Fala pega: N caracteres. Destrinchando…"*, e o resumo aparece. Confira **Copiar** e **Baixar .md**.
 
+Feche o popup e abra de novo: clique em **Bancada**, no topo. A aula tem de estar lá.
+
 ---
 
 ## Se der errado
