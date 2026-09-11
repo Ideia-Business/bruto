@@ -2,7 +2,7 @@
 
 Documento honesto de estado. O que está marcado como pronto foi **exercido de verdade** — com vídeo real, chave real e o resultado conferido —, não apenas compilado.
 
-Última revisão: 10/09/2026.
+Última revisão: 11/09/2026.
 
 ---
 
@@ -30,21 +30,23 @@ As aulas ficam na **Bancada**, em `chrome.storage.local`: neste navegador, sem c
 
 **Verificado em 10/09/2026** com um Short real e chave do Google: redirecionamento, captura, resumo correto.
 
-### Integração contínua
-
-Tipos, lint, build do app, build da extensão, e conferência item a item do que o Chrome exige para carregar o pacote.
-
----
-
 ### Caderno de Ideias
 
 Ao fim de uma Aula, uma pergunta — *"isso te deu alguma ideia?"* — e um campo livre. É a única coisa que **você** produz aqui, e fica no navegador, sem conta.
 
 **Verificado em 11/09/2026.**
 
+### Integração contínua
+
+Tipos, lint, build do app, build da extensão, e conferência item a item do que o Chrome exige para carregar o pacote.
+
+---
+
 ## A seguir
 
 ### Fase 4 — A ponte
+
+A faísca capturada no Caderno de Ideias atravessa para o [Lapid.ai](https://lapid.ai), que transforma ideia bruta em especificação de produto. O que atravessa é **a anotação de quem escreveu**, não o resumo do vídeo: o Lapid trabalha a ideia da pessoa, e mandar para lá o resumo de um vídeo alheio produziria uma especificação do produto *do vídeo* — plausível e inútil.
 
 ### Fase 3b — Conta e Cota da Casa (adiado por decisão)
 
@@ -53,10 +55,6 @@ Quem não quiser configurar chave própria ganharia uma cota pequena da casa. Ex
 **Adiado de propósito**, não esquecido: é a única parte do projeto com custo recorrente — servidor mais a IA que a casa paga por quem não tem chave. Construir antes de existir gente pedindo é pagar infraestrutura para um público hipotético. O Caderno de Ideias, que era a peça útil desta fase, foi entregue sem servidor nenhum.
 
 Há uma dívida de modelagem a pagar quando ela vier: hoje `videos.id` é o identificador do vídeo na plataforma, usado como chave primária. Com duas pessoas, o mesmo vídeo colide e uma sobrescreve o resumo da outra. A cura é separar o **vídeo canônico** (global, sem dono) da **entrada de biblioteca** (por pessoa).
-
-### Fase 4 — A ponte
-
-A faísca capturada no Caderno de Ideias atravessa para o [Lapid.ai](https://lapid.ai), que transforma ideia bruta em especificação de produto. O que atravessa é **a anotação de quem escreveu**, não o resumo do vídeo: o Lapid trabalha a ideia da pessoa, e mandar para lá o resumo de um vídeo alheio produziria uma especificação do produto *do vídeo* — plausível e inútil.
 
 ---
 
