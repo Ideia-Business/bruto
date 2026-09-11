@@ -22,8 +22,10 @@
  * privado, sem imitar cliente oficial. É também o mais honesto: se a pessoa não consegue
  * ver a transcrição, o Bruto também não deveria.
  *
- * CONSEQUÊNCIA QUE PRECISA SER DITA: **Shorts não têm esse painel.** Continuam fora até
- * existir outro caminho — e o erro devolvido diz isso, em vez de falhar genérico.
+ * SOBRE SHORTS: a interface de Shorts não tem esse painel — mas o MESMO vídeo, aberto como
+ * `/watch?v=<id>`, tem (medido: em `/shorts/` não há botão nem painel; em `/watch` há os
+ * dois). Então Shorts não ficam de fora: o popup leva a aba para a rota que funciona antes
+ * de pedir a captura.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -102,7 +104,7 @@ export async function capturarLegenda(): Promise<BrutoCapturado> {
   if (window.location.pathname.startsWith("/shorts/")) {
     throw new CapturaError(
       "SEM_LEGENDA",
-      "O YouTube não oferece transcrição em Shorts, e é dela que o Bruto vive aqui. Use o app local, que transcreve o áudio.",
+      "Shorts não têm painel de transcrição. O popup abre o mesmo vídeo pela rota /watch antes de chegar aqui — se você está vendo esta mensagem, essa troca não aconteceu. Abra o vídeo como youtube.com/watch?v=<id> e tente de novo.",
     );
   }
 

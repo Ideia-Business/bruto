@@ -79,7 +79,7 @@ Você só precisa do domínio do provedor que vai usar — deixar os outros desl
 
 1. Abra um vídeo do YouTube **que tenha o botão "Mostrar transcrição"** (na descrição, depois de clicar em "...mais"). Se esse botão não existir no vídeo, o Bruto não tem o que ler.
 
-> **Shorts não funcionam**, e não é falha: o YouTube não oferece painel de transcrição neles. O app local dá conta, porque transcreve o áudio. A extensão avisa isso com todas as letras em vez de falhar genérico.
+> **Shorts funcionam**, com um detalhe visível: a interface de Shorts não tem painel de transcrição, mas o mesmo vídeo aberto como `/watch?v=<id>` tem. Ao clicar em Destrinchar num Short, o Bruto **muda a sua aba** para a rota normal e avisa que está fazendo isso. Não é falha — é o único caminho que o YouTube deixa aberto.
 2. Clique no ícone do **Bruto**.
 3. Clique em **Destrinchar**.
 
@@ -95,7 +95,7 @@ Antes de mais nada: **abra o console do popup**. Clique com o botão direito den
 |---|---|---|
 | "Essa aba não tem um vídeo do YouTube" | a aba ativa não é uma página `/watch` | abra o vídeo em si, não a home nem a playlist |
 | "Este vídeo não tem transcrição publicada" | o vídeo não tem o botão "Mostrar transcrição" | tente outro; o app local transcreve o áudio, a extensão não |
-| "O YouTube não oferece transcrição em Shorts" | é Shorts | use o app local |
+| A aba mudou de `/shorts/` para `/watch` sozinha | é o comportamento esperado | nada a fazer; é assim que se chega à transcrição |
 | "abriu a transcrição mas não a carregou" | o YouTube não respondeu, ou você não está logado | recarregue; confira se está logado no YouTube |
 | "O provedor recusou a credencial" | chave errada, expirada ou sem crédito | refaça o passo 4 e use **Testar credencial** |
 | "O provedor respondeu limite de uso" | cota ou rate limit | espere, ou troque de provedor |

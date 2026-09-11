@@ -65,6 +65,7 @@ const btnDestrinchar = el<HTMLButtonElement>("btn-destrinchar");
 // --- estado -----------------------------------------------------------
 
 let abaId: number | null = null;
+let urlDaAba: string | null = null;
 let controle: AbortController | null = null;
 let aulaMd = "";
 let brutoAtual: BrutoCapturado | null = null;
@@ -283,6 +284,36 @@ function passo(texto: string): void {
   progresso.textContent = texto;
 }
 
+/**
+ * Shorts não têm o painel de transcrição — mas o MESMO vídeo, aberto como
+ * `/watch?v=<id>`, tem. Medido em 10/09/2026: em `/shorts/` não há botão nem
+ * painel; em `/watch` há os dois. Então, em vez de recusar Shorts, levamos a aba
+ * para a rota que funciona.
+ *
+ * Mudar a aba de quem clicou é intrusivo, então é anunciado no passo a passo em
+ * vez de acontecer calado — e só depois do clique em "Destrinchar", nunca antes.
+ */
+async function levarParaRotaComTranscricao(tabId: number, url: string): Promise<void> {
+  const id = extrairVideoIdDaUrl(url);
+  if (id === null) return;
+  if (!new URL(url).pathname.startsWith("/shorts/")) return;
+
+  passo("Shorts não tem transcrição — abrindo o mesmo vídeo pela rota normal…");
+  await chrome.tabs.update(tabId, { url: `https://www.youtube.com/watch?v=${id}` });
+
+  // Espera a navegação terminar. Sem isso, injetamos o content script na página
+  // antiga e ele lê o DOM errado.
+  const limite = Date.now() + 20_000;
+  while (Date.now() < limite) {
+    await new Promise((r) => setTimeout(r, 400));
+    const aba = await chrome.tabs.get(tabId);
+    if (aba.status === "complete" && (aba.url ?? "").includes("/watch")) break;
+  }
+  // O YouTube ainda monta a página depois do "complete"; um respiro evita
+  // procurar o botão antes de ele existir.
+  await new Promise((r) => setTimeout(r, 1500));
+}
+
 async function destrinchar(): Promise<void> {
   if (abaId === null) return;
 
@@ -291,6 +322,8 @@ async function destrinchar(): Promise<void> {
   passo("Pegando a fala do vídeo…");
 
   try {
+    if (urlDaAba !== null) await levarParaRotaComTranscricao(abaId, urlDaAba);
+    if (controle.signal.aborted) return;
     const bruto = await pegarBruto(abaId);
     brutoAtual = bruto;
 
@@ -428,6 +461,7 @@ async function iniciar(): Promise<void> {
   }
 
   abaId = aba.id;
+  urlDaAba = aba.url ?? null;
   prontoTitulo.textContent = aba.title ?? "Vídeo do YouTube";
   prontoDado.textContent = "Clique e o Bruto pega a fala e monta a aula.";
   mostrar("pronto");
