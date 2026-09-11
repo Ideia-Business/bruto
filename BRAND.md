@@ -18,7 +18,7 @@ Use estes nomes. Sinônimo circulando é dívida.
 | **Fixação** | O teste ao fim da Aula. Existe para revelar o que **não** se aprendeu, não para dar nota | quiz, avaliação |
 | **Faísca** | Ideia própria de quem usa, capturada no instante em que o conteúdo a provocou. É dela, não do Bruto | nota, insight |
 | **Caderno de Ideias** | Onde as faíscas ficam | workspace, biblioteca |
-| **Bancada** | A área de trabalho: brutos em fila, destrinchados, caderno | painel, dashboard, home |
+| **Bancada** | A área de trabalho: brutos em fila, destrinchados, caderno. Na extensão, é onde as aulas ficam guardadas | painel, dashboard, home, histórico |
 | **Sua Chave** | A chave de IA de quem usa. É o modo padrão | API key, token |
 
 ## Tom

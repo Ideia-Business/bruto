@@ -23,7 +23,16 @@ npm run doctor          # diz exatamente qual dependência falta
 npm run dev
 ```
 
-Requer Node 20+, `yt-dlp` no PATH e o Claude Code CLI (ver README). `npm run doctor` é a fonte da verdade sobre o que está faltando.
+Requer **Node 24** (ver `.nvmrc`), `yt-dlp` e `ffmpeg` no PATH, e **um provedor de IA** — qualquer um dos seis (ver README). `npm run doctor` é a fonte da verdade: ele lista o estado de cada provedor e diz qual está ativo.
+
+Para mexer na extensão:
+
+```bash
+npm run build:ext      # empacota em extension/dist
+npm run dev:ext        # o mesmo, observando mudanças
+```
+
+Carregue `extension/dist` em `chrome://extensions` (Modo do desenvolvedor → Carregar sem compactação). Passo a passo e tabela de erros em [extension/TESTANDO.md](extension/TESTANDO.md).
 
 ## Como o código está organizado
 
@@ -31,17 +40,30 @@ Requer Node 20+, `yt-dlp` no PATH e o Claude Code CLI (ver README). `npm run doc
 src/
 ├─ pipeline/
 │  ├─ steps/       01-metadata → 07-study — cada etapa isolada e testável
-│  ├─ lib/         adaptadores externos (yt-dlp, whisper, LLM, paths)
+│  ├─ lib/
+│  │  ├─ llm/      camada de modelo: runLLM + um arquivo por provedor
+│  │  └─ …         adaptadores externos (yt-dlp, whisper, paths)
 │  └─ prompts/     todo texto enviado ao modelo mora aqui
 ├─ app/            Next.js (App Router) — páginas e rotas de API
 ├─ db/             schema Drizzle + queries
-└─ components/     UI (shadcn/ui + componentes próprios)
+└─ components/     UI própria  ·  components/ui/ é shadcn copiado (não editamos)
+
+extension/
+├─ manifest.json   MV3
+├─ icon.svg        o bloco lascado
+└─ src/
+   ├─ lib/         captura (lê o painel do YouTube), llm, config, bancada
+   ├─ content/     content script — a ponte popup ↔ página
+   ├─ popup/       a tela que abre no ícone
+   └─ options/     provedor, chave e modelo
 ```
 
-Duas regras que valem mais que as outras:
+Quatro regras que valem mais que as outras:
 
-1. **Prompt é conteúdo, não código.** Mudança de comportamento do modelo vai em `src/pipeline/prompts/`, nunca embutida num step.
+1. **Prompt é conteúdo, não código.** Mudança de comportamento do modelo vai em `src/pipeline/prompts/`, nunca embutida num step. A extensão **importa os mesmos prompts** — por isso eles não podem depender de nada de `node:`.
 2. **Adaptador externo fica em `pipeline/lib/`.** Se você precisa chamar um binário ou uma API, isole ali — o resto do pipeline não deve saber que ferramenta é.
+3. **O pipeline pede TIER, nunca modelo.** `tier: "balanced"`, não `model: "gpt-4o"`. Cada provedor traduz; é o que permite trocar de fornecedor sem tocar em seis arquivos.
+4. **Nenhum texto de erro de fornecedor atravessa a camada de rede.** Só o status HTTP. O corpo do erro pode conter a chave de quem usa, e mensagem de erro acaba gravada em banco e em log.
 
 ## Pull requests
 

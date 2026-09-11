@@ -106,6 +106,10 @@ Cria **Bruto** em `~/Applications`. Duplo-clique sobe o servidor e abre numa jan
 
 Next.js 16 · TypeScript · Tailwind + shadcn/ui · Drizzle + better-sqlite3 · yt-dlp · Whisper · docx · Playwright · markmap
 
+## Onde o projeto está
+
+Estado honesto do que funciona, o que vem a seguir e as limitações conhecidas: [ROADMAP.md](ROADMAP.md).
+
 ## Contribuindo
 
 Contribuições são bem-vindas — leia o [CONTRIBUTING.md](CONTRIBUTING.md) e, se for mexer em texto de interface ou tela, o [BRAND.md](BRAND.md) (léxico e tom, para os nomes ficarem iguais em todo lugar). Se você só quer relatar um bug ou pedir uma funcionalidade, abra uma issue: isso já ajuda muito.
