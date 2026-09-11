@@ -90,6 +90,8 @@ A chave fica em `chrome.storage.local` — **só neste navegador**, nunca sincro
 
 O resumo usa **exatamente o mesmo prompt** do app local: o build importa de `src/pipeline/prompts/`, então as duas superfícies nunca divergem.
 
+Passo a passo de instalação e teste, com a tabela de erros comuns: [extension/TESTANDO.md](extension/TESTANDO.md).
+
 ### App clicável no macOS
 
 ```bash
