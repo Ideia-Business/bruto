@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Um PR novo cancela a execução anterior do mesmo PR: ninguém precisa do
+# resultado de um commit que já foi substituído.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    name: Tipos, lint e build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # O diretório de dados fica dentro do runner. Sem isto, o build abre o
+      # SQLite no HOME do CI — e num clone novo esse diretório não existe, que
+      # foi exatamente o defeito que quebrava a instalação limpa.
+      - name: Preparar o banco
+        env:
+          BRUTO_DATA_ROOT: ${{ runner.temp }}/bruto-data
+        run: |
+          npm run db:push -- --force
+          npm run db:seed
+
+      - name: Tipos
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build do app
+        env:
+          BRUTO_DATA_ROOT: ${{ runner.temp }}/bruto-data
+        run: npm run build
+
+      # Não roda `npx playwright install`: os ícones da extensão são cosméticos
+      # e o build os dispensa de propósito. Baixar um Chromium inteiro por causa
+      # de três PNGs custaria minutos em cada execução.
+      - name: Build da extensão
+        run: npm run build:ext
+
+      - name: Conferir o que o Chrome exige
+        run: |
+          for f in manifest.json popup/popup.html popup/popup.js popup/ui.css \
+                   options/options.html options/options.js content/captura.js; do
+            test -s "extension/dist/$f" || { echo "faltou: $f"; exit 1; }
+          done
+          echo "pacote da extensão completo"

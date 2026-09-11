@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -223,9 +224,9 @@ export function VideoDetail({
       {/* Cabeçalho de documento — claro, sem imagem de fundo nem gradiente. */}
       <div className="space-y-3">
         <Button variant="ghost" size="sm" asChild className="-ml-2 gap-1.5 text-muted-foreground">
-          <a href="/">
+          <Link href="/">
             <ArrowLeft className="size-4" /> Catálogo
-          </a>
+          </Link>
         </Button>
 
         {editingTitle ? (

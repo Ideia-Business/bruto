@@ -14,7 +14,7 @@ Existem dezenas de extensões que resumem vídeo. Quase todas devolvem cinco bul
 
 O Bruto entrega outra coisa: **material de estudo de verdade**. O modo *Estudar* monta uma aula sobre o vídeo — não um resumo mais longo, uma aula: o que você deveria saber ao final, cada conceito explicado desde o começo, um glossário dos termos que o autor assumiu que você conhecia, e um teste para você descobrir se entendeu mesmo.
 
-E ele funciona onde os outros não vão: **Instagram e TikTok**. A maioria só faz YouTube porque depende de legenda pronta. Vídeo curto raramente tem — então o Bruto transcreve o áudio.
+E ele funciona onde os outros não vão: **Instagram e TikTok**. A maioria só faz YouTube porque depende de legenda pronta. Vídeo curto raramente tem — então o Bruto transcreve o áudio. (Verificado em 10/09/2026 com um reel real: metadados, Whisper, resumo, mapa mental e os exports, tudo de ponta a ponta.)
 
 ## Como funciona
 

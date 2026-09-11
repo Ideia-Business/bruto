@@ -34,7 +34,10 @@ export function SearchCommand() {
 
   useEffect(() => {
     if (!query.trim()) {
-      setResults([]);
+      // Limpa o resultado anterior quando a busca esvazia. Agendado num microtask
+      // para não ser um setState SÍNCRONO dentro do efeito, que dispara renders
+      // em cascata (react-hooks/set-state-in-effect).
+      queueMicrotask(() => setResults([]));
       return;
     }
     const t = setTimeout(async () => {
