@@ -11,6 +11,7 @@
  * `chrome.scripting.executeScript({ files })` e repetimos o pedido.
  */
 
+import { extrairVideoIdDaUrl } from "../lib/captura";
 import type { BrutoCapturado, CapturaError } from "../lib/captura";
 import { runLLM, LlmError } from "../lib/llm";
 import { lerConfig } from "../lib/config";
@@ -70,16 +71,14 @@ let brutoAtual: BrutoCapturado | null = null;
 
 // --- utilidades -------------------------------------------------------
 
+/**
+ * Reusa a MESMA regra da captura, de propósito. Antes havia uma segunda cópia
+ * aqui, mais restrita: ela só aceitava `/watch`, então o popup recusava Shorts
+ * que o módulo de captura sabia ler perfeitamente. Duas regras para a mesma
+ * pergunta divergem — agora existe uma só, e quem a muda muda para os dois.
+ */
 function ehVideoYoutube(url: string | undefined): boolean {
-  if (!url) return false;
-  try {
-    const u = new URL(url);
-    if (u.hostname === "youtu.be") return u.pathname.length > 1;
-    if (!/(^|\.)youtube\.com$/.test(u.hostname)) return false;
-    return u.pathname === "/watch" && u.searchParams.has("v");
-  } catch {
-    return false;
-  }
+  return url !== undefined && extrairVideoIdDaUrl(url) !== null;
 }
 
 function escapar(t: string): string {

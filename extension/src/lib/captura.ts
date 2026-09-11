@@ -437,7 +437,7 @@ function lerMetadados(playerResponse: Record<string, unknown>, videoIdDaUrl: str
  * Devolve `null` para qualquer outra coisa (inclusive outro domínio), e é esse `null`
  * que vira `NAO_E_YOUTUBE`.
  */
-function extrairVideoIdDaUrl(href: string): string | null {
+export function extrairVideoIdDaUrl(href: string): string | null {
   let url: URL;
   try {
     url = new URL(href);
