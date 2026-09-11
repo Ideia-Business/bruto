@@ -77,7 +77,9 @@ Você só precisa do domínio do provedor que vai usar — deixar os outros desl
 
 ## 5. Destrinche um vídeo
 
-1. Abra um vídeo do YouTube **que tenha legenda**. Para o primeiro teste, prefira um vídeo em português, com legenda de verdade (não a automática) e de menos de 20 minutos — assim, se der errado, o erro é do código e não do material.
+1. Abra um vídeo do YouTube **que tenha o botão "Mostrar transcrição"** (na descrição, depois de clicar em "...mais"). Se esse botão não existir no vídeo, o Bruto não tem o que ler.
+
+> **Shorts não funcionam**, e não é falha: o YouTube não oferece painel de transcrição neles. O app local dá conta, porque transcreve o áudio. A extensão avisa isso com todas as letras em vez de falhar genérico.
 2. Clique no ícone do **Bruto**.
 3. Clique em **Destrinchar**.
 
@@ -92,7 +94,9 @@ Antes de mais nada: **abra o console do popup**. Clique com o botão direito den
 | O que aparece | O que provavelmente é | O que fazer |
 |---|---|---|
 | "Essa aba não tem um vídeo do YouTube" | a aba ativa não é uma página `/watch` | abra o vídeo em si, não a home nem a playlist |
-| "Este vídeo não tem legenda disponível" | o vídeo não tem legenda mesmo | tente outro; o app local transcreve o áudio, a extensão não |
+| "Este vídeo não tem transcrição publicada" | o vídeo não tem o botão "Mostrar transcrição" | tente outro; o app local transcreve o áudio, a extensão não |
+| "O YouTube não oferece transcrição em Shorts" | é Shorts | use o app local |
+| "abriu a transcrição mas não a carregou" | o YouTube não respondeu, ou você não está logado | recarregue; confira se está logado no YouTube |
 | "O provedor recusou a credencial" | chave errada, expirada ou sem crédito | refaça o passo 4 e use **Testar credencial** |
 | "O provedor respondeu limite de uso" | cota ou rate limit | espere, ou troque de provedor |
 | Nada acontece ao clicar | o content script não injetou | recarregue a aba do vídeo e tente de novo; se persistir, recarregue a extensão em `chrome://extensions` |
