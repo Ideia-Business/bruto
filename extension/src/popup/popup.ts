@@ -17,6 +17,8 @@ import { runLLM, LlmError } from "../lib/llm";
 import { lerConfig } from "../lib/config";
 import { guardarAula, listarBancada, esquecerAula, limparBancada } from "../lib/bancada";
 import type { AulaGuardada } from "../lib/bancada";
+import { guardarFaisca, listarFaiscas, esquecerFaisca } from "../lib/caderno";
+import type { Faisca } from "../lib/caderno";
 import { summaryPrompt } from "../../../src/pipeline/prompts/summary";
 
 type CodigoCaptura = CapturaError["codigo"];
@@ -45,6 +47,7 @@ const telas = {
   rodando: el<HTMLElement>("tela-rodando"),
   aula: el<HTMLElement>("tela-aula"),
   bancada: el<HTMLElement>("tela-bancada"),
+  caderno: el<HTMLElement>("tela-caderno"),
   erro: el<HTMLElement>("tela-erro"),
 } as const;
 
@@ -66,6 +69,11 @@ const prontoDado = el<HTMLParagraphElement>("pronto-dado");
 const btnDestrinchar = el<HTMLButtonElement>("btn-destrinchar");
 const bancadaLista = el<HTMLUListElement>("bancada-lista");
 const bancadaVazia = el<HTMLParagraphElement>("bancada-vazia");
+const cadernoLista = el<HTMLUListElement>("caderno-lista");
+const cadernoVazio = el<HTMLParagraphElement>("caderno-vazio");
+const capturaFaisca = el<HTMLFormElement>("captura-faisca");
+const faiscaTexto = el<HTMLTextAreaElement>("faisca-texto");
+const faiscaAviso = el<HTMLSpanElement>("faisca-aviso");
 
 // --- estado -----------------------------------------------------------
 
@@ -75,6 +83,12 @@ let controle: AbortController | null = null;
 let aulaMd = "";
 /** Título da aula em exibição — vem do bruto capturado OU da bancada. */
 let tituloAtual = "aula";
+/** De qual vídeo é a aula na tela. A faísca precisa saber o que a provocou. */
+let origemAtual: { videoId: string | null; titulo: string | null; url: string | null } = {
+  videoId: null,
+  titulo: null,
+  url: null,
+};
 
 // --- utilidades -------------------------------------------------------
 
@@ -223,6 +237,9 @@ function quando(em: number): string {
 function mostrarAulaGuardada(a: AulaGuardada): void {
   aulaMd = a.markdown;
   tituloAtual = a.titulo;
+  origemAtual = { videoId: a.videoId, titulo: a.titulo, url: a.url };
+  faiscaTexto.value = "";
+  faiscaAviso.hidden = true;
   aulaBox.innerHTML = renderMarkdown(a.markdown);
   avisoAula.hidden = true;
   mostrar("aula");
@@ -261,6 +278,82 @@ async function pintarBancada(): Promise<void> {
     bancadaLista.append(li);
   }
 }
+
+// --- caderno de ideias ------------------------------------------------
+
+async function pintarCaderno(): Promise<void> {
+  const faiscas = await listarFaiscas();
+  cadernoLista.replaceChildren();
+  cadernoVazio.hidden = faiscas.length > 0;
+
+  for (const f of faiscas) {
+    const li = document.createElement("li");
+
+    const conteudo = document.createElement("div");
+    conteudo.className = "conteudo";
+
+    const texto = document.createElement("span");
+    texto.className = "texto";
+    texto.textContent = f.texto;
+
+    const origem = document.createElement("span");
+    origem.className = "origem";
+    if (f.urlDoVideo !== null && f.tituloDoVideo !== null) {
+      const link = document.createElement("a");
+      link.href = f.urlDoVideo;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = f.tituloDoVideo;
+      origem.append(quando(f.em) + " · de ", link);
+    } else {
+      origem.textContent = quando(f.em);
+    }
+
+    conteudo.append(texto, origem);
+
+    const esquecer = document.createElement("button");
+    esquecer.type = "button";
+    esquecer.className = "esquecer";
+    esquecer.textContent = "Esquecer";
+    esquecer.setAttribute("aria-label", "Esquecer esta faísca");
+    esquecer.addEventListener("click", () => {
+      void esquecerFaisca(f.id).then(pintarCaderno);
+    });
+
+    li.append(conteudo, esquecer);
+    cadernoLista.append(li);
+  }
+}
+
+function avisarFaisca(texto: string, ok: boolean): void {
+  faiscaAviso.textContent = texto;
+  faiscaAviso.className = ok ? "estado ok" : "estado ruim";
+  faiscaAviso.hidden = false;
+}
+
+capturaFaisca.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const texto = faiscaTexto.value.trim();
+  if (texto.length === 0) {
+    avisarFaisca("Escreva a ideia antes de guardar.", false);
+    return;
+  }
+  void guardarFaisca({
+    texto,
+    videoId: origemAtual.videoId,
+    tituloDoVideo: origemAtual.titulo,
+    urlDoVideo: origemAtual.url,
+  })
+    .then(() => {
+      faiscaTexto.value = "";
+      avisarFaisca("Guardado no caderno.", true);
+    })
+    .catch(() => {
+      // Falha aqui é VISÍVEL de propósito: o texto continua no campo, então
+      // ninguém perde o que escreveu por causa de um "salvo" que mentiu.
+      avisarFaisca("Não deu para guardar. Copie o texto antes de fechar.", false);
+    });
+});
 
 // --- mensagens de falha ----------------------------------------------
 
@@ -388,6 +481,13 @@ async function destrinchar(): Promise<void> {
     if (controle.signal.aborted) return;
     const bruto = await pegarBruto(abaId);
     tituloAtual = bruto.titulo;
+    origemAtual = {
+      videoId: bruto.videoId,
+      titulo: bruto.titulo,
+      url: `https://www.youtube.com/watch?v=${bruto.videoId}`,
+    };
+    faiscaTexto.value = "";
+    faiscaAviso.hidden = true;
 
     if (controle.signal.aborted) return;
     passo(`Fala pega: ${bruto.texto.length.toLocaleString("pt-BR")} caracteres. Destrinchando…`);
@@ -495,6 +595,14 @@ el<HTMLButtonElement>("btn-copiar").addEventListener("click", () => {
 // Download: link `<a download>` é inerte dentro do popup, então geramos um blob
 // URL na própria extensão e entregamos ao `chrome.downloads` (permissão já
 // declarada no manifest). O URL é revogado quando o popup fecha.
+el<HTMLButtonElement>("btn-caderno").addEventListener("click", () => {
+  void pintarCaderno().then(() => mostrar("caderno"));
+});
+
+el<HTMLButtonElement>("btn-voltar-caderno").addEventListener("click", () => {
+  mostrar(abaId === null ? "naoYoutube" : "pronto");
+});
+
 el<HTMLButtonElement>("btn-bancada").addEventListener("click", () => {
   void pintarBancada().then(() => mostrar("bancada"));
 });

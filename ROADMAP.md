@@ -36,15 +36,23 @@ Tipos, lint, build do app, build da extensão, e conferência item a item do que
 
 ---
 
+### Caderno de Ideias
+
+Ao fim de uma Aula, uma pergunta — *"isso te deu alguma ideia?"* — e um campo livre. É a única coisa que **você** produz aqui, e fica no navegador, sem conta.
+
+**Verificado em 11/09/2026.**
+
 ## A seguir
 
-### Fase 3 — Conta, cota e Caderno de Ideias
+### Fase 4 — A ponte
 
-Quem não quiser configurar chave própria ganha uma cota pequena da casa. Exige Postgres, autenticação e contagem de uso — a cota conta **trabalho concluído**, não token, porque é o que a pessoa entende e o que o caixa prevê.
+### Fase 3b — Conta e Cota da Casa (adiado por decisão)
 
-Nesta fase entra também o **Caderno de Ideias**: ao fim de uma Aula, uma pergunta — *"isso te deu alguma ideia?"* — e um campo livre. É a única coisa que a pessoa **produz** aqui.
+Quem não quiser configurar chave própria ganharia uma cota pequena da casa. Exige Postgres, autenticação e contagem de uso.
 
-Há uma dívida de modelagem a pagar antes: hoje `videos.id` é o identificador do vídeo na plataforma, usado como chave primária. Com duas pessoas, o mesmo vídeo colide e uma sobrescreve o resumo da outra. A cura é separar o **vídeo canônico** (global, sem dono) da **entrada de biblioteca** (por pessoa).
+**Adiado de propósito**, não esquecido: é a única parte do projeto com custo recorrente — servidor mais a IA que a casa paga por quem não tem chave. Construir antes de existir gente pedindo é pagar infraestrutura para um público hipotético. O Caderno de Ideias, que era a peça útil desta fase, foi entregue sem servidor nenhum.
+
+Há uma dívida de modelagem a pagar quando ela vier: hoje `videos.id` é o identificador do vídeo na plataforma, usado como chave primária. Com duas pessoas, o mesmo vídeo colide e uma sobrescreve o resumo da outra. A cura é separar o **vídeo canônico** (global, sem dono) da **entrada de biblioteca** (por pessoa).
 
 ### Fase 4 — A ponte
 

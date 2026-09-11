@@ -25,6 +25,9 @@
       <button id="btn-bancada" class="link-topo" type="button" title="O que você já destrinchou">
         Bancada
       </button>
+      <button id="btn-caderno" class="link-topo" type="button" title="Suas faíscas">
+        Caderno
+      </button>
     </header>
 
     <main class="corpo">
@@ -80,6 +83,21 @@
         </div>
         <p id="aviso-aula" class="estado ok" role="status" aria-live="polite" hidden></p>
         <article id="aula" class="aula"></article>
+
+        <!-- A captura vem DEPOIS da aula, de propósito: só faz sentido perguntar
+             quando a pessoa já leu. E é pergunta, não oferta. -->
+        <form id="captura-faisca" class="faisca-captura">
+          <label for="faisca-texto">Isso te deu alguma ideia?</label>
+          <p class="secundario">
+            Escreva do seu jeito. Vai para o seu caderno, aqui neste navegador.
+          </p>
+          <textarea id="faisca-texto" rows="3" maxlength="1000"
+                    placeholder="o que isso te deu vontade de construir…"></textarea>
+          <div class="linha">
+            <button id="btn-guardar-faisca" type="submit">Guardar no caderno</button>
+            <span id="faisca-aviso" class="estado" role="status" aria-live="polite" hidden></span>
+          </div>
+        </form>
       </section>
 
       <!-- 6. bancada: o que você já destrinchou, guardado neste navegador -->
@@ -95,7 +113,19 @@
         <ul id="bancada-lista" class="bancada"></ul>
       </section>
 
-      <!-- 7. erro -->
+      <!-- 7. caderno de ideias -->
+      <section id="tela-caderno" class="tela pilha" hidden>
+        <div class="linha">
+          <button id="btn-voltar-caderno" type="button">Voltar</button>
+        </div>
+        <p id="caderno-vazio" class="secundario" hidden>
+          Nenhuma faísca ainda. Quando um vídeo te der uma ideia, escreva no fim
+          da aula — ela fica guardada aqui.
+        </p>
+        <ul id="caderno-lista" class="caderno"></ul>
+      </section>
+
+      <!-- 8. erro -->
       <section id="tela-erro" class="tela pilha" hidden>
         <h2>Travou</h2>
         <p id="erro-msg" class="estado ruim" role="alert"></p>

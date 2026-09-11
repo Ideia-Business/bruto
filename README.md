@@ -106,6 +106,8 @@ A chave fica em `chrome.storage.local` — **só neste navegador**, nunca sincro
 
 As aulas que você destrincha ficam na **Bancada**, no mesmo lugar: neste navegador, sem conta, sem nuvem. As 60 mais recentes; a bancada esquece a mais antiga quando enche. Fechar o popup não perde mais nada.
 
+E quando um vídeo te der uma ideia, escreva no fim da aula: ela vai para o **Caderno de Ideias**. A Bancada guarda o que o Bruto produziu; o Caderno guarda o que **você** produziu — e é a única coisa aqui que nasce de você. Uma aula se refaz em trinta segundos; uma ideia que passou, não volta.
+
 O resumo usa **exatamente o mesmo prompt** do app local: o build importa de `src/pipeline/prompts/`, então as duas superfícies nunca divergem.
 
 Passo a passo de instalação e teste, com a tabela de erros comuns: [extension/TESTANDO.md](extension/TESTANDO.md).

@@ -388,3 +388,88 @@ a {
   color: var(--erro);
   border-color: var(--erro);
 }
+
+/* --- Caderno de Ideias ------------------------------------------------ */
+/* A captura é PERGUNTA, não oferta: sem cor de acento, sem borda destacada,
+   sem urgência. Só um bloco separado por uma linha, no fim da aula. */
+.faisca-captura {
+  border-top: 1px solid var(--borda-fraca);
+  margin-top: 16px;
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.faisca-captura label {
+  font-weight: 600;
+  font-size: 13px;
+}
+.faisca-captura textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  color: var(--texto);
+  background: var(--fundo);
+  border: 1px solid var(--borda-fraca);
+  padding: 7px 9px;
+  resize: vertical;
+  min-height: 58px;
+}
+.faisca-captura textarea:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 1px;
+}
+
+.caderno {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--borda-fraca);
+}
+.caderno li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border-bottom: 1px solid var(--borda-fraca);
+  padding: 9px 0;
+}
+.caderno .conteudo {
+  flex: 1;
+  min-width: 0;
+}
+/* A faísca é texto de PESSOA, não saída de máquina: serifa, como a aula.
+   É a mesma regra da marca — a ferramenta se opera em grotesca, o que se lê
+   com atenção vem em serifa. */
+.caderno .texto {
+  display: block;
+  font-family: var(--serifa);
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.caderno .origem {
+  display: block;
+  font-size: 11px;
+  color: var(--texto2);
+  margin-top: 3px;
+}
+.caderno .origem a {
+  color: var(--texto2);
+}
+.caderno .origem a:hover {
+  color: var(--acento);
+}
+.caderno .esquecer {
+  flex: none;
+  background: none;
+  border: 1px solid var(--borda-fraca);
+  color: var(--texto2);
+  font-size: 11px;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+.caderno .esquecer:hover {
+  color: var(--erro);
+  border-color: var(--erro);
+}
