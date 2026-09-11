@@ -7,7 +7,7 @@
  * seis. O que o doctor exige é que exista pelo menos um caminho para o modelo.
  */
 import { spawnSync } from "node:child_process";
-import { vtDoctor, isVtAvailable, VT_SH_PATH } from "@/pipeline/lib/vt-bridge";
+import { transcricaoDoctor, detectarBackend } from "@/pipeline/lib/transcribe";
 import { listarProvedores, resolverProvedor } from "@/pipeline/lib/llm";
 
 interface Check {
@@ -31,12 +31,16 @@ async function main(): Promise<void> {
     checkBin("uv", ["--version"], false),
   ];
 
-  // vt.sh / whisper (fallback de transcrição) — opcional mas recomendado.
-  const vt = await vtDoctor();
+  // Transcrição local (fallback quando não há legenda) — opcional mas é o que
+  // faz Instagram e TikTok funcionarem, então o doctor a nomeia por extenso.
+  const t = await transcricaoDoctor();
+  const backend = await detectarBackend();
   checks.push({
-    name: "vt.sh (whisper)",
-    ok: isVtAvailable() && vt.ok,
-    detail: isVtAvailable() ? vt.output.split("\n")[0] || "ok" : "vt.sh ausente (Tier whisper off)",
+    name: "whisper",
+    ok: t.ok,
+    detail: t.ok
+      ? `backend: ${backend}${t.linhas.length > 1 ? ` (também: ${t.linhas.slice(1).join(", ")})` : ""}`
+      : "nenhum transcritor — vídeo sem legenda vai falhar",
     essential: false,
   });
 
@@ -47,7 +51,11 @@ async function main(): Promise<void> {
     console.log(`  ${icon} ${c.name.padEnd(18)} ${c.detail}`);
     if (!c.ok && c.essential) essentialFail = true;
   }
-  if (VT_SH_PATH) console.log(`\n  vt.sh: ${VT_SH_PATH}`);
+  if (!t.ok && t.linhas.length > 0) {
+    // Há transcritor instalado mas algo falta (tipicamente o modelo ggml do
+    // whisper.cpp). Dizer O QUE existe poupa a caçada.
+    console.log(`\n  transcritores encontrados: ${t.linhas.join(", ")}`);
+  }
 
   // Provedores de IA: mostra o estado de todos, exige que UM esteja pronto.
   console.log("\n  Provedores de IA:");

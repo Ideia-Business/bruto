@@ -50,12 +50,29 @@ git clone https://github.com/Ideia-Business/bruto.git
 cd bruto
 
 brew install yt-dlp                 # obrigatório
-uv tool install mlx-whisper         # opcional — vídeos sem legenda
+uv tool install mlx-whisper         # opcional — vídeos sem legenda (ver abaixo)
 npm install
 npx playwright install chromium     # exports .pdf + imagem do mapa
 npm run db:push && npm run db:seed
 npm run doctor                      # confere as dependências
 ```
+
+### Vídeo sem legenda — o transcritor
+
+Instagram e TikTok quase nunca publicam legenda, e é para esses que o Bruto baixa o áudio e
+transcreve na sua máquina. Serve **qualquer um** destes três — o Bruto detecta sozinho, nesta
+ordem, e usa o primeiro que encontrar:
+
+| Transcritor | Instalação | Observação |
+|---|---|---|
+| **mlx-whisper** | `uv tool install mlx-whisper` | o mais rápido em Apple Silicon |
+| **whisper** (CLI da OpenAI) | `pip install -U openai-whisper` | roda em qualquer plataforma |
+| **whisper.cpp** | `brew install whisper-cpp` | precisa também de um modelo `ggml-base.bin` no disco |
+
+Nenhum deles instalado? O app segue funcionando para vídeo **com** legenda publicada; o que sem
+legenda faz é falhar dizendo exatamente isto, em vez de devolver resumo vazio.
+
+`npm run doctor` mostra qual foi detectado. Para trocar o modelo: `BRUTO_WHISPER_MODEL=small`.
 
 ### O modelo de linguagem — a sua chave, o seu custo
 

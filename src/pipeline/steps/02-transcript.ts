@@ -6,7 +6,7 @@ import { db } from "@/db/client";
 import { videos } from "@/db/schema";
 import { downloadBestVtt, downloadAudio } from "@/pipeline/lib/ytdlp";
 import { parseVtt } from "@/pipeline/lib/vtt-parser";
-import { transcribeAudio, isVtAvailable } from "@/pipeline/lib/vt-bridge";
+import { transcreverAudio, transcricaoDisponivel, SEM_BACKEND } from "@/pipeline/lib/transcribe";
 import { artifactPaths } from "@/pipeline/lib/paths";
 import { recordArtifact } from "@/pipeline/lib/artifacts";
 import { PipelineError, type TranscriptResult, type VideoMetadata } from "@/pipeline/types";
@@ -20,7 +20,7 @@ export interface TranscriptOptions {
 /**
  * Etapa 2 — transcript. Cascata legendas-first:
  *   A/B) yt-dlp legendas (idioma original) → parseVtt (dedupe rolling)
- *   D)   fallback whisper via vt.sh (áudio) quando não há legenda ou forceWhisper
+ *   D)   fallback whisper local (áudio) quando não há legenda ou forceWhisper
  *
  * Grava transcript.txt + transcript.timestamps.txt, registra artifacts e
  * atualiza videos.transcriptSource. `isPortuguese` informa o runner se a
@@ -66,19 +66,16 @@ export async function runTranscript(
     }
   }
 
-  // ── Tier D: áudio → whisper (vt.sh) ────────────────────────────────────────
+  // ── Tier D: áudio → whisper (transcrição local) ────────────────────────────
   if (!result) {
-    if (!isVtAvailable()) {
-      throw new PipelineError(
-        "NO_TRANSCRIPT",
-        "Vídeo sem legenda e whisper indisponível. Instale: uv tool install mlx-whisper",
-      );
+    if (!(await transcricaoDisponivel())) {
+      throw new PipelineError("NO_TRANSCRIPT", SEM_BACKEND);
     }
     onTick(30, "Baixando áudio");
     const audioPath = await downloadAudio(url, paths.dir);
     try {
       onTick(50, "Transcrevendo com Whisper (pode levar alguns minutos)");
-      const text = await transcribeAudio(audioPath, meta.language ?? undefined);
+      const text = await transcreverAudio(audioPath, meta.language ?? undefined);
       result = {
         source: "whisper",
         text,
@@ -89,7 +86,8 @@ export async function runTranscript(
       };
       onTick(90, "Transcrição concluída");
     } finally {
-      // Áudio é volumoso e descartável — o cache do vt.sh já guarda a transcrição.
+      // Áudio é volumoso e descartável — e a transcrição já está em cache pelo
+      // sha256 do próprio áudio, então um retry não paga o custo de novo.
       fs.rmSync(audioPath, { force: true });
     }
   }

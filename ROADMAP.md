@@ -14,6 +14,19 @@ Cole um link de YouTube, Instagram ou TikTok e receba resumo, transcrição, map
 
 **Verificado em 10/09/2026** com um reel do Instagram: metadados → áudio → Whisper → resumo → mapa mental → 9 artefatos. Whisper errou palavras na transcrição e o resumo as corrigiu pelo contexto.
 
+### Transcrição local, sem script externo
+
+Vídeo sem legenda é transcrito na própria máquina, por um de três backends detectados
+automaticamente: mlx-whisper, a CLI `whisper` da OpenAI ou whisper.cpp. Não há dependência de
+script de fora do repositório — o que antes só funcionava em máquina com a skill interna da casa
+instalada agora funciona em clone limpo. O backend de REDE do script antigo (a API de
+transcrição da OpenAI) não foi portado de propósito: transcrever áudio não precisa de
+credencial, e o que não precisa de credencial não recebe credencial.
+
+**Verificado em 11/09/2026**: áudio de conteúdo conhecido devolvido corretamente; vídeo real
+baixado e transcrito de ponta a ponta; caminho de falha exercido com o PATH sem transcritor,
+devolvendo `NO_TRANSCRIPT` com as três instalações possíveis nomeadas.
+
 ### Seis caminhos para o modelo, com a sua chave
 
 Claude Code CLI (sem chave, pela sessão local), Anthropic, OpenAI, OpenRouter, Ollama Cloud e Google. Sem dependência nova: os provedores de API são chamadas `fetch` diretas, e os três que falam o dialeto da OpenAI compartilham uma fábrica — acrescentar um sétimo é uma chamada de função.
