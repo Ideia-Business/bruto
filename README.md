@@ -1,20 +1,36 @@
-# Bruto
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/banner-escuro.png">
+  <img src="assets/banner-claro.png" alt="Bruto — entra bruto, sai entendido" width="100%">
+</picture>
 
-**Entra bruto, sai entendido.**
+<p align="center">
+  <a href="#instala%C3%A7%C3%A3o"><b>Instalar</b></a> ·
+  <a href="#extens%C3%A3o-de-navegador"><b>Extensão</b></a> ·
+  <a href="ROADMAP.md"><b>Roadmap</b></a> ·
+  <a href="CONTRIBUTING.md"><b>Contribuir</b></a>
+</p>
 
-Cole o link de um vídeo — YouTube, Instagram ou TikTok — e receba **resumo**, **transcrição**, **mapa mental** e uma **aula completa** em português: objetivos, conceitos explicados do zero, glossário e teste de fixação. Exporta `.docx` e `.pdf`.
+<p align="center">
+  <img alt="licença MIT" src="https://img.shields.io/badge/licen%C3%A7a-MIT-E14A18?style=flat-square&labelColor=17140F">
+  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Ideia-Business/bruto/ci.yml?branch=main&style=flat-square&label=CI&labelColor=17140F&color=4A6B3D">
+  <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-17140F?style=flat-square&labelColor=6B655C">
+  <img alt="PT-BR" src="https://img.shields.io/badge/PT--BR-nativo-17140F?style=flat-square&labelColor=6B655C">
+</p>
+
+---
+
+Cole o link de um vídeo — **YouTube, Instagram ou TikTok** — e receba **resumo**, **transcrição**, **mapa mental** e uma **aula completa** em português: objetivos, conceitos explicados do zero, glossário e teste de fixação. Exporta `.docx` e `.pdf`.
 
 Roda na sua máquina, com a sua chave de IA. Sem assinatura, sem limite, sem lock-in.
+
+> **Não resume. Ensina.**
+> As dezenas de extensões que resumem vídeo devolvem cinco bullets e um paywall. O Bruto entrega uma **aula**: o que você deveria saber ao final, cada conceito explicado desde o começo, um glossário dos termos que o autor assumiu que você conhecia, e um teste para descobrir se entendeu mesmo.
 
 ---
 
 ## Por que ele existe
 
-Existem dezenas de extensões que resumem vídeo. Quase todas devolvem cinco bullets e um paywall.
-
-O Bruto entrega outra coisa: **material de estudo de verdade**. O modo *Estudar* monta uma aula sobre o vídeo — não um resumo mais longo, uma aula: o que você deveria saber ao final, cada conceito explicado desde o começo, um glossário dos termos que o autor assumiu que você conhecia, e um teste para você descobrir se entendeu mesmo.
-
-E ele funciona onde os outros não vão: **Instagram e TikTok**. A maioria só faz YouTube porque depende de legenda pronta. Vídeo curto raramente tem — então o Bruto transcreve o áudio. (Verificado em 10/09/2026 com um reel real: metadados, Whisper, resumo, mapa mental e os exports, tudo de ponta a ponta.)
+Ele funciona onde os outros não vão: **Instagram e TikTok**. A maioria só faz YouTube porque depende de legenda pronta. Vídeo curto raramente tem — então o Bruto transcreve o áudio. (Verificado em 10/09/2026 com um reel real: metadados, Whisper, resumo, mapa mental e os exports, tudo de ponta a ponta.)
 
 ## Como funciona
 

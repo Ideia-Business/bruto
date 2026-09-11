@@ -1,0 +1,120 @@
+<!doctype html>
+<!--
+  Fonte do banner do README. Renderizado para PNG por scripts/build-assets.mjs,
+  em tema claro e escuro. Não é servido a ninguém: existe para virar imagem.
+
+  Por que PNG e não SVG direto no README: o GitHub serve imagem por um proxy que
+  não executa media query nem carrega fonte externa. Um SVG com Archivo Black
+  apareceria com a fonte errada, e o tema escuro não trocaria. Dois PNGs e um
+  <picture> resolvem, ao custo de um passo de build.
+-->
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* Paleta da marca. O tema é escolhido pelo atributo no <html>, que o
+         script de build define — não por media query, que o renderizador
+         headless não resolve de forma confiável. */
+      :root {
+        --fundo: #f5f2ec;
+        --superficie: #e6e1d7;
+        --texto: #17140f;
+        --texto2: #6b655c;
+        --acento: #e14a18;
+        --borda: rgba(23, 20, 15, 0.14);
+      }
+      html[data-tema="escuro"] {
+        --fundo: #141210;
+        --superficie: #1e1b18;
+        --texto: #ede8df;
+        --texto2: #9a938a;
+        --acento: #ff6b35;
+        --borda: rgba(237, 232, 223, 0.16);
+      }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+
+      body {
+        width: 1100px;
+        height: 330px;
+        background: var(--fundo);
+        color: var(--texto);
+        font-family: "Archivo", system-ui, sans-serif;
+        display: flex;
+        align-items: center;
+        gap: 46px;
+        padding: 0 58px;
+        /* Estrutura à vista: uma régua de acento na borda inferior, e nada mais.
+           Sem gradiente, sem sombra, sem raio. */
+        border-bottom: 5px solid var(--acento);
+      }
+
+      /* O bloco lascado — o mesmo caminho do extension/icon.svg. */
+      .marca { flex: none; }
+
+      .texto { min-width: 0; }
+
+      .wordmark {
+        font-family: "Archivo Black", "Archivo", sans-serif;
+        font-size: 100px;
+        line-height: 0.9;
+        letter-spacing: -0.03em;
+        text-transform: uppercase;
+        margin: 0 0 14px;
+      }
+      .wordmark span { color: var(--acento); }
+
+      .tagline {
+        font-family: "Source Serif 4", Georgia, serif;
+        font-size: 27px;
+        line-height: 1.2;
+        margin: 0 0 18px;
+      }
+
+      .selos {
+        display: flex;
+        gap: 10px;
+        font-family: "Archivo", sans-serif;
+        font-size: 14px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--texto2);
+      }
+      .selos span {
+        border: 1px solid var(--borda);
+        background: var(--superficie);
+        padding: 5px 12px;
+      }
+      .selos span.forte {
+        border-color: var(--acento);
+        color: var(--acento);
+      }
+    </style>
+  </head>
+  <body>
+    <svg class="marca" width="156" height="156" viewBox="0 0 128 128" aria-hidden="true">
+      <path
+        fill="var(--acento)"
+        d="M 20 20 L 108 20 L 108 70 L 94 77 L 100 90 L 83 97 L 87 108 L 20 108 Z"
+      />
+    </svg>
+
+    <div class="texto">
+      <h1 class="wordmark">Bru<span>to</span></h1>
+      <p class="tagline">Entra bruto, sai entendido.</p>
+      <div class="selos">
+        <span class="forte">MIT</span>
+        <span>open source</span>
+        <span>sua chave de IA</span>
+        <span>PT-BR</span>
+      </div>
+    </div>
+  </body>
+</html>

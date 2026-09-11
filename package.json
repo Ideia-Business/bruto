@@ -14,7 +14,8 @@
     "process": "tsx --env-file-if-exists=.env src/scripts/process-cli.ts",
     "app": "bash launcher/serve.sh",
     "build:ext": "node scripts/build-extension.mjs",
-    "dev:ext": "node scripts/build-extension.mjs --watch"
+    "dev:ext": "node scripts/build-extension.mjs --watch",
+    "build:assets": "node scripts/build-assets.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.1",
