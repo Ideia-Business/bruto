@@ -47,7 +47,9 @@ A extensão aparece como **"Bruto — vídeo vira aula"**.
 
 ## 4. Coloque a chave
 
-Ainda em `chrome://extensions`, no cartão do Bruto: **Detalhes** → **Opções da extensão**. (Ou clique no ícone do Bruto e depois em "Colocar a chave".)
+Ainda em `chrome://extensions`, no cartão do Bruto: **Detalhes** → role até quase o fim → **Opções de extensão** (é esse o nome exato na interface em português, logo acima de "Abrir o site da extensão", com um ícone de link externo).
+
+Também dá para chegar clicando no ícone do Bruto na barra e depois em **Colocar a chave**.
 
 1. Escolha o provedor.
 2. Cole a chave.
@@ -56,6 +58,22 @@ Ainda em `chrome://extensions`, no cartão do Bruto: **Detalhes** → **Opções
 5. **Salvar**.
 
 A chave fica em `chrome.storage.local`: só neste navegador, sem sincronizar com sua conta Google, sem passar por servidor nenhum do Bruto.
+
+### Se o provedor não responder: libere o acesso ao site dele
+
+Na mesma tela de **Detalhes**, em **"Acesso a sites"**, aparecem os cinco domínios dos provedores. Dependendo da versão do Chrome e de como a extensão foi carregada, eles vêm **desligados** — e aí a chamada ao modelo falha com erro de rede, sem dizer o motivo real.
+
+Ligue o interruptor do domínio do provedor que você escolheu:
+
+| Provedor | Domínio a liberar |
+|---|---|
+| Anthropic | `https://api.anthropic.com/*` |
+| OpenAI | `https://api.openai.com/*` |
+| Google Gemini | `https://generativelanguage.googleapis.com/*` |
+| OpenRouter | `https://openrouter.ai/*` |
+| Ollama Cloud | `https://ollama.com/*` |
+
+Você só precisa do domínio do provedor que vai usar — deixar os outros desligados é o correto.
 
 ## 5. Destrinche um vídeo
 
@@ -78,6 +96,7 @@ Antes de mais nada: **abra o console do popup**. Clique com o botão direito den
 | "O provedor recusou a credencial" | chave errada, expirada ou sem crédito | refaça o passo 4 e use **Testar credencial** |
 | "O provedor respondeu limite de uso" | cota ou rate limit | espere, ou troque de provedor |
 | Nada acontece ao clicar | o content script não injetou | recarregue a aba do vídeo e tente de novo; se persistir, recarregue a extensão em `chrome://extensions` |
+| "está fora do ar" ou erro de rede logo na primeira chamada | o acesso ao site do provedor está desligado | Detalhes → **Acesso a sites** → ligue o domínio do seu provedor (tabela no passo 4) |
 | Erro citando modelo inexistente | o modelo padrão não existe nesse provedor | preencha o campo de modelo nas opções |
 
 **Depois de qualquer `npm run build:ext`**, clique no botão de recarregar no cartão da extensão em `chrome://extensions` — o Chrome não recarrega sozinho, e você estaria testando o pacote antigo.
