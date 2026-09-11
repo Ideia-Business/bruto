@@ -1,4 +1,5 @@
 import { nanoid } from "nanoid";
+import { redact } from "@/pipeline/lib/llm/redact";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { jobs } from "@/db/schema";
@@ -183,7 +184,11 @@ export async function processJob(jobId: string): Promise<void> {
     });
   } catch (err) {
     const code: ErrorCode = err instanceof PipelineError ? err.code : "UNKNOWN";
-    const message = err instanceof Error ? err.message : String(err);
+    // A ÚLTIMA fronteira antes do banco. As camadas de cima já redigem, mas é
+    // esta linha que PERSISTE — e o que é persistido não se corrige depois. Uma
+    // exceção vinda de caminho que ninguém previu (biblioteca de terceiro, erro
+    // de rede com URL) morre aqui, não em `jobs.error_message`.
+    const message = redact(err instanceof Error ? err.message : String(err));
     update(jobId, {
       status: "error",
       errorCode: code,

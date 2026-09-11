@@ -59,7 +59,7 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
           <div>
             <h2 className="text-lg font-semibold">Seu catálogo está vazio</h2>
             <p className="text-sm text-muted-foreground">
-              Cole um link do YouTube para gerar seu primeiro resumo.
+              Cole um link do YouTube, Instagram ou TikTok e destrinche o primeiro.
             </p>
           </div>
           <UrlInputDialog

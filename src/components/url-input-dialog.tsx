@@ -107,7 +107,7 @@ export function UrlInputDialog({
         </div>
         <DialogFooter>
           <Button onClick={submit} disabled={loading || !url.trim()}>
-            {loading ? "Enviando…" : "Processar vídeo"}
+            {loading ? "Enviando…" : "Destrinchar"}
           </Button>
         </DialogFooter>
       </DialogContent>

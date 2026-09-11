@@ -83,6 +83,8 @@ const faiscaAviso = el<HTMLSpanElement>("faisca-aviso");
 let abaId: number | null = null;
 let urlDaAba: string | null = null;
 let controle: AbortController | null = null;
+/** Trava de reentrada do "Destrinchar" — cada clique extra é uma chamada paga. */
+let emAndamento = false;
 let aulaMd = "";
 /** Título da aula em exibição — vem do bruto capturado OU da bancada. */
 let tituloAtual = "aula";
@@ -504,13 +506,24 @@ async function levarParaRotaComTranscricao(tabId: number, url: string): Promise<
 async function destrinchar(): Promise<void> {
   if (abaId === null) return;
 
-  controle = new AbortController();
+  // GUARDA DE REENTRADA. Sem ela, dois cliques rápidos disparam duas capturas e
+  // **duas chamadas pagas** na chave de quem usa — e a segunda sobrescrevia
+  // `controle`, deixando o Cancelar apontando para a execução errada. Desabilitar
+  // o botão não basta: clique de teclado e duplo clique chegam aqui antes.
+  if (emAndamento) return;
+  emAndamento = true;
+  btnDestrinchar.disabled = true;
+
+  // Controlador LOCAL a esta execução; `controle` guarda só a referência do que
+  // corre agora, para o Cancelar alcançar.
+  const meuControle = new AbortController();
+  controle = meuControle;
   mostrar("rodando");
   passo("Pegando a fala do vídeo…");
 
   try {
     if (urlDaAba !== null) await levarParaRotaComTranscricao(abaId, urlDaAba);
-    if (controle.signal.aborted) return;
+    if (meuControle.signal.aborted) return;
     const bruto = await pegarBruto(abaId);
     tituloAtual = bruto.titulo;
     origemAtual = {
@@ -521,7 +534,7 @@ async function destrinchar(): Promise<void> {
     faiscaTexto.value = "";
     faiscaAviso.hidden = true;
 
-    if (controle.signal.aborted) return;
+    if (meuControle.signal.aborted) return;
     passo(`Fala pega: ${bruto.texto.length.toLocaleString("pt-BR")} caracteres. Destrinchando…`);
 
     // O prompt é o MESMO que o app local usa — vem de src/pipeline/prompts.
@@ -539,10 +552,10 @@ async function destrinchar(): Promise<void> {
       input: bruto.texto,
       tier: "balanced",
       timeoutMs: 180_000,
-      signal: controle.signal,
+      signal: meuControle.signal,
     });
 
-    if (controle.signal.aborted) return;
+    if (meuControle.signal.aborted) return;
 
     aulaMd = md.trim();
     aulaBox.innerHTML = renderMarkdown(aulaMd);
@@ -561,7 +574,7 @@ async function destrinchar(): Promise<void> {
       provedor: (await lerConfig())?.provedor ?? null,
     });
   } catch (e: unknown) {
-    if (controle?.signal.aborted) {
+    if (meuControle.signal.aborted) {
       mostrar("pronto");
       return;
     }
@@ -578,7 +591,12 @@ async function destrinchar(): Promise<void> {
       saida: "Tente de novo.",
     });
   } finally {
-    controle = null;
+    // Libera SEMPRE — sucesso, erro ou cancelamento. Guarda que não se solta em
+    // algum caminho trava o botão para sempre, e o sintoma seria "o Bruto parou
+    // de funcionar", sem erro nenhum na tela.
+    if (controle === meuControle) controle = null;
+    emAndamento = false;
+    btnDestrinchar.disabled = false;
   }
 }
 
@@ -600,7 +618,11 @@ el<HTMLButtonElement>("btn-tentar").addEventListener("click", () => {
 });
 
 el<HTMLButtonElement>("btn-cancelar").addEventListener("click", () => {
-  controle?.abort();
+  // `controle` só aponta para o que corre AGORA (o `finally` o zera). Sem esta
+  // checagem, cancelar depois de pronto abortaria um controlador morto e jogaria
+  // a tela de volta para "pronto" por cima do resultado.
+  if (controle === null) return;
+  controle.abort();
   passo("Cancelado.");
   mostrar("pronto");
 });

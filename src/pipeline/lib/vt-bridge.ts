@@ -17,6 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { PipelineError } from "@/pipeline/types";
+import { redact } from "@/pipeline/lib/llm/redact";
 
 /**
  * Candidatos ao vt.sh, em ordem de preferência:
@@ -74,11 +75,33 @@ function truncateTail(text: string, maxChars: number): string {
  * Executa `bash <vt.sh> <args>` coletando stdout/stderr como streams
  * (transcrições longas estouram o maxBuffer do exec — spawn não tem esse limite).
  */
+/**
+ * O que um processo externo de transcrição legitimamente precisa: achar
+ * binários, saber onde é a casa, escrever temporário e formatar texto. Nenhuma
+ * credencial atravessa.
+ */
+export function ambienteMinimo(): NodeJS.ProcessEnv {
+  // NODE_ENV entra porque o tipo do Node o exige e porque não é segredo —
+  // ferramentas de linha de comando costumam consultá-lo.
+  const permitidas = ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "SHELL", "USER", "NODE_ENV"];
+  const env: Record<string, string> = {};
+  for (const nome of permitidas) {
+    const v = process.env[nome];
+    if (v !== undefined) env[nome] = v;
+  }
+  return env as NodeJS.ProcessEnv;
+}
+
 function runVt(vtShPath: string, args: string[], timeoutMs: number): Promise<VtRunResult> {
   return new Promise((resolve, reject) => {
     const child = spawn("bash", [vtShPath, ...args], {
       stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
+      // Ambiente MÍNIMO, nunca `process.env`. O vt.sh é script externo que não
+      // controlamos, e o que ele imprime no stderr acaba na mensagem de erro —
+      // gravada em `jobs.error_message`, no banco. Com o ambiente inteiro, uma
+      // falha que ecoasse o env gravaria a chave de quem usa. Transcrever áudio
+      // não precisa de credencial nenhuma.
+      env: ambienteMinimo(),
     });
 
     let stdout = "";
@@ -170,9 +193,14 @@ export async function transcribeAudio(audioPath: string, lang?: string): Promise
   }
 
   if (run.exitCode !== 0) {
-    const detail = truncateTail(
-      run.stderr.trim() || run.stdout.trim() || `vt.sh saiu com código ${run.exitCode}`,
-      600,
+    // Cinto e suspensório: o ambiente já vai mínimo, mas texto de processo
+    // externo nunca entra numa exceção sem passar pela redação — esta mensagem é
+    // PERSISTIDA, e o que é persistido não se corrige depois.
+    const detail = redact(
+      truncateTail(
+        run.stderr.trim() || run.stdout.trim() || `vt.sh saiu com código ${run.exitCode}`,
+        600,
+      ),
     );
     throw new PipelineError(
       "NO_TRANSCRIPT",

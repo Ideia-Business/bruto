@@ -347,7 +347,7 @@ export function VideoDetail({
           {/* Ações */}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={busy} onClick={() => action(`/api/videos/${data.video.id}/retry`, "Reprocessando…")}>
-              <RefreshCw className="mr-1.5 size-4" /> Reprocessar
+              <RefreshCw className="mr-1.5 size-4" /> Destrinchar de novo
             </Button>
             <Button size="sm" variant="outline" disabled={busy} onClick={() => action(`/api/videos/${data.video.id}/retry?whisper=1`, "Retranscrevendo com Whisper…")}>
               <Sparkles className="mr-1.5 size-4" /> Retranscrever (Whisper)

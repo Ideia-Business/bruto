@@ -30,6 +30,23 @@ const MODELO: Record<string, string> = {
   deep: "opus",
 };
 
+/** Chaves de API que este provedor jamais precisa — e que por isso não passa adiante. */
+const CHAVES_DE_OUTROS = [
+  "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
+  "OPENROUTER_API_KEY",
+  "OLLAMA_API_KEY",
+  "GOOGLE_API_KEY",
+  "GEMINI_API_KEY",
+  "BRUTO_LLM_API_KEY",
+];
+
+function semChavesDeOutros(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const nome of CHAVES_DE_OUTROS) delete env[nome];
+  return env;
+}
+
 interface Saida {
   stdout: string;
   stderr: string;
@@ -39,7 +56,16 @@ interface Saida {
 
 function executar(args: string[], input: string | undefined, timeoutMs: number): Promise<Saida> {
   return new Promise((resolve, reject) => {
-    const child = spawn("claude", args, { env: process.env, stdio: ["pipe", "pipe", "pipe"] });
+    // Aqui o env COMPLETO é necessário: a autenticação do Claude Code vem da
+    // sessão local, e não sabemos com certeza quais variáveis a sustentam —
+    // podar às cegas arriscaria quebrar o login. O que SIM se pode tirar, e se
+    // tira, são as chaves dos OUTROS provedores: se alguém configurou OpenAI no
+    // .env e está usando o CLI, não há razão para o processo filho enxergar
+    // aquela chave. Least-privilege no que dá para provar.
+    const child = spawn("claude", args, {
+      env: semChavesDeOutros(),
+      stdio: ["pipe", "pipe", "pipe"],
+    });
 
     let stdout = "";
     let stderr = "";

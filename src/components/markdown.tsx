@@ -3,12 +3,40 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { ChevronRight } from "lucide-react";
+
+/**
+ * Esquema de sanitização: o padrão do rehype MAIS `details`/`summary`.
+ *
+ * POR QUE ISTO EXISTE: `allowHtml` liga o `rehypeRaw`, que renderiza HTML cru.
+ * Ele foi ligado para um motivo legítimo — o prompt da Aula pede blocos
+ * `<details>` para esconder as respostas do teste de fixação. O problema é a
+ * premissa que estava escrita aqui: "conteúdo é sempre local, seguro". **Não é.**
+ * O texto vem de um modelo de linguagem alimentado pela transcrição de um vídeo
+ * de terceiro — conteúdo que ninguém desta casa escreveu nem revisou. Uma
+ * transcrição preparada pode induzir o modelo a devolver `<iframe srcdoc=…>`, e
+ * aí há script rodando no mesmo origin das rotas que apagam e editam.
+ *
+ * `rehypeRaw` interpreta o HTML e `rehypeSanitize` PODA o que não está na lista —
+ * nesta ordem, sempre. Invertida, a poda aconteceria antes de o HTML existir.
+ */
+const ESQUEMA = {
+  ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames ?? []), "details", "summary"],
+  attributes: {
+    ...defaultSchema.attributes,
+    // `open` é o único atributo que o <details> precisa. Nada de `on*`, nada
+    // de `style`, nada de `srcdoc`.
+    details: ["open"],
+    summary: [],
+  },
+};
 
 /**
  * Renderiza markdown como PROSA DE LEITURA (serif, 18px/1.7, coluna estreita).
  * É o coração do produto — resumo e aula devem se ler sem fadiga.
- * `allowHtml` habilita os <details> da fixação (conteúdo é sempre local, seguro).
+ * `allowHtml` habilita os <details> da fixação, já sanitizados.
  */
 export function Markdown({
   children,
@@ -21,7 +49,7 @@ export function Markdown({
     <div className="prose-custom space-y-4 font-reading text-[1.125rem] leading-[1.7] text-foreground">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={allowHtml ? [rehypeRaw] : []}
+        rehypePlugins={allowHtml ? [rehypeRaw, [rehypeSanitize, ESQUEMA]] : []}
         components={{
           h1: (p) => <h1 className="mt-2 mb-3 font-heading text-3xl font-semibold" {...p} />,
           h2: (p) => (

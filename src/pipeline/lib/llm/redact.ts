@@ -14,10 +14,20 @@
  *     prompt, devolvida por uma API, escrita à mão num config).
  */
 
-/** Variáveis cujo VALOR nunca pode aparecer em texto que sai daqui. */
+/**
+ * Variáveis cujo VALOR nunca pode aparecer em texto que sai daqui.
+ *
+ * MANTENHA EM DIA: esta lista já ficou para trás uma vez. Quando OpenRouter e
+ * Ollama Cloud foram acrescentados como provedores, ninguém voltou aqui — e por
+ * um tempo a chave dessas duas não era redigida. **Provedor novo entra aqui no
+ * mesmo commit**, e o teste em `redact` cobre a lista inteira justamente para
+ * que o esquecimento apareça.
+ */
 const ENV_SENSIVEIS = [
   "ANTHROPIC_API_KEY",
   "OPENAI_API_KEY",
+  "OPENROUTER_API_KEY",
+  "OLLAMA_API_KEY",
   "GOOGLE_API_KEY",
   "GEMINI_API_KEY",
   "BRUTO_LLM_API_KEY",
@@ -26,8 +36,9 @@ const ENV_SENSIVEIS = [
 /** Formatos públicos e estáveis de credencial dos fornecedores suportados. */
 const PADROES: readonly RegExp[] = [
   /sk-ant-[A-Za-z0-9_-]{16,}/g, // Anthropic
+  /sk-or-v1-[A-Za-z0-9]{16,}/g, // OpenRouter
   /sk-proj-[A-Za-z0-9_-]{16,}/g, // OpenAI (projeto)
-  /sk-[A-Za-z0-9]{20,}/g, // OpenAI (legado)
+  /sk-[A-Za-z0-9_-]{20,}/g, // OpenAI legado, e qualquer `sk-` longo
   /AIza[A-Za-z0-9_-]{20,}/g, // Google
   /\bBearer\s+[A-Za-z0-9._-]{16,}/gi, // header inteiro
 ];
