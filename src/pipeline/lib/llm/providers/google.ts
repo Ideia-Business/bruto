@@ -10,9 +10,11 @@ import { extrairTexto, postJson } from "./http";
 import type { LlmCapability, LlmProvider, LlmRequest, LlmResult } from "../types";
 
 const PADRAO: Record<string, string> = {
-  fast: "gemini-2.0-flash",
-  balanced: "gemini-2.0-flash",
-  deep: "gemini-2.5-pro",
+  // O Gemini 2.0 Flash foi aposentado em 03/03/2026 — modelo padrão que não
+  // existe faz o provedor devolver 404 e parecer erro de configuração de quem usa.
+  fast: "gemini-3.1-flash-lite",
+  balanced: "gemini-3.8-flash",
+  deep: "gemini-3.8-flash",
 };
 
 function modeloPara(tier: string): string {

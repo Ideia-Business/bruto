@@ -90,8 +90,8 @@ export const PROVEDORES: ReadonlyArray<DescricaoProvedor> = [
     // Base: `llm.ts` acrescenta `/<modelo>:generateContent`.
     url: "https://generativelanguage.googleapis.com/v1beta/models",
     ondePegar: "aistudio.google.com/apikey",
-    padraoBalanced: "gemini-2.0-flash",
-    padraoFast: "gemini-2.0-flash",
+    padraoBalanced: "gemini-3.8-flash",
+    padraoFast: "gemini-3.1-flash-lite",
     precisaModelo: false,
   },
 ];

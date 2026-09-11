@@ -48,13 +48,15 @@ function pintarProvedor(): void {
   linkChave.href = escolhido.ondePegar;
   linkChave.textContent = `Onde pegar a chave da ${escolhido.label}`;
 
-  campoModelo.hidden = !escolhido.precisaModelo;
-  if (escolhido.precisaModelo) {
-    inputModelo.placeholder = escolhido.padraoBalanced;
-    ajudaModelo.textContent = `Em branco, o Bruto usa ${escolhido.padraoBalanced}.`;
-  } else {
-    inputModelo.value = "";
-  }
+  // O campo existe para TODO provedor, não só para os de catálogo grande.
+  // Motivo: quando o modelo padrão sai do ar (o Gemini 2.0 Flash foi aposentado
+  // em março de 2026), o erro manda ajustar o modelo — e não havia onde. Errar o
+  // padrão é inevitável com o tempo; deixar a pessoa sem saída, não.
+  campoModelo.hidden = false;
+  inputModelo.placeholder = escolhido.padraoBalanced;
+  ajudaModelo.textContent = escolhido.precisaModelo
+    ? `O catálogo da ${escolhido.label} é grande e muda — preencha. Ex.: ${escolhido.padraoBalanced}.`
+    : `Em branco, o Bruto usa ${escolhido.padraoBalanced}. Preencha se esse modelo não existir mais na sua conta.`;
 }
 
 function montarProvedores(): void {
@@ -96,7 +98,7 @@ function configAtual(): Config {
   return {
     provedor: escolhido.id,
     chave: inputChave.value.trim(),
-    modelo: escolhido.precisaModelo && modelo !== "" ? modelo : null,
+    modelo: modelo !== "" ? modelo : null,
   };
 }
 
