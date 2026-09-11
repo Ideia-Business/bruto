@@ -19,6 +19,7 @@ import { guardarAula, listarBancada, esquecerAula, limparBancada } from "../lib/
 import type { AulaGuardada } from "../lib/bancada";
 import { guardarFaisca, listarFaiscas, esquecerFaisca } from "../lib/caderno";
 import type { Faisca } from "../lib/caderno";
+import { levarParaLapid } from "../lib/ponte";
 import { summaryPrompt } from "../../../src/pipeline/prompts/summary";
 
 type CodigoCaptura = CapturaError["codigo"];
@@ -71,6 +72,8 @@ const bancadaLista = el<HTMLUListElement>("bancada-lista");
 const bancadaVazia = el<HTMLParagraphElement>("bancada-vazia");
 const cadernoLista = el<HTMLUListElement>("caderno-lista");
 const cadernoVazio = el<HTMLParagraphElement>("caderno-vazio");
+const cadernoSobre = el<HTMLParagraphElement>("caderno-sobre");
+const cadernoAviso = el<HTMLParagraphElement>("caderno-aviso");
 const capturaFaisca = el<HTMLFormElement>("captura-faisca");
 const faiscaTexto = el<HTMLTextAreaElement>("faisca-texto");
 const faiscaAviso = el<HTMLSpanElement>("faisca-aviso");
@@ -281,10 +284,20 @@ async function pintarBancada(): Promise<void> {
 
 // --- caderno de ideias ------------------------------------------------
 
+function avisarCaderno(texto: string, ok: boolean): void {
+  cadernoAviso.textContent = texto;
+  cadernoAviso.className = ok ? "estado ok" : "estado ruim";
+  cadernoAviso.hidden = false;
+}
+
 async function pintarCaderno(): Promise<void> {
   const faiscas = await listarFaiscas();
   cadernoLista.replaceChildren();
   cadernoVazio.hidden = faiscas.length > 0;
+  // A explicação do que é o Lapid aparece uma vez, no topo, e só quando há
+  // faísca — não repetida em cada botão, e nunca antes de existir o que levar.
+  cadernoSobre.hidden = faiscas.length === 0;
+  cadernoAviso.hidden = true;
 
   for (const f of faiscas) {
     const li = document.createElement("li");
@@ -311,6 +324,25 @@ async function pintarCaderno(): Promise<void> {
 
     conteudo.append(texto, origem);
 
+    // A ponte é um CONVITE ligado ao que a pessoa produziu, por faísca — nunca
+    // um banner interrompendo outra coisa. É a única menção ao produto pago
+    // dentro da extensão, e só aparece aqui, no Caderno.
+    const lapidar = document.createElement("button");
+    lapidar.type = "button";
+    lapidar.className = "lapidar";
+    lapidar.textContent = "Lapidar";
+    lapidar.title = "Levar esta ideia para o Lapid.ai";
+    lapidar.addEventListener("click", () => {
+      void levarParaLapid(f.texto).then(({ copiada }) => {
+        avisarCaderno(
+          copiada
+            ? "Ideia copiada. Cole lá no Lapid para começar."
+            : "Abri o Lapid, mas não consegui copiar — reescreva a ideia por lá.",
+          copiada,
+        );
+      });
+    });
+
     const esquecer = document.createElement("button");
     esquecer.type = "button";
     esquecer.className = "esquecer";
@@ -320,7 +352,7 @@ async function pintarCaderno(): Promise<void> {
       void esquecerFaisca(f.id).then(pintarCaderno);
     });
 
-    li.append(conteudo, esquecer);
+    li.append(conteudo, lapidar, esquecer);
     cadernoLista.append(li);
   }
 }

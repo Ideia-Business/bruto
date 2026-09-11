@@ -473,3 +473,19 @@ a {
   color: var(--erro);
   border-color: var(--erro);
 }
+
+/* Botão da ponte. Discreto de propósito: é convite, não chamada de venda.
+   Ganha o acento só no hover — o suficiente para ser achado, longe de gritar. */
+.caderno .lapidar {
+  flex: none;
+  background: none;
+  border: 1px solid var(--borda-fraca);
+  color: var(--texto2);
+  font-size: 11px;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+.caderno .lapidar:hover {
+  color: var(--acento);
+  border-color: var(--acento);
+}

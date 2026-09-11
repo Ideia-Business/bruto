@@ -36,6 +36,14 @@ Ao fim de uma Aula, uma pergunta — *"isso te deu alguma ideia?"* — e um camp
 
 **Verificado em 11/09/2026.**
 
+### A ponte
+
+No Caderno, cada faísca tem um botão **Lapidar**: ele copia a ideia e abre o [Lapid.ai](https://lapid.ai), que a transforma numa especificação de produto. O que atravessa é **a anotação de quem escreveu**, nunca o resumo do vídeo — o Lapid trabalha a ideia da pessoa, e mandar para lá o resumo de um vídeo alheio produziria uma especificação do produto *do vídeo*: plausível e inútil.
+
+É a única menção ao produto pago dentro da extensão, e aparece só onde há ideia sua para levar.
+
+**Verificado em 11/09/2026.**
+
 ### Integração contínua
 
 Tipos, lint, build do app, build da extensão, e conferência item a item do que o Chrome exige para carregar o pacote.
@@ -43,10 +51,6 @@ Tipos, lint, build do app, build da extensão, e conferência item a item do que
 ---
 
 ## A seguir
-
-### Fase 4 — A ponte
-
-A faísca capturada no Caderno de Ideias atravessa para o [Lapid.ai](https://lapid.ai), que transforma ideia bruta em especificação de produto. O que atravessa é **a anotação de quem escreveu**, não o resumo do vídeo: o Lapid trabalha a ideia da pessoa, e mandar para lá o resumo de um vídeo alheio produziria uma especificação do produto *do vídeo* — plausível e inútil.
 
 ### Fase 3b — Conta e Cota da Casa (adiado por decisão)
 
