@@ -50,8 +50,21 @@ export class CapturaError extends Error {
   }
 }
 
-const PAINEL = "[target-id='engagement-panel-searchable-transcript']";
-const SEGMENTO = "ytd-transcript-segment-renderer";
+/**
+ * O YouTube migrou a transcrição para os componentes de *view model* — e manteve no
+ * DOM um painel antigo, VAZIO, com o `target-id` de sempre. Ler só o antigo devolvia
+ * 257 caracteres de quebras de linha enquanto 31 segmentos estavam na tela ao lado.
+ *
+ * Por isso os dois nomes, nesta ordem: o novo primeiro, o antigo como retaguarda para
+ * quem ainda receber a interface velha. Quando o YouTube renomear de novo — e vai —,
+ * é aqui que se acrescenta a terceira linha.
+ */
+const PAINEL = [
+  "[target-id='PAmodern_transcript_view']",
+  "[target-id='engagement-panel-searchable-transcript']",
+].join(",");
+
+const SEGMENTO = "transcript-segment-view-model, ytd-transcript-segment-renderer";
 
 /** Quanto esperamos o YouTube popular o painel. Ele busca da rede; 20s cobre folgado. */
 const ESPERA_PAINEL_MS = 20_000;
@@ -258,10 +271,7 @@ async function lerPainel(): Promise<LeituraPainel> {
 
   const pedacos: string[] = [];
   for (const seg of segmentos) {
-    // `.segment-text` é o nó do texto; sem ele, o `textContent` do segmento traria o
-    // timestamp junto ("0:06 você repete coisas"), que sujaria a fala.
-    const alvo = seg.querySelector(".segment-text");
-    const t = (alvo?.textContent ?? "").trim();
+    const t = textoDoSegmento(seg);
     if (t.length > 0) pedacos.push(t);
   }
 
@@ -313,6 +323,30 @@ function lerMetadados(): { titulo: string; canal: string | null; duracaoSeg: num
     typeof bruta === "number" && Number.isFinite(bruta) && bruta > 0 ? Math.round(bruta) : null;
 
   return { titulo: titulo || "Vídeo do YouTube", canal, duracaoSeg };
+}
+
+/**
+ * Texto de um segmento, SEM o timestamp.
+ *
+ * Não dependemos do nome da classe do nó de texto — ele já mudou uma vez
+ * (`.segment-text` → componentes `ytw*`) e vai mudar de novo. Em vez disso, removemos
+ * o que É timestamp e ficamos com o resto: mais estável, porque a marcação de tempo é
+ * reconhecível pelo formato (`0:06`), não pelo nome que o YouTube deu a ela hoje.
+ */
+function textoDoSegmento(seg: Element): string {
+  const copia = seg.cloneNode(true) as HTMLElement;
+
+  // Remove por classe (funciona nas duas gerações) e, por garantia, qualquer folha
+  // que seja só um horário.
+  for (const n of Array.from(copia.querySelectorAll<HTMLElement>("*"))) {
+    const classe = typeof n.className === "string" ? n.className : "";
+    const ehFolha = n.children.length === 0;
+    if (/timestamp/i.test(classe) || (ehFolha && /^\d{1,2}:\d{2}(:\d{2})?$/.test((n.textContent ?? "").trim()))) {
+      n.remove();
+    }
+  }
+
+  return normalizarEspacos(copia.textContent ?? "");
 }
 
 function normalizarEspacos(s: string): string {
