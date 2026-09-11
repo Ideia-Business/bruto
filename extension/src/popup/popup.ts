@@ -219,9 +219,12 @@ function falhaDeCaptura(codigo: CodigoCaptura, msg: string): Falha {
           "O YouTube não publicou legenda para ele. Tente outro vídeo do mesmo canal.",
       };
     case "SEM_ACESSO":
+      // Mostra a mensagem real, não um texto genérico: ela carrega o diagnóstico
+      // (quanto esperou, em que estado o botão ficou) que distingue "o clique não
+      // pegou" de "o YouTube não respondeu". Sem isso, o relato que chega é "travou".
       return {
-        titulo: "O YouTube não deixou pegar a fala.",
-        saida: "Recarregue a página do vídeo e tente de novo.",
+        titulo: msg || "O YouTube não deixou pegar a fala.",
+        saida: "Se repetir, abra a transcrição na página e clique no Bruto de novo.",
       };
     default:
       return {

@@ -138,12 +138,32 @@ function rotulo(n: Element): string {
   return (n.getAttribute("aria-label") ?? n.textContent ?? "").trim();
 }
 
+/**
+ * Devolve o elemento que REALMENTE responde ao clique.
+ *
+ * O YouTube empilha invólucros: `ytd-button-renderer` > `yt-button-shape` > `button`,
+ * e os três carregam o mesmo rótulo. Uma busca ingênua acha o de fora primeiro (ordem
+ * do DOM) e clicar nele não dispara nada — o ouvinte está no `<button>` interno. Foi
+ * exatamente esse o sintoma: painel presente, zero segmentos, nenhum erro.
+ *
+ * Por isso procuramos `button` antes de tudo, e, se o achado não for um, descemos até
+ * encontrar um dentro dele.
+ */
 function acharBotao(padrao: RegExp): HTMLElement | null {
-  const candidatos = document.querySelectorAll<HTMLElement>(
-    "button, tp-yt-paper-button, yt-button-shape, ytd-button-renderer, a",
-  );
-  for (const n of Array.from(candidatos)) {
-    if (padrao.test(rotulo(n))) return n;
+  const porPrioridade = [
+    "button",
+    "tp-yt-paper-button",
+    "yt-button-shape",
+    "ytd-button-renderer",
+    "a",
+  ];
+
+  for (const seletor of porPrioridade) {
+    for (const n of Array.from(document.querySelectorAll<HTMLElement>(seletor))) {
+      if (!padrao.test(rotulo(n))) continue;
+      const interno = n.tagName === "BUTTON" ? null : n.querySelector<HTMLElement>("button");
+      return interno ?? n;
+    }
   }
   return null;
 }
@@ -176,6 +196,18 @@ async function abrirPainelDeTranscricao(): Promise<void> {
 
   botao.scrollIntoView({ block: "center" });
   botao.click();
+
+  // Um clique pode não pegar: o YouTube troca o rótulo para "Ocultar transcrição"
+  // quando abre, então se ele NÃO trocou em ~2,5s, o clique não surtiu efeito e
+  // tentamos de novo. Melhor uma segunda tentativa do que 20s de espera inútil
+  // terminando num erro que não diz nada.
+  await espera(2500);
+  if (document.querySelector(SEGMENTO) !== null) return;
+
+  const aindaFechado = acharBotao(/mostrar transcri|show transcript/i);
+  if (aindaFechado !== null) {
+    aindaFechado.click();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -213,9 +245,14 @@ async function lerPainel(): Promise<LeituraPainel> {
         "Este vídeo não tem transcrição publicada pelo YouTube. Tente outro, ou use o app local.",
       );
     }
+    // Diagnóstico embutido na mensagem: sem ele, o relato que chega é só "travou",
+    // e a causa (clique que não pegou × YouTube que não respondeu) fica indistinguível.
+    const rotuloAtual = acharBotao(/transcri|transcript/i);
+    const estado = rotuloAtual === null ? "botão sumiu" : `botão diz "${rotulo(rotuloAtual)}"`;
     throw new CapturaError(
       "SEM_ACESSO",
-      "O YouTube abriu a transcrição mas não a carregou. Recarregue a página e tente de novo; se persistir, confira se você está logado no YouTube.",
+      `O YouTube abriu a transcrição mas não a carregou em ${ESPERA_PAINEL_MS / 1000}s (${estado}). ` +
+        "Abra a transcrição você mesmo na página, pelo botão da descrição, e clique no Bruto de novo.",
     );
   }
 
