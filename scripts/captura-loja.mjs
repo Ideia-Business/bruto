@@ -116,61 +116,211 @@ async function temConteudo(pg) {
   });
 }
 
-const aoVivo = process.argv.includes("--ao-vivo");
-const id = idDaExtensao(dist);
-const perfil = fs.mkdtempSync(path.join(os.tmpdir(), "bruto-perfil-"));
-
-const ctx = await chromium.launchPersistentContext(perfil, {
-  headless: false,
-  args: [`--disable-extensions-except=${dist}`, `--load-extension=${dist}`],
-  viewport: { width: LARGURA, height: ALTURA },
-});
-
-fs.mkdirSync(saida, { recursive: true });
-
-if (aoVivo) {
-  const pg = await ctx.newPage();
-  await pg.goto(`chrome-extension://${id}/popup/popup.html`);
-  console.log(
-    `\nChromium aberto com a extensão carregada.\n` +
-      `Deixe na tela que você quer fotografar e volte aqui.\n`,
-  );
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const nome = (await rl.question("nome do arquivo (sem .png) [ao-vivo]: ")).trim() || "ao-vivo";
-  rl.close();
-  const arq = path.join(saida, `${nome}.png`);
-  await pg.screenshot({ path: arq });
-  console.log(`\n✔ ${path.relative(raiz, arq)}\n`);
-} else {
-  /**
-   * Só telas que uma instalação limpa realmente mostra. Nenhuma delas depende de
-   * chave, de rede ou de mexer no DOM — é a extensão recém-instalada, como
-   * qualquer pessoa a encontra no primeiro minuto.
-   */
-  const telas = [
-    { nome: "opcoes", url: `chrome-extension://${id}/options/options.html`, w: 600, h: 700 },
-    { nome: "popup-primeiro-uso", url: `chrome-extension://${id}/popup/popup.html`, w: 400, h: 560 },
-  ];
-  let falhas = 0;
-  for (const t of telas) {
-    const pg = await moldurar(ctx, t.url, t.w, t.h);
-    const arq = path.join(saida, `${t.nome}.png`);
-    await pg.screenshot({ path: arq });
-    const ok = await temConteudo(pg);
-    await pg.close();
-    if (!ok) falhas++;
-    console.log(`${ok ? "✔" : "✖"} ${path.relative(raiz, arq)} (${LARGURA}×${ALTURA})${ok ? "" : " — SAIU VAZIA"}`);
-  }
-  if (falhas) {
-    console.error(`\n✖ ${falhas} captura(s) saíram vazias — não envie.\n`);
-    await ctx.close();
-    process.exit(1);
-  }
-  console.log(
-    `\nEstas são as telas de instalação limpa. A captura que vende o produto — a\n` +
-      `aula pronta — precisa da sua chave: rode \`node scripts/captura-loja.mjs --ao-vivo\`.\n`,
-  );
+/**
+ * Nome de arquivo vindo do terminal é entrada não-confiável: `../../../id_rsa`
+ * escreveria um PNG fora daqui. Fica só o nome-base, com um alfabeto fechado, e
+ * o caminho resolvido é conferido contra a pasta de saída antes de gravar —
+ * defesa em profundidade, porque uma das duas pode falhar sozinha.
+ */
+function arquivoSeguro(bruto) {
+  const base = path
+    .basename(String(bruto))
+    .replace(/\.png$/i, "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    .toLowerCase();
+  if (base === "") return null;
+  const destino = path.resolve(saida, `${base}.png`);
+  if (path.dirname(destino) !== path.resolve(saida)) return null;
+  return destino;
 }
 
-await ctx.close();
-fs.rmSync(perfil, { recursive: true, force: true });
+const aoVivo = process.argv.includes("--ao-vivo");
+const id = idDaExtensao(dist);
+
+/**
+ * O PERFIL É O ARQUIVO SENSÍVEL DESTE SCRIPT. No modo `--ao-vivo` ele guarda o
+ * `chrome.storage.local` da extensão — ou seja, a chave de IA que você acabou
+ * de colar. Se o processo morrer sem apagá-lo, a chave fica num diretório
+ * temporário, viva, à espera de quem passar por lá.
+ *
+ * Por isso a remoção acontece em `finally` E nos sinais: Ctrl-C manda SIGINT, o
+ * `finally` não roda, e a versão anterior deste script vazava exatamente aí.
+ * `mkdtemp` já cria o diretório como 0700 — o `chmod` explícito existe para que
+ * isso seja uma decisão, não uma herança de plataforma.
+ */
+const perfil = fs.mkdtempSync(path.join(os.tmpdir(), "bruto-perfil-"));
+fs.chmodSync(perfil, 0o700);
+
+let ctx = null;
+
+/**
+ * Apagar não basta: **o navegador tem de morrer primeiro.** Medido nesta lane —
+ * a primeira versão do conserto apagava o perfil direto no handler de sinal, e
+ * o Chromium, ainda vivo e com os arquivos abertos, RECRIAVA o diretório ao
+ * descer. Sobrava um perfil órfão com cara de bug aleatório. Por isso a ordem é
+ * fechar o contexto e só então remover — e conferir, porque a corrida pode
+ * ainda assim recriar o diretório.
+ */
+function limpar() {
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    try {
+      fs.rmSync(perfil, { recursive: true, force: true });
+      if (!fs.existsSync(perfil)) return true;
+    } catch {
+      // segue para a próxima tentativa
+    }
+    // Espera curta e ocupada de propósito: isto também roda em handler de sinal,
+    // onde não dá para aguardar uma promessa antes de o processo sair.
+    const ate = Date.now() + 250;
+    while (Date.now() < ate) {
+      /* aguarda o navegador soltar os arquivos */
+    }
+  }
+  console.error(
+    `\n⚠  não consegui apagar o perfil: ${perfil}\n` +
+      `   APAGUE À MÃO — ele pode conter a sua chave de IA.\n`,
+  );
+  return false;
+}
+
+/** Fecha o navegador (com teto de tempo) e só então limpa. */
+async function encerrar(codigo) {
+  if (ctx !== null) {
+    const ctxLocal = ctx;
+    ctx = null;
+    await Promise.race([
+      ctxLocal.close().catch(() => {}),
+      new Promise((r) => setTimeout(r, 5000)),
+    ]);
+  }
+  limpar();
+  process.exit(codigo);
+}
+
+for (const sinal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(sinal, () => {
+    void encerrar(130);
+  });
+}
+
+try {
+  ctx = await chromium.launchPersistentContext(perfil, {
+    headless: false,
+    args: [`--disable-extensions-except=${dist}`, `--load-extension=${dist}`],
+    viewport: { width: LARGURA, height: ALTURA },
+    // O Playwright instala os PRÓPRIOS handlers de sinal, que fecham o navegador
+    // e chamam `process.exit(130)` — antes de a limpeza daqui terminar. Foi o que
+    // aconteceu: o Ctrl-C saía com 130, sem apagar nada e sem nem avisar, e o
+    // perfil com a chave ficava no disco. Quem manda no encerramento é este
+    // script, porque é ele que sabe que há um segredo para apagar.
+    handleSIGINT: false,
+    handleSIGTERM: false,
+    handleSIGHUP: false,
+  });
+
+  fs.mkdirSync(saida, { recursive: true });
+
+  if (aoVivo) {
+    /**
+     * A PEGADINHA que este modo existe para contornar: a página do popup aberta
+     * como aba NÃO consegue destrinchar. Ela pergunta qual é a aba ativa, a
+     * resposta é ela mesma, e cai na tela "isto não é um vídeo do YouTube". A
+     * primeira versão daqui abria essa página e prometia a captura da aula — que
+     * por ali não aparece nunca.
+     *
+     * O caminho que funciona passa pela Bancada: você destrincha pelo popup de
+     * verdade (o do ícone na barra, que nenhum script consegue fotografar porque
+     * é interface do navegador, não página), a aula fica guardada, e a página do
+     * popup em aba mostra essa MESMA aula pela Bancada. A foto sai de conteúdo de
+     * página, e a aula nela é real — feita com a sua chave, do vídeo que você
+     * escolheu.
+     */
+    const yt = await ctx.newPage();
+    await yt.goto("https://www.youtube.com", { waitUntil: "domcontentloaded" }).catch(() => {});
+    const pgPopup = await ctx.newPage();
+    await pgPopup.goto(`chrome-extension://${id}/options/options.html`);
+
+    console.log(
+      `\nChromium aberto com a extensão carregada. O caminho, na ordem:\n\n` +
+        `  1. na aba de opções, escolha o provedor e cole a sua chave;\n` +
+        `  2. vá para a aba do YouTube, abra um vídeo e clique no ÍCONE do Bruto\n` +
+        `     na barra do navegador — é ali que se destrincha;\n` +
+        `  3. volte para a aba de opções e abra  chrome-extension://${id}/popup/popup.html\n` +
+        `     (ou recarregue, se já estiver nela). Clique em Bancada e abra a aula;\n` +
+        `  4. deixe a aula na tela, na frente, e volte aqui.\n\n` +
+        `  A aba de opções mostra a sua chave. Se ela estiver visível quando você\n` +
+        `  fotografar, a chave vai junto no PNG — aviso de novo antes de gravar.\n`,
+    );
+
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const resposta = (await rl.question("nome do arquivo (sem .png) [aula]: ")).trim();
+    rl.close();
+
+    const arq = arquivoSeguro(resposta === "" ? "aula" : resposta);
+    if (arq === null) {
+      console.error(`\n✖ nome de arquivo recusado — use letras, números, hífen ou sublinhado.\n`);
+      process.exitCode = 1;
+    } else {
+      // Fotografa a aba que VOCÊ deixou na frente, não uma escolhida aqui: o passo
+      // 3 acima pode terminar em qualquer página da extensão.
+      const visiveis = [];
+      for (const p of ctx.pages()) {
+        if (p.isClosed()) continue;
+        const v = await p.evaluate(() => document.visibilityState === "visible").catch(() => false);
+        if (v) visiveis.push(p);
+      }
+      const alvo = visiveis.at(-1) ?? pgPopup;
+      await alvo.setViewportSize({ width: LARGURA, height: ALTURA });
+      await alvo.screenshot({ path: arq });
+      console.log(`\n✔ ${path.relative(raiz, arq)} (${LARGURA}×${ALTURA})`);
+      if (alvo.url().includes("/options/")) {
+        console.log(
+          `\n⚠  a foto é da tela de OPÇÕES, que é onde a chave aparece.\n` +
+            `   Confira o PNG antes de subir à Loja — e apague-o se a chave estiver nele.\n`,
+        );
+      }
+      console.log("");
+    }
+  } else {
+    /**
+     * Só telas que uma instalação limpa realmente mostra. Nenhuma delas depende de
+     * chave, de rede ou de mexer no DOM — é a extensão recém-instalada, como
+     * qualquer pessoa a encontra no primeiro minuto.
+     */
+    const telas = [
+      { nome: "opcoes", url: `chrome-extension://${id}/options/options.html`, w: 600, h: 700 },
+      { nome: "popup-primeiro-uso", url: `chrome-extension://${id}/popup/popup.html`, w: 400, h: 560 },
+    ];
+    let falhas = 0;
+    for (const t of telas) {
+      const pg = await moldurar(ctx, t.url, t.w, t.h);
+      const arq = path.join(saida, `${t.nome}.png`);
+      await pg.screenshot({ path: arq });
+      const ok = await temConteudo(pg);
+      await pg.close();
+      if (!ok) falhas++;
+      console.log(`${ok ? "✔" : "✖"} ${path.relative(raiz, arq)} (${LARGURA}×${ALTURA})${ok ? "" : " — SAIU VAZIA"}`);
+    }
+    if (falhas) {
+      console.error(`\n✖ ${falhas} captura(s) saíram vazias — não envie.\n`);
+      // Sai pelo `finally`: `process.exit` aqui pularia a limpeza do perfil.
+      process.exitCode = 1;
+    } else {
+      console.log(
+        `\nEstas são as telas de instalação limpa. A captura que vende o produto — a\n` +
+          `aula pronta — precisa da sua chave: rode \`node scripts/captura-loja.mjs --ao-vivo\`.\n`,
+      );
+    }
+  }
+} finally {
+  if (ctx !== null) {
+    const ctxLocal = ctx;
+    ctx = null;
+    await ctxLocal.close().catch(() => {});
+  }
+  limpar();
+}
