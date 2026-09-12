@@ -31,7 +31,14 @@ import { stripFences } from "./parse";
 import type { LlmProvider, LlmRequest, LlmResult, ProviderId } from "./types";
 
 export { stripFences };
-export type { LlmRequest, LlmResult, LlmTier, LlmCapability, ProviderId } from "./types";
+export type {
+  LlmRequest,
+  LlmResult,
+  LlmTier,
+  LlmCapability,
+  LlmProvider,
+  ProviderId,
+} from "./types";
 
 const REGISTRO: Record<ProviderId, LlmProvider> = {
   "claude-cli": claudeCliProvider,
@@ -50,6 +57,20 @@ let escolhido: LlmProvider | null = null;
 /** Lista os provedores, para o doctor mostrar o estado de cada um. */
 export function listarProvedores(): LlmProvider[] {
   return Object.values(REGISTRO);
+}
+
+/** Um provedor pelo id, ou null se o id não existe. */
+export function provedorPorId(id: string): LlmProvider | null {
+  return (REGISTRO as Record<string, LlmProvider | undefined>)[id] ?? null;
+}
+
+/**
+ * Provedores de PLANO: os que autenticam pela assinatura já paga da pessoa, em
+ * vez de uma chave de API cobrada por token. `envVar === null` é exatamente
+ * esse critério — quem não tem variável de chave não tem chave.
+ */
+export function provedoresDePlano(): LlmProvider[] {
+  return listarProvedores().filter((p) => p.envVar === null);
 }
 
 /**
@@ -150,7 +171,21 @@ function classificar(err: unknown, provedor: LlmProvider): PipelineError {
  * Uma tentativa inicial e um retry — o mesmo que o wrapper anterior fazia.
  */
 export async function runLLM(req: LlmRequest): Promise<LlmResult> {
-  const provedor = await resolverProvedor();
+  return runLLMComProvedor(await resolverProvedor(), req);
+}
+
+/**
+ * O mesmo que `runLLM`, com o provedor JÁ escolhido por quem chama.
+ *
+ * Existe para o endpoint local (`/api/llm`), que precisa atender a extensão
+ * escolhendo um provedor por requisição — sem mexer no provedor que o pipeline
+ * resolveu uma vez por processo, e sem reimplementar o retry e a classificação
+ * de erro, que são justamente a parte onde se erra calado.
+ */
+export async function runLLMComProvedor(
+  provedor: LlmProvider,
+  req: LlmRequest,
+): Promise<LlmResult> {
   const timeoutMs = req.timeoutMs ?? TIMEOUT_PADRAO_MS;
 
   for (const capacidade of req.requires ?? []) {
