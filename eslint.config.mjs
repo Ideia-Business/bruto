@@ -16,6 +16,16 @@ const eslintConfig = defineConfig([
     // Build da extensão: código gerado, não fonte.
     "extension/dist/**",
 
+    // Worktrees por assunto (`.wt/<assunto>`, criados por `worktree-lane.sh`).
+    // São CÓPIAS inteiras deste mesmo repositório dentro dele. O git já as
+    // ignora (`.git/info/exclude`), mas o eslint tem lista própria: sem esta
+    // linha, `npm run lint` na raiz varre cada lane aberta e acusa milhares de
+    // problemas — inclusive em `src/components/ui/**`, que é ignorado só no
+    // caminho de cima. Medido: com 3 lanes abertas, 18.471 achados, 100% deles
+    // dentro de `.wt/` e nenhum no código versionado. Gate que reprova código
+    // são é pior que gate nenhum, porque ensina a ignorar o vermelho.
+    ".wt/**",
+
     // Componentes do shadcn/ui. São código de terceiro COPIADO para dentro do
     // repositório (é assim que o shadcn funciona — não é dependência). Corrigir
     // lint aqui significa divergir do upstream e brigar com o próximo `shadcn add`.
