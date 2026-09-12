@@ -62,7 +62,11 @@ const servidor = http.createServer((req, res) => {
     // resposta — só que essa rota CRIA SUBPROCESSOS (`claude auth status`,
     // `codex login status`). Um laço de `fetch` viraria centenas de processos na
     // máquina de quem instalou. Um cabeçalho não-safelisted força preflight.
-    if (req.method === "GET" && req.headers["x-bruto-cliente"] !== "extensao") {
+    // Exigido nas DUAS rotas, não só na saúde. No POST o `Content-Type` já
+    // forçaria o preflight sozinho — mas uma regra com uma exceção é como a
+    // classe fica aberta, e a exceção seria justamente a porta que gasta o
+    // dinheiro de quem usa. O duplo exige nas duas, senão o teste é decorativo.
+    if (req.headers["x-bruto-cliente"] !== "extensao") {
       res.writeHead(403, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "cabeçalho X-Bruto-Cliente ausente" }));
       return;
@@ -274,6 +278,17 @@ describe("pedirAoApp — contra um servidor de verdade", () => {
     responderJson({ text: "ok" });
     await pedirAoApp({ task: "study", prompt: "p" });
     assert.equal(ultimosCabecalhos["content-type"], "application/json");
+  });
+
+  test("MANDA `X-Bruto-Cliente` TAMBÉM no POST — a mesma tranca nas duas portas", async () => {
+    // Aqui ele é tecnicamente redundante (o `content-type` já força preflight),
+    // e é exatamente por isso que precisa de teste: o que parece dispensável é o
+    // que alguém remove "limpando". O duplo recusa sem ele nas duas rotas, então
+    // tirar daqui reprova este teste e mais um punhado.
+    responderJson({ text: "ok" });
+    await pedirAoApp({ task: "study", prompt: "p" });
+    assert.equal(ultimosCabecalhos["x-bruto-cliente"], "extensao");
+    assert.equal(ultimosCabecalhos["content-type"], "application/json", "e o outro continua indo");
   });
 
   test("sem o cabeçalho, o app devolve 415 — e isso vira defeito NOSSO, não da máquina dela", async () => {
