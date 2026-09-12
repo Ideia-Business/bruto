@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCatalog, getHistory, getHeroBruto, getActiveJobs, searchBrutos, isBrutoDone } from "@/db/queries";
+import { catalogoParaWire } from "@/lib/wire";
 import { parseMediaUrl } from "@/pipeline/lib/paths";
 import { enqueue } from "@/pipeline/runner";
 
@@ -10,12 +11,14 @@ export async function GET(req: Request) {
   if (q !== null) {
     return NextResponse.json({ results: searchBrutos(q) });
   }
-  return NextResponse.json({
-    hero: getHeroBruto(),
-    catalog: getCatalog(),
-    history: getHistory(),
-    activeJobs: getActiveJobs(),
-  });
+  return NextResponse.json(
+    catalogoParaWire({
+      hero: getHeroBruto(),
+      catalog: getCatalog(),
+      history: getHistory(),
+      activeJobs: getActiveJobs(),
+    }),
+  );
 }
 
 /** POST /api/videos { url, forceWhisper?, translate? } → cria job. Dedupe 409. */

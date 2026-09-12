@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { NextResponse } from "next/server";
+import { detalheParaWire } from "@/lib/wire";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { artifacts, jobs, brutos } from "@/db/schema";
@@ -11,7 +12,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const detail = getBrutoDetail(id);
   if (!detail) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
-  return NextResponse.json(detail);
+  return NextResponse.json(detalheParaWire(detail));
 }
 
 /** PATCH /api/videos/[id] { categoryId } → edita a categoria. */

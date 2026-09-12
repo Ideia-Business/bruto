@@ -86,7 +86,7 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
       )}
 
       {data.catalog.map((row) => (
-        <CategoryRow key={row.category.id} title={row.category.name} brutos={row.brutos} />
+        <CategoryRow key={row.category.id} title={row.category.name} brutos={row.videos} />
       ))}
 
       {data.history.length > 0 && (

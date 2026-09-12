@@ -21,7 +21,8 @@ export interface Category {
 
 export interface CategoryRow {
   category: Category;
-  brutos: BrutoCard[];
+  /** Chave do PAYLOAD, não do domínio: internamente são `brutos` (ver src/lib/wire.ts). */
+  videos: BrutoCard[];
 }
 
 export interface Job {
