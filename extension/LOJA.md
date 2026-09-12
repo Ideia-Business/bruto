@@ -14,12 +14,27 @@ Nada disto é automatizável — exige conta, cartão e cliques:
 1. **Conta de desenvolvedor** em [chrome.google.com/webstore/devconsole](https://chrome.google.com/webstore/devconsole)
    — taxa **única** de US$ 5. Use a identidade da empresa, não pessoal
    (ver `deploy-identity` no IdeiaOS: publicação sai sob identidade de serviço).
-2. **Hospedar a política de privacidade** num endereço público. Ela já está escrita em
-   [`PRIVACIDADE.md`](PRIVACIDADE.md); o endereço do próprio GitHub serve:
-   `https://github.com/Ideia-Business/bruto/blob/main/extension/PRIVACIDADE.md`
-3. **Capturas de tela** — a Loja exige pelo menos uma, em 1280×800 ou 640×400. Sugestão do que
-   mostrar, nesta ordem: o popup com uma aula pronta; a Bancada com três aulas; o Caderno com o
-   botão Lapidar.
+2. **Colar o endereço da política de privacidade** no console. Não precisa hospedar nada: o
+   arquivo está versionado e o endereço já responde publicamente (conferido em 12/09/2026,
+   `HTTP 200` sem nenhuma credencial). Cole exatamente isto:
+
+   ```
+   https://github.com/Ideia-Business/bruto/blob/main/extension/PRIVACIDADE.md
+   ```
+
+3. **A captura que vende o produto** — a aula pronta na tela. Ela precisa da sua chave de IA e de
+   um vídeo real, então nenhum agente pode produzi-la: usar a sua chave gastaria o seu dinheiro, e
+   montar a tela com texto inventado seria captura falsa, que é motivo de recusa. São dois minutos:
+
+   ```bash
+   npm run build:ext
+   node scripts/captura-loja.mjs --ao-vivo
+   ```
+
+   O Chromium abre com a extensão já carregada. Ponha a chave, destrinche um vídeo, deixe a aula na
+   tela e aperte ENTER no terminal — sai um PNG 1280×800 em `extension/pacote/capturas/`.
+   Vale repetir para a Bancada com algumas aulas e para o Caderno com o botão Lapidar.
+
 4. **Enviar o `.zip`** e responder o questionário de privacidade (respostas prontas abaixo).
 
 ## O que já está pronto
@@ -36,7 +51,60 @@ da Loja, ícone declarado e ausente, e script remoto (que a Loja proíbe). O CI 
 conferência a cada push.
 
 > ⚠️ **Gere o pacote com o Chromium instalado.** Sem ele o build sai sem ícones e a Loja recusa.
-> O script avisa em letras garrafais quando isso acontece — mas o aviso só ajuda quem lê.
+> O script avisa em letras garrafais quando isso acontece — mas o aviso só ajuda quem lê. Para
+> conferir sem depender do aviso: `unzip -p extension/pacote/bruto-*.zip manifest.json` tem de
+> mostrar a chave `icons`, e `unzip -l` os três PNG que ela declara.
+
+E duas capturas de instalação limpa — a tela de opções e o primeiro uso do popup — saem sozinhas,
+já no tamanho da Loja:
+
+```bash
+node scripts/captura-loja.mjs
+# → extension/pacote/capturas/opcoes.png e popup-primeiro-uso.png (1280×800)
+```
+
+Servem de apoio na listagem. A captura principal continua sendo a da aula pronta, que depende da
+sua chave — item 3 acima.
+
+---
+
+## Decidir antes de enviar — a descrição promete mais do que a extensão faz
+
+Auditoria de 12/09/2026, cruzando os textos daqui com o código da extensão. O achado é de uma
+classe só: **os textos descrevem o aplicativo local, não a extensão.** O que cada surface faz:
+
+| Entrega | Aplicativo local | Extensão |
+|---|---|---|
+| Resumo estruturado | sim | **sim** — é o que ela faz |
+| Transcrição para quem usa | sim | **não** — a fala é lida e mandada ao provedor, e nunca aparece na tela nem no arquivo |
+| Mapa mental | sim (`src/pipeline/prompts/mindmap.ts`) | **não** — não existe nenhum mapa na extensão |
+| Aula com objetivos, glossário e teste | sim (`src/pipeline/prompts/study.ts`) | **não** — ver abaixo |
+| Instagram e TikTok | sim | não, e os textos já dizem isso corretamente |
+
+As duas primeiras linhas já estão corrigidas: saíram da descrição curta e do manifesto.
+
+**A terceira precisa da sua decisão.** A descrição completa abaixo diz *"o que você deveria saber
+ao final, cada conceito explicado desde o começo, um glossário dos termos que o autor assumiu que
+você já conhecia, e um teste para descobrir se entendeu mesmo"*. A extensão chama a saída de
+"Aula" na tela, mas o prompt que ela usa é o do **resumo executivo**
+(`extension/src/popup/popup.ts` importa `summaryPrompt`), e ele produz quatro seções: Visão Geral,
+Pontos Principais, Conceitos e Definições, Conclusões e Ações. **Não há objetivos de aprendizagem
+e não há teste.** Um revisor que instalar a extensão e comparar com o texto vê a diferença.
+
+Dois caminhos, e o primeiro é o que honra o que o produto diz ser:
+
+1. **Fazer a extensão entregar a aula de verdade** — trocar `summaryPrompt` por `studyPrompt` no
+   popup. Não é uma linha: `studyPrompt` pede o `VideoMetadata` inteiro, e a extensão não tem
+   esses campos (foi por isso que `summaryPrompt` ganhou o tipo reduzido `MetaDoPrompt`). O
+   conserto é dar a `studyPrompt` o mesmo tipo reduzido. A resposta também fica mais longa, o que
+   custa mais tokens da chave de quem usa.
+2. **Baixar o texto ao que a extensão entrega hoje** — tirar da descrição completa a promessa de
+   glossário e teste. Mais barato, mas contradiz o `BRAND.md`, que define **Aula** como algo
+   *construído* e manda evitar o termo "resumo detalhado".
+
+Enquanto a decisão não sai, **a descrição completa abaixo está com a promessa de glossário e teste
+ainda escrita** — de propósito, para não rebaixar em silêncio o que o produto diz ser. Não cole no
+console antes de escolher.
 
 ---
 
@@ -48,11 +116,14 @@ conferência a cada push.
 Bruto — vídeo vira aula
 ```
 
-**Descrição curta** (máx. 132 — a que aparece no card de busca)
+**Descrição curta** (máx. 132 — a que aparece no card de busca; é o `description` do manifesto)
 
 ```
-Transforma o vídeo que você está assistindo numa aula em português: resumo, transcrição e mapa mental.
+Destrincha o vídeo do YouTube que você está vendo numa aula em português, com a sua chave de IA e sem servidor nenhum.
 ```
+
+> A versão anterior deste campo dizia "resumo, **transcrição** e **mapa mental**". Nenhum dos dois
+> existe na extensão — são do aplicativo local. Ver a seção **Decidir antes de enviar**.
 
 **Categoria:** Produtividade · **Idioma principal:** Português (Brasil)
 
@@ -127,8 +198,10 @@ do usuário, com o conteúdo que ele mesmo escreveu, para um destino nomeado na 
 
 ## Antes de clicar em enviar
 
+- [ ] a decisão da seção **Decidir antes de enviar** foi tomada, e a descrição completa reflete o
+      que a extensão entrega de fato
 - [ ] `npm run package:ext` rodou **com** Chromium instalado e não avisou "SEM ÍCONES"
 - [ ] a versão em `package.json` e no manifesto subiu desde o envio anterior
 - [ ] a política de privacidade está acessível no endereço informado
-- [ ] pelo menos uma captura de tela em 1280×800
+- [ ] pelo menos uma captura de tela em 1280×800, e a principal mostra uma aula de verdade
 - [ ] o roteiro de [`TESTANDO.md`](TESTANDO.md) passou numa instalação limpa
