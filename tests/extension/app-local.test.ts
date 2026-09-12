@@ -34,12 +34,28 @@ import {
 let responder: (req: http.IncomingMessage, res: http.ServerResponse) => void;
 /** O corpo que o duplo RECEBEU — é onde se prova que a chave não viajou. */
 let ultimoCorpo = "";
+/** Os cabeçalhos que o duplo RECEBEU. */
+let ultimosCabecalhos: http.IncomingHttpHeaders = {};
 
 const servidor = http.createServer((req, res) => {
   const pedacos: Buffer[] = [];
   req.on("data", (d: Buffer) => pedacos.push(d));
   req.on("end", () => {
     ultimoCorpo = Buffer.concat(pedacos).toString("utf8");
+    ultimosCabecalhos = req.headers;
+
+    // O duplo EXIGE `application/json`, como o app real passou a exigir. Não é
+    // capricho: é o que obriga uma página web a passar por preflight, e o
+    // preflight morre sem origem autorizada. Sem CORS a página não LÊ a
+    // resposta, mas com `text/plain` ela DISPARA a chamada assim mesmo — e o
+    // plano da pessoa queima em laço sem que ninguém precise ler nada.
+    // O duplo recusando junto é o que dá valor ao teste do cabeçalho.
+    if (req.method === "POST" && req.headers["content-type"] !== "application/json") {
+      res.writeHead(415, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "content-type deve ser application/json" }));
+      return;
+    }
+
     responder(req, res);
   });
 });
@@ -202,6 +218,48 @@ describe("pedirAoApp — contra um servidor de verdade", () => {
       assert.ok(!(proibido in corpo), `\`${proibido}\` não pode estar no corpo`);
     }
     assert.ok(!/sk-|Bearer/i.test(ultimoCorpo), "nada com cara de credencial no corpo");
+  });
+
+  test("MANDA `content-type: application/json` — é ele que protege o plano", async () => {
+    // Este cabeçalho não é formalidade: `application/json` fica FORA da lista de
+    // tipos dispensados de preflight, então uma página web qualquer que tente a
+    // mesma chamada esbarra no preflight e nunca chega ao app. Com `text/plain`
+    // a requisição seria simples, iria sem preflight, e o app executaria — a
+    // página só não leria a resposta, mas a assinatura já teria sido gasta.
+    // Se alguém "simplificar" o header daqui, é aqui que tem de falhar.
+    responderJson({ text: "ok" });
+    await pedirAoApp({ task: "study", prompt: "p" });
+    assert.equal(ultimosCabecalhos["content-type"], "application/json");
+  });
+
+  test("sem o cabeçalho, o app devolve 415 — e isso vira defeito NOSSO, não da máquina dela", async () => {
+    // O duplo recusa qualquer POST sem `application/json` (ver o servidor acima),
+    // então basta provar que o 415 chega classificado e com saída acionável.
+    responder = (_req, res) => {
+      res.writeHead(415, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "tipo recusado" }));
+    };
+    await assert.rejects(
+      () => pedirAoApp({ task: "study", prompt: "p" }),
+      (e: unknown) => {
+        assert.ok(e instanceof AppLocalError && e.causa === "TIPO_RECUSADO");
+        assert.match(e.message, /defeito da extensão/);
+        return true;
+      },
+    );
+  });
+
+  test("413 vira recado de gente sobre o vídeo, não um número", async () => {
+    responderJson({ error: "corpo acima de 1 MB" }, 413);
+    await assert.rejects(
+      () => pedirAoApp({ task: "study", prompt: "p", input: "x".repeat(100) }),
+      (e: unknown) => {
+        assert.ok(e instanceof AppLocalError && e.causa === "GRANDE_DEMAIS");
+        assert.ok(!e.message.includes("413"), "o número não ajuda quem está na frente da tela");
+        assert.match(e.message, /longo demais/);
+        return true;
+      },
+    );
   });
 
   test("503 é SEM_PLANO — é o que faz a extensão cair para a chave", async () => {

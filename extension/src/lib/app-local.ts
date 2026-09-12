@@ -123,7 +123,13 @@ export async function verSaudeDoApp(timeoutMs: number = TIMEOUT_SAUDE_MS): Promi
   }
 }
 
-export type FalhaDoApp = "INDISPONIVEL" | "SEM_PLANO" | "PEDIDO_INVALIDO" | "RESPOSTA_INVALIDA";
+export type FalhaDoApp =
+  | "INDISPONIVEL"
+  | "SEM_PLANO"
+  | "PEDIDO_INVALIDO"
+  | "GRANDE_DEMAIS"
+  | "TIPO_RECUSADO"
+  | "RESPOSTA_INVALIDA";
 
 export class AppLocalError extends Error {
   readonly causa: FalhaDoApp;
@@ -158,6 +164,15 @@ export async function pedirAoApp(p: PedidoAoApp): Promise<string> {
       "/api/llm",
       {
         method: "POST",
+        // OBRIGATÓRIO, e não por formalidade: é este cabeçalho que **protege a
+        // assinatura da pessoa**. `application/json` não está na lista de tipos
+        // que o navegador dispensa de preflight, então uma página web qualquer
+        // que tente esta mesma chamada esbarra num preflight sem origem
+        // autorizada e nunca chega ao app. Com `text/plain` a requisição seria
+        // "simples": iria sem preflight, o app EXECUTARIA, e a página só não
+        // leria a resposta — o plano queimaria do mesmo jeito, em laço, a partir
+        // de um site num separador esquecido. O app recusa com 415 quem não
+        // manda isto; trocar por `undefined` derruba a integração inteira.
         headers: { "content-type": "application/json" },
         body: corpo,
         signal: p.signal,
@@ -177,7 +192,25 @@ export async function pedirAoApp(p: PedidoAoApp): Promise<string> {
     );
   }
   if (r.status === 400) {
+    // A rota só atende provedor de PLANO — pedir um provedor de chave por ela dá
+    // 400. Este código nunca manda `provedor`, então um 400 aqui é defeito nosso.
     throw new AppLocalError("PEDIDO_INVALIDO", "O app do Bruto recusou o pedido.");
+  }
+  if (r.status === 413) {
+    // `input` carrega a transcrição inteira; vídeo muito longo estoura 1 MB.
+    // Quem está na frente da tela precisa entender o que fazer, não ver "413".
+    throw new AppLocalError(
+      "GRANDE_DEMAIS",
+      "Esse vídeo é longo demais para o app dar conta de uma vez. Tente um vídeo menor, ou use uma chave de API nas opções.",
+    );
+  }
+  if (r.status === 415) {
+    // Só acontece se ALGUÉM TIROU o `content-type` daqui. Diz isso, em vez de
+    // mandar a pessoa caçar problema na máquina dela.
+    throw new AppLocalError(
+      "TIPO_RECUSADO",
+      "O app recusou o formato do pedido (415). Isso é defeito da extensão, não da sua máquina — relate o problema.",
+    );
   }
   if (!r.ok) {
     // Só o número atravessa — o corpo do erro é descartado, mesma regra do `llm.ts`.

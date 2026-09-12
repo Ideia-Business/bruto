@@ -193,11 +193,22 @@ permissão de localhost chama atenção — a resposta, curta:
 > A extensão manda ao app o prompt e a transcrição do vídeo, e **nunca a chave** do usuário: o
 > app não precisa dela, porque usa o plano.
 
-Vale dizer também **por que a permissão é necessária**: sem ela o navegador barraria a chamada
-por CORS. O app **não manda cabeçalho CORS de propósito** — é essa ausência que impede qualquer
-página web comum de alcançá-lo e queimar o plano da pessoa. Medido: de uma página web comum a
-mesma chamada falha (`TypeError: Failed to fetch`); da extensão, com a permissão declarada,
-responde `HTTP 200`.
+Vale dizer também **por que a permissão é necessária, e o que de fato protege o plano** — porque
+são duas coisas diferentes, e confundi-las é fácil:
+
+- **A permissão** é o que deixa a extensão ler a resposta do app. Sem ela, a chamada da extensão
+  morre como morreria a de qualquer página.
+- **O que protege o plano é o app exigir `Content-Type: application/json`.** Esse tipo fica fora
+  da lista que o navegador dispensa de verificação prévia, então uma página web que tente a mesma
+  chamada dispara antes um *preflight*, e o preflight morre sem origem autorizada.
+
+A explicação tentadora — "o app não manda cabeçalho CORS, então a página não alcança" — **está
+errada**, e vale registrar por quê: sem CORS a página não **lê** a resposta, mas **dispara** a
+requisição assim mesmo. Um POST `text/plain` é requisição simples: vai sem preflight, o app
+executaria, e o prejuízo (assinatura queimada em laço por um site num separador esquecido) não
+depende de ler resposta nenhuma. Medido no lado do app: `text/plain`,
+`x-www-form-urlencoded`, `multipart/form-data` e cabeçalho ausente → **415**; `application/json`
+→ 200. A extensão manda o cabeçalho sempre, e há teste que reprova se alguém o tirar.
 
 **Um ponto a não esquecer:** o botão **Lapidar** do Caderno abre o Lapid.ai levando o texto da
 faísca do usuário. É transmissão de conteúdo dele a um terceiro, disparada por clique explícito,

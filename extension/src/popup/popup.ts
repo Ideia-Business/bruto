@@ -14,6 +14,7 @@
 import { extrairVideoIdDaUrl } from "../lib/captura";
 import type { BrutoCapturado, CapturaError } from "../lib/captura";
 import { runLLM, LlmError, verModo } from "../lib/llm";
+import { AppLocalError, type FalhaDoApp } from "../lib/app-local";
 import { guardarAula, listarBancada, esquecerAula, limparBancada } from "../lib/bancada";
 import type { AulaGuardada } from "../lib/bancada";
 import { guardarFaisca, listarFaiscas, esquecerFaisca } from "../lib/caderno";
@@ -334,6 +335,30 @@ function falhaDeCaptura(codigo: CodigoCaptura, msg: string): Falha {
   }
 }
 
+/**
+ * Falha do app local. A saída NÃO é "tente de novo" em todos os casos: repetir
+ * um vídeo longo demais dá o mesmo 413 para sempre, e repetir um 415 esconde um
+ * defeito nosso atrás da impressão de instabilidade.
+ */
+function falhaDoApp(causa: FalhaDoApp, msg: string): Falha {
+  switch (causa) {
+    case "GRANDE_DEMAIS":
+      return { titulo: msg, saida: "Repetir não muda — o vídeo é que é grande demais." };
+    case "TIPO_RECUSADO":
+    case "PEDIDO_INVALIDO":
+      return { titulo: msg, saida: "Enquanto isso, uma chave de API nas opções faz a aula sair." };
+    case "SEM_PLANO":
+      return {
+        titulo: msg,
+        saida: "Confira o provedor de plano no app, ou ponha uma chave nas opções.",
+      };
+    case "RESPOSTA_INVALIDA":
+      return { titulo: msg, saida: "Atualize o app do Bruto — ele e a extensão não estão falando a mesma língua." };
+    case "INDISPONIVEL":
+      return { titulo: msg, saida: "O app caiu no meio do caminho. Suba-o de novo e tente outra vez." };
+  }
+}
+
 function falhaDoModelo(codigo: CodigoLlm, msg: string): Falha {
   switch (codigo) {
     case "SEM_CONFIG":
@@ -493,6 +518,10 @@ async function destrinchar(): Promise<void> {
     }
     if (e instanceof LlmError) {
       mostrarFalha(falhaDoModelo(e.codigo, e.message));
+      return;
+    }
+    if (e instanceof AppLocalError) {
+      mostrarFalha(falhaDoApp(e.causa, e.message));
       return;
     }
     if (ehErroDeCaptura(e)) {
