@@ -1,6 +1,10 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-/** Skeleton exibido durante navegações do App Router (percepção de rapidez). */
+/**
+ * Skeleton da home durante navegações do App Router (percepção de rapidez).
+ * Escopado ao route group `(home)` — só cobre `/`, nunca as rotas dinâmicas
+ * que podem dar 404 (ver debt removido de filao/[slug]/page.tsx).
+ */
 export default function Loading() {
   return (
     <div className="mx-auto w-full max-w-7xl flex-1 space-y-8 px-4 py-6 sm:px-6">

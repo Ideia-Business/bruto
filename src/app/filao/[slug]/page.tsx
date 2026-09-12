@@ -17,14 +17,6 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function FilaoPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const filao = getFilaoBySlug(slug);
-  // debt: o conteúdo de 404 renderiza certo e o `noindex` é injetado, mas o
-  // status HTTP sai 200. Causa: `src/app/loading.tsx` na raiz é um limite de
-  // Suspense acima de toda página — o stream começa pelo fallback e o servidor
-  // já se comprometeu com 200 antes de qualquer `notFound()` rodar (ver
-  // node_modules/next/dist/docs/01-app/02-guides/streaming.md, "Status codes").
-  // Vale para o app inteiro, não só aqui: /video/<id-inexistente> também dá 200.
-  // Cura real: tirar o loading.tsx da raiz e pôr um por rota que precise dele —
-  // decisão de UX do app, não desta feature.
   if (!filao) notFound();
 
   const brutos = getFilaoBrutos(filao.id) as unknown as VideoCardData[];
