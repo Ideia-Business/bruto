@@ -52,15 +52,21 @@ const TETO_SAUDE_BYTES = 64 * 1024;
 const TETO_GERACAO_BYTES = 4 * 1024 * 1024;
 
 /**
- * Cabeçalho exigido pelo app na rota de saúde (contrato de 13/09/2026).
+ * Cabeçalho exigido pelo app nas DUAS rotas (contrato de 13/09/2026).
  *
- * A saúde é um GET, e GET simples qualquer página dispara — sem CORS, sem ler
- * resposta. Só que essa rota **cria subprocessos** (`claude auth status`,
- * `codex login status`): um laço de `fetch` de um site num separador esquecido
- * viraria centenas de processos na máquina de quem instalou. `X-Bruto-Cliente`
- * não está na lista de cabeçalhos dispensados de verificação prévia, então a
- * tentativa vira preflight — e o preflight morre sem origem autorizada. É a
- * mesma tranca do `Content-Type` no POST, na porta que tinha ficado de fora.
+ * Nenhuma das duas pode ser alcançada por uma página web qualquer. A saúde é um
+ * GET, e GET simples qualquer página dispara — sem CORS, sem ler resposta — só
+ * que essa rota **cria subprocessos** (`claude auth status`, `codex login
+ * status`): um laço de `fetch` de um site num separador esquecido viraria
+ * centenas de processos na máquina de quem instalou. `X-Bruto-Cliente` não está
+ * na lista de cabeçalhos dispensados de verificação prévia, então a tentativa
+ * vira preflight — e o preflight morre sem origem autorizada.
+ *
+ * No POST ele é, tecnicamente, redundante: o `Content-Type: application/json`
+ * já força o preflight sozinho. Vai assim mesmo, e essa é a lição desta sessão
+ * inteira — **uma regra aplicada em todo lugar menos num é exatamente como a
+ * classe fica aberta**, e o lugar de fora seria o que gasta o dinheiro de quem
+ * usa. Uma regra só, sem exceção que alguém precise redescobrir depois.
  */
 const CABECALHO_CLIENTE = { "X-Bruto-Cliente": "extensao" } as const;
 
@@ -294,7 +300,12 @@ export async function pedirAoApp(p: PedidoAoApp): Promise<string> {
         // leria a resposta — o plano queimaria do mesmo jeito, em laço, a partir
         // de um site num separador esquecido. O app recusa com 415 quem não
         // manda isto; trocar por `undefined` derruba a integração inteira.
-        headers: { "content-type": "application/json" },
+        //
+        // E `X-Bruto-Cliente` vem junto, embora AQUI o `content-type` já bastasse
+        // para forçar a verificação prévia. É de propósito: a mesma tranca nas
+        // duas portas, sem exceção que alguém precise redescobrir daqui a um ano
+        // — e a porta isenta seria justamente a que gasta o dinheiro da pessoa.
+        headers: { "content-type": "application/json", ...CABECALHO_CLIENTE },
         body: corpo,
         signal: p.signal,
       },
