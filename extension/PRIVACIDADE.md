@@ -59,6 +59,9 @@ mesma empresa) levando **o texto da sua faísca** — copiado para a área de tr
 também embutido no endereço, limitado a 1200 caracteres. Isso é uma transmissão de conteúdo seu
 para um site de terceiro, e acontece **exclusivamente** quando você clica nesse botão.
 
+Vai junto um único dado que não é seu: uma marca de origem (`de=bruto`) no endereço, para o Lapid
+saber de onde veio a visita. Ela não identifica você nem o seu navegador.
+
 O que **não** vai junto: o resumo do vídeo, a transcrição, a aula, sua chave, ou qualquer outra
 faísca. Só a anotação daquela faísca.
 
