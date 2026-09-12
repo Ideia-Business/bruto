@@ -16,7 +16,7 @@
  */
 import { NextResponse } from "next/server";
 import { listarProvedores } from "@/pipeline/lib/llm";
-import { recusarSeNaoForLocal } from "@/lib/endpoint-local";
+import { recusarSeNaoForChamadaDeCliente } from "@/lib/endpoint-local";
 
 export const dynamic = "force-dynamic";
 
@@ -31,10 +31,33 @@ interface ProvedorNaSaude {
 const CACHE_MS = 15_000;
 let cache: { em: number; provedores: ProvedorNaSaude[] } | null = null;
 
+/**
+ * A medição EM VOO, compartilhada por quem chegar durante ela.
+ *
+ * Sem isto, N chamadas concorrentes com o cache frio viram N medições, e cada
+ * medição são dois subprocessos (`claude auth status`, `codex login status`).
+ * Medido antes desta mudança: 40 requisições simultâneas produziram um pico de
+ * 16 subprocessos vivos ao mesmo tempo. Com a coalescência, as que chegam
+ * durante uma medição esperam a MESMA promessa, e o pico volta a ser o de uma
+ * medição só.
+ */
+let emVoo: Promise<ProvedorNaSaude[]> | null = null;
+
 async function medir(): Promise<ProvedorNaSaude[]> {
   const agora = Date.now();
   if (cache && agora - cache.em < CACHE_MS) return cache.provedores;
+  if (emVoo) return emVoo;
 
+  emVoo = medirAgora();
+  try {
+    return await emVoo;
+  } finally {
+    emVoo = null;
+  }
+}
+
+async function medirAgora(): Promise<ProvedorNaSaude[]> {
+  const agora = Date.now();
   const provedores = await Promise.all(
     listarProvedores().map(async (p): Promise<ProvedorNaSaude> => {
       const d = await p.availability();
@@ -53,7 +76,10 @@ async function medir(): Promise<ProvedorNaSaude[]> {
 }
 
 export async function GET(req: Request) {
-  const recusa = recusarSeNaoForLocal(req);
+  // Esta rota não gasta plano, mas CRIA SUBPROCESSO — e por isso não é
+  // "somente-leitura" para efeito de guarda. O cabeçalho obriga preflight em
+  // qualquer página, que morre por não haver origem autorizada.
+  const recusa = recusarSeNaoForChamadaDeCliente(req);
   if (recusa) return recusa;
 
   return NextResponse.json({ ok: true, provedores: await medir() });
