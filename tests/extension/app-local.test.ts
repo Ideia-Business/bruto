@@ -303,13 +303,40 @@ describe("pedirAoApp — contra um servidor de verdade", () => {
     );
   });
 
-  test("cancelamento de quem chamou atravessa como cancelamento", async () => {
+  test("cancelamento de quem chamou corta NA HORA, e não no fim do timeout", async () => {
+    // A versão anterior deste teste passava — em 180 006 ms. Ela não media
+    // cancelamento nenhum: media o relógio interno estourando, porque o sinal de
+    // quem chamou estava sendo descartado no caminho. Um teste de cancelamento
+    // que não crava PRAZO é um teste de timeout com outro nome.
     responder = () => {
       /* nunca responde: quem decide parar é quem pediu */
     };
     const controle = new AbortController();
-    const promessa = pedirAoApp({ task: "study", prompt: "p", signal: controle.signal });
+    const t0 = Date.now();
+    const promessa = pedirAoApp({
+      task: "study",
+      prompt: "p",
+      // Bem maior que o prazo cobrado abaixo: se o corte vier do relógio interno
+      // em vez do botão, o teste estoura o prazo e reprova.
+      timeoutMs: 60_000,
+      signal: controle.signal,
+    });
     controle.abort();
     await assert.rejects(promessa, (e: unknown) => (e as Error).name === "AbortError");
+    const gasto = Date.now() - t0;
+    assert.ok(gasto < 2000, `cancelou em ${gasto} ms — tinha de ser imediato, não esperar o relógio`);
+  });
+
+  test("o relógio interno continua cortando quem não é cancelado", async () => {
+    // O conserto combina dois sinais; o risco do conserto é matar o outro.
+    responder = () => {
+      /* nunca responde */
+    };
+    const t0 = Date.now();
+    await assert.rejects(
+      () => pedirAoApp({ task: "study", prompt: "p", timeoutMs: 400 }),
+      (e: unknown) => e instanceof AppLocalError && e.causa === "INDISPONIVEL",
+    );
+    assert.ok(Date.now() - t0 < 4000, "o teto de tempo tem de continuar valendo");
   });
 });
