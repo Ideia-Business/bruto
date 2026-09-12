@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { FilaoRow } from "@/lib/api-types";
+import { fetchApp } from "@/lib/fetch-app";
 
 /**
  * O painel de filões: cria, renomeia, apaga e leva para dentro de cada um.
@@ -22,7 +23,7 @@ export function FiloesClient({ initial }: { initial: FilaoRow[] }) {
 
   const refetch = useCallback(async () => {
     try {
-      const res = await fetch("/api/filoes");
+      const res = await fetchApp("/api/filoes");
       const data = (await res.json()) as { filoes: FilaoRow[] };
       setRows(data.filoes);
     } catch {
@@ -35,7 +36,7 @@ export function FiloesClient({ initial }: { initial: FilaoRow[] }) {
     if (!name || criando) return;
     setCriando(true);
     try {
-      const res = await fetch("/api/filoes", {
+      const res = await fetchApp("/api/filoes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -61,7 +62,7 @@ export function FiloesClient({ initial }: { initial: FilaoRow[] }) {
       setEditando(null);
       setRows((r) => r.map((x) => (x.filao.id === id ? { ...x, filao: { ...x.filao, name } } : x)));
       try {
-        await fetch(`/api/filoes/${id}`, {
+        await fetchApp(`/api/filoes/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name }),
@@ -83,7 +84,7 @@ export function FiloesClient({ initial }: { initial: FilaoRow[] }) {
       if (!confirm(aviso)) return;
       setRows((r) => r.filter((x) => x.filao.id !== id));
       try {
-        await fetch(`/api/filoes/${id}`, { method: "DELETE" });
+        await fetchApp(`/api/filoes/${id}`, { method: "DELETE" });
       } catch {
         toast.error("O filão não foi apagado.");
         await refetch();

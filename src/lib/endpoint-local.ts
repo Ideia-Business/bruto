@@ -54,6 +54,49 @@ export function recusarSeNaoForLocal(req: Request): NextResponse | null {
 }
 
 /**
+ * Clientes que este app atende. O valor não é segredo nem autenticação — ele
+ * existe porque **um cabeçalho fora da lista de seguros obriga o navegador a
+ * fazer preflight**, e o preflight morre aqui por não haver cabeçalho de origem
+ * nenhum para autorizá-lo.
+ */
+export const CLIENTES_CONHECIDOS = ["app", "extensao"];
+
+/**
+ * A guarda das rotas com EFEITO ou CUSTO — a porta por onde toda mutação passa.
+ *
+ * Por que não basta a ausência de CORS: um POST simples (corpo `text/plain`, ou
+ * sem corpo nenhum) sai do navegador SEM preflight. A página não lê a resposta,
+ * mas o efeito já aconteceu. Medido nesta lane, antes desta guarda existir: um
+ * POST `text/plain` com `Origin` de outro site criou um filão de verdade
+ * ("INVADIDO pelo site", HTTP 201), e um POST em `/api/videos` chegou à
+ * validação — ou seja, o corpo foi lido e processado.
+ *
+ * O `Content-Type: application/json` resolveria o caso do corpo, mas não o do
+ * POST **sem corpo** (`retry`, `study`), onde não há tipo para exigir. Um
+ * cabeçalho próprio cobre os dois, e cobre igual — daí ser este o critério
+ * único, em vez de duas regras que divergem com o tempo.
+ *
+ * Rotas somente-leitura (catálogo, mídia, status de job) NÃO usam esta guarda:
+ * não têm efeito nem custo, e travá-las quebraria coisa à toa.
+ */
+export function recusarSeNaoForClienteConhecido(req: Request): NextResponse | null {
+  const cliente = req.headers.get("x-bruto-cliente");
+  if (cliente && CLIENTES_CONHECIDOS.includes(cliente)) return null;
+  return NextResponse.json(
+    { error: "Cabeçalho X-Bruto-Cliente ausente ou desconhecido." },
+    { status: 415 },
+  );
+}
+
+/**
+ * O que toda rota com efeito chama na primeira linha: é local **e** veio de um
+ * cliente conhecido. Um lugar só, para não haver rota que lembre metade.
+ */
+export function recusarSeNaoForChamadaDeCliente(req: Request): NextResponse | null {
+  return recusarSeNaoForLocal(req) ?? recusarSeNaoForClienteConhecido(req);
+}
+
+/**
  * Exige `Content-Type: application/json` — e isto é SEGURANÇA, não formalidade.
  *
  * A ausência de CORS impede que uma página LEIA a resposta. Não impede que ela

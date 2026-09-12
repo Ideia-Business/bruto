@@ -245,9 +245,11 @@ export const claudeCliProvider: LlmProvider = {
     const model = MODELO[req.tier ?? "balanced"];
     const querBusca = req.requires?.includes("webSearch") ?? false;
 
+    // Mesma classe do codex-cli: medido que `claude -p "--version"` imprimia
+    // `2.1.269 (Claude Code)` em vez de chamar o modelo. O prompt vai depois
+    // do terminador `--`, sempre.
     const args = [
       "-p",
-      req.prompt,
       "--output-format",
       "json",
       "--model",
@@ -256,6 +258,8 @@ export const claudeCliProvider: LlmProvider = {
       "--no-session-persistence",
       "--strict-mcp-config",
       "--disable-slash-commands",
+      "--",
+      req.prompt,
     ];
 
     const r = await executar(args, req.input, timeoutMs);

@@ -8,6 +8,7 @@ import { CategoryRow } from "./category-row";
 import { ProcessingCard } from "./processing-card";
 import { UrlInputDialog } from "./url-input-dialog";
 import type { CatalogResponse, Job } from "@/lib/api-types";
+import { fetchApp } from "@/lib/fetch-app";
 
 /**
  * Orquestra a home: renderiza o catálogo inicial (do servidor) e mantém a row
@@ -21,7 +22,7 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
 
   const refetch = useCallback(async () => {
     try {
-      const res = await fetch("/api/videos");
+      const res = await fetchApp("/api/videos");
       const fresh = (await res.json()) as CatalogResponse;
       setData(fresh);
       setActiveJobs(fresh.activeJobs);

@@ -277,9 +277,13 @@ export const codexCliProvider: LlmProvider = {
   async run(req: LlmRequest, timeoutMs: number): Promise<LlmResult> {
     const esforco = ESFORCO[req.tier ?? "balanced"];
 
+    // O `req.prompt` vem DEPOIS de `--`, e nunca antes das flags. Medido: com o
+    // prompt na frente, `codex exec "--version"` imprimia `codex-cli-exec
+    // 0.153.4` e o modelo nunca era chamado — ou seja, texto de fora virava
+    // flag do CLI, inclusive a que pula a sandbox, num processo que herda
+    // HOME e CODEX_HOME. Com o terminador, chega como texto.
     const args = [
       "exec",
-      req.prompt,
       "--sandbox",
       "read-only",
       "--ephemeral",
@@ -289,6 +293,8 @@ export const codexCliProvider: LlmProvider = {
       "never",
       "-c",
       `model_reasoning_effort=${esforco}`,
+      "--",
+      req.prompt,
     ];
 
     const r = await executar(args, req.input, timeoutMs);

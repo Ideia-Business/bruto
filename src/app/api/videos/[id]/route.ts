@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { NextResponse } from "next/server";
+import { recusarSeNaoForChamadaDeCliente } from "@/lib/endpoint-local";
 import { detalheParaWire } from "@/lib/wire";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
@@ -17,6 +18,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
 /** PATCH /api/videos/[id] { categoryId } → edita a categoria. */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const recusa = recusarSeNaoForChamadaDeCliente(req);
+  if (recusa) return recusa;
+
   const { id } = await params;
   const body = (await req.json().catch(() => ({}))) as { categoryId?: number; title?: string };
 
@@ -38,7 +42,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 /** DELETE /api/videos/[id] → remove registro + pasta de artefatos. */
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const recusa = recusarSeNaoForChamadaDeCliente(req);
+  if (recusa) return recusa;
+
   const { id } = await params;
   // Ordem: artifacts → jobs → video (FKs), depois a pasta no disco.
   db.delete(artifacts).where(eq(artifacts.videoId, id)).run();
