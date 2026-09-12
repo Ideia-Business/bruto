@@ -21,6 +21,7 @@ export type LlmCapability = "webSearch";
 
 export type ProviderId =
   | "claude-cli"
+  | "codex-cli"
   | "anthropic"
   | "openai"
   | "openrouter"

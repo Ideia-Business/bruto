@@ -21,7 +21,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { redact } from "../redact";
+import { ENV_SENSIVEIS, redact } from "../redact";
 import type { LlmCapability, LlmProvider, LlmRequest, LlmResult } from "../types";
 
 const MODELO: Record<string, string> = {
@@ -30,20 +30,9 @@ const MODELO: Record<string, string> = {
   deep: "opus",
 };
 
-/** Chaves de API que este provedor jamais precisa — e que por isso não passa adiante. */
-const CHAVES_DE_OUTROS = [
-  "ANTHROPIC_API_KEY",
-  "OPENAI_API_KEY",
-  "OPENROUTER_API_KEY",
-  "OLLAMA_API_KEY",
-  "GOOGLE_API_KEY",
-  "GEMINI_API_KEY",
-  "BRUTO_LLM_API_KEY",
-];
-
 function semChavesDeOutros(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
-  for (const nome of CHAVES_DE_OUTROS) delete env[nome];
+  for (const nome of ENV_SENSIVEIS) delete env[nome];
   return env;
 }
 

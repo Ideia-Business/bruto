@@ -17,6 +17,7 @@
 
 import { PipelineError } from "@/pipeline/types";
 import { claudeCliProvider } from "./providers/claude-cli";
+import { codexCliProvider } from "./providers/codex-cli";
 import { anthropicProvider } from "./providers/anthropic";
 import {
   openaiProvider,
@@ -34,6 +35,7 @@ export type { LlmRequest, LlmResult, LlmTier, LlmCapability, ProviderId } from "
 
 const REGISTRO: Record<ProviderId, LlmProvider> = {
   "claude-cli": claudeCliProvider,
+  "codex-cli": codexCliProvider,
   anthropic: anthropicProvider,
   openai: openaiProvider,
   openrouter: openrouterProvider,
@@ -88,6 +90,7 @@ export async function resolverProvedor(): Promise<LlmProvider> {
     "ollama-cloud",
     "google",
     "claude-cli",
+    "codex-cli",
   ];
   const motivos: string[] = [];
   for (const id of ordem) {

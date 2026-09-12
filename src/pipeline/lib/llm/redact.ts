@@ -22,8 +22,11 @@
  * um tempo a chave dessas duas não era redigida. **Provedor novo entra aqui no
  * mesmo commit**, e o teste em `redact` cobre a lista inteira justamente para
  * que o esquecimento apareça.
+ *
+ * Exportada porque os provedores de CLI PODAM estas mesmas variáveis do env do
+ * subprocesso (least-privilege). Uma lista só, num lugar só.
  */
-const ENV_SENSIVEIS = [
+export const ENV_SENSIVEIS = [
   "ANTHROPIC_API_KEY",
   "OPENAI_API_KEY",
   "OPENROUTER_API_KEY",
