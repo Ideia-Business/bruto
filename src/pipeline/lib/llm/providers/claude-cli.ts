@@ -191,10 +191,14 @@ export const claudeCliProvider: LlmProvider = {
     }
 
     if (logado === null) {
-      // Nem JSON nem contrato conhecido. O caso provável é um Claude Code
-      // anterior ao subcomando `auth` — dizer isso é mais útil que "sem login",
-      // que mandaria a pessoa fazer um login que já existe.
-      if (r.code === 0) return { ok: true as const };
+      // Nem JSON nem contrato conhecido — e aqui NÃO se aceita exit 0 como
+      // "pronto". Esta é a mesma regra do ramo de baixo, que antes valia só lá:
+      // falhar fechado custa uma mensagem a quem tem plano; falhar aberto custa
+      // o dinheiro de quem tem chave. Uma versão que respondesse texto em vez de
+      // JSON — ou que escrevesse o JSON no stderr, exatamente a armadilha
+      // encontrada no `codex login status` — sairia 0 estando autenticada por
+      // CHAVE DE API, e este provedor anunciaria plano enquanto cobrava por
+      // token. Só há disponibilidade com confirmação POSITIVA.
       return {
         ok: false as const,
         reason:
