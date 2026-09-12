@@ -97,11 +97,44 @@ export function lerTexto(cru: unknown): string | null {
   return texto.trim() === "" ? null : texto;
 }
 
+/**
+ * Junta o sinal de quem chamou com o do relógio interno. São DOIS motivos
+ * legítimos de parar, e os dois precisam valer.
+ *
+ * A versão anterior escrevia `{ ...init, signal: relogio.signal }` e, com isso,
+ * o `signal` que vinha no `init` era **sobrescrito**. O botão "Cancelar" do popup
+ * deixava de cortar coisa alguma: a requisição ficava pendurada até 180 s,
+ * podendo consumir um turno do modelo que a pessoa paga, e a tela não voltava.
+ * O teste de cancelamento passava — em 180 006 ms, medindo o relógio interno e
+ * chamando isso de cancelamento.
+ */
+function unirSinais(deQuemChamou: AbortSignal | undefined, relogio: AbortSignal): AbortSignal {
+  if (deQuemChamou === undefined) return relogio;
+
+  const any = (AbortSignal as { any?: (s: AbortSignal[]) => AbortSignal }).any;
+  if (typeof any === "function") return any([deQuemChamou, relogio]);
+
+  // Alvos sem `AbortSignal.any`: encadeia na mão, preservando o motivo — é ele
+  // que faz o `AbortError` de quem cancelou chegar distinguível lá na frente.
+  const juntos = new AbortController();
+  for (const s of [deQuemChamou, relogio]) {
+    if (s.aborted) {
+      juntos.abort(s.reason);
+      return juntos.signal;
+    }
+    s.addEventListener("abort", () => juntos.abort(s.reason), { once: true });
+  }
+  return juntos.signal;
+}
+
 async function buscar(caminho: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const relogio = new AbortController();
   const corte = setTimeout(() => relogio.abort(), timeoutMs);
   try {
-    return await fetch(`${APP_BASE}${caminho}`, { ...init, signal: relogio.signal });
+    return await fetch(`${APP_BASE}${caminho}`, {
+      ...init,
+      signal: unirSinais(init.signal ?? undefined, relogio.signal),
+    });
   } finally {
     clearTimeout(corte);
   }
