@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import { NextResponse } from "next/server";
-import { recusarSeNaoForChamadaDeCliente } from "@/lib/endpoint-local";
+import {
+  lerJsonLimitado,
+  LIMITE_CORPO_PEQUENO,
+  recusarSeNaoForChamadaDeCliente,
+} from "@/lib/endpoint-local";
 import { detalheParaWire } from "@/lib/wire";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
@@ -22,7 +26,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (recusa) return recusa;
 
   const { id } = await params;
-  const body = (await req.json().catch(() => ({}))) as { categoryId?: number; title?: string };
+  const lido = await lerJsonLimitado(req, LIMITE_CORPO_PEQUENO);
+  if (!lido.ok) return lido.resposta;
+  const body = (lido.dados ?? {}) as { categoryId?: number; title?: string };
 
   let touched = false;
   if (typeof body.categoryId === "number") {

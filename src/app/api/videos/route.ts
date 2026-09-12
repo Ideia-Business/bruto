@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { recusarSeNaoForChamadaDeCliente } from "@/lib/endpoint-local";
+import {
+  lerJsonLimitado,
+  LIMITE_CORPO_PEQUENO,
+  recusarSeNaoForChamadaDeCliente,
+} from "@/lib/endpoint-local";
 import { getCatalog, getHistory, getHeroBruto, getActiveJobs, searchBrutos, isBrutoDone } from "@/db/queries";
 import { catalogoParaWire } from "@/lib/wire";
 import { parseMediaUrl } from "@/pipeline/lib/paths";
@@ -27,12 +31,9 @@ export async function POST(req: Request) {
   const recusa = recusarSeNaoForChamadaDeCliente(req);
   if (recusa) return recusa;
 
-  let body: { url?: string; forceWhisper?: boolean; translate?: boolean };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
-  }
+  const lido = await lerJsonLimitado(req, LIMITE_CORPO_PEQUENO);
+  if (!lido.ok) return lido.resposta;
+  const body = lido.dados as { url?: string; forceWhisper?: boolean; translate?: boolean };
   const url = (body.url ?? "").trim();
   const ref = parseMediaUrl(url);
   if (!ref) {

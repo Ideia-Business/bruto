@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { recusarSeNaoForChamadaDeCliente } from "@/lib/endpoint-local";
+import {
+  lerJsonLimitado,
+  LIMITE_CORPO_PEQUENO,
+  recusarSeNaoForChamadaDeCliente,
+} from "@/lib/endpoint-local";
 import { createFilao, listFiloes } from "@/db/queries";
 
 /** GET /api/filoes → todos os filões com a contagem de brutos de cada um. */
@@ -12,12 +16,9 @@ export async function POST(req: Request) {
   const recusa = recusarSeNaoForChamadaDeCliente(req);
   if (recusa) return recusa;
 
-  let body: { name?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
-  }
+  const lido = await lerJsonLimitado(req, LIMITE_CORPO_PEQUENO);
+  if (!lido.ok) return lido.resposta;
+  const body = lido.dados as { name?: string };
 
   const name = (body.name ?? "").trim();
   if (!name) {

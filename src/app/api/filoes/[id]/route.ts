@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { recusarSeNaoForChamadaDeCliente } from "@/lib/endpoint-local";
+import {
+  lerJsonLimitado,
+  LIMITE_CORPO_PEQUENO,
+  recusarSeNaoForChamadaDeCliente,
+} from "@/lib/endpoint-local";
 import { deleteFilao, renameFilao } from "@/db/queries";
 
 /** PATCH /api/filoes/:id { name } → renomeia. O slug não muda (links seguem valendo). */
@@ -9,12 +13,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   const { id } = await ctx.params;
 
-  let body: { name?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
-  }
+  const lido = await lerJsonLimitado(req, LIMITE_CORPO_PEQUENO);
+  if (!lido.ok) return lido.resposta;
+  const body = lido.dados as { name?: string };
 
   const name = (body.name ?? "").trim();
   if (!name) {

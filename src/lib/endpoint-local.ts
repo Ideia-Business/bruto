@@ -37,6 +37,13 @@ import { NextResponse } from "next/server";
  */
 export const LIMITE_CORPO_BYTES = 1_000_000;
 
+/**
+ * Teto das rotas de mutação comuns, cujo corpo é um punhado de campos curtos
+ * (uma url, um nome, uma lista de ids). 1 MB ali seria folga sem propósito: o
+ * teto certo é o menor que ainda cabe o caso real.
+ */
+export const LIMITE_CORPO_PEQUENO = 16_000;
+
 /** Hosts aceitos: só a própria máquina. Porta livre (3000, 3999, o que for). */
 function hostEhLoopback(host: string | null): boolean {
   if (!host) return false;
@@ -139,6 +146,7 @@ export function recusarSeNaoForJson(req: Request): NextResponse | null {
  */
 export async function lerCorpoLimitado(
   req: Request,
+  limite: number = LIMITE_CORPO_BYTES,
 ): Promise<{ ok: true; texto: string } | { ok: false; resposta: NextResponse }> {
   const grandeDemais = () => ({
     ok: false as const,
@@ -146,7 +154,7 @@ export async function lerCorpoLimitado(
   });
 
   const anunciado = Number(req.headers.get("content-length") ?? "0");
-  if (Number.isFinite(anunciado) && anunciado > LIMITE_CORPO_BYTES) return grandeDemais();
+  if (Number.isFinite(anunciado) && anunciado > limite) return grandeDemais();
 
   if (!req.body) return { ok: true, texto: "" };
 
@@ -159,7 +167,7 @@ export async function lerCorpoLimitado(
       if (done) break;
       if (!value) continue;
       total += value.byteLength;
-      if (total > LIMITE_CORPO_BYTES) {
+      if (total > limite) {
         // Nada mais é acumulado, e o resto do upload deixa de ser lido.
         await leitor.cancel().catch(() => {});
         return grandeDemais();
@@ -174,4 +182,29 @@ export async function lerCorpoLimitado(
   }
 
   return { ok: true, texto: Buffer.concat(partes).toString("utf8") };
+}
+
+/**
+ * Lê e desserializa o corpo respeitando o teto — o que toda rota que recebe
+ * JSON deve usar, em vez de `req.json()` cru.
+ *
+ * O `req.json()` bufferiza o corpo inteiro antes de qualquer checagem, que é a
+ * mesma falha medida em `/api/llm` (300 MB aceitos, RSS de 746 MB para 1486 MB).
+ * O helper existia e estava aplicado num lugar só; as rotas de mutação ficaram
+ * com o defeito por mais uma rodada. Conserto de caso, classe aberta — de novo.
+ */
+export async function lerJsonLimitado(
+  req: Request,
+  limite: number = LIMITE_CORPO_BYTES,
+): Promise<{ ok: true; dados: unknown } | { ok: false; resposta: NextResponse }> {
+  const lido = await lerCorpoLimitado(req, limite);
+  if (!lido.ok) return lido;
+  try {
+    return { ok: true, dados: JSON.parse(lido.texto) };
+  } catch {
+    return {
+      ok: false,
+      resposta: NextResponse.json({ error: "JSON inválido" }, { status: 400 }),
+    };
+  }
 }

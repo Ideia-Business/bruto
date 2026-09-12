@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { recusarSeNaoForChamadaDeCliente } from "@/lib/endpoint-local";
+import {
+  lerJsonLimitado,
+  LIMITE_CORPO_PEQUENO,
+  recusarSeNaoForChamadaDeCliente,
+} from "@/lib/endpoint-local";
 import { getFiloesForBruto, setFiloesForBruto } from "@/db/queries";
 
 /** GET /api/videos/:id/filoes → ids dos filões em que este bruto está. */
@@ -19,12 +23,9 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
 
   const { id } = await ctx.params;
 
-  let body: { filaoIds?: unknown };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
-  }
+  const lido = await lerJsonLimitado(req, LIMITE_CORPO_PEQUENO);
+  if (!lido.ok) return lido.resposta;
+  const body = lido.dados as { filaoIds?: unknown };
 
   const raw = body.filaoIds;
   if (!Array.isArray(raw) || raw.some((v) => typeof v !== "string")) {
