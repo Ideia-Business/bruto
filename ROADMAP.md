@@ -74,6 +74,18 @@ Tipos, lint, build do app, build da extensão, e conferência item a item do que
 
 ## A seguir
 
+### Extensão na Chrome Web Store — pronta para envio
+
+Tudo o que depende de código está feito: a [política de privacidade](extension/PRIVACIDADE.md),
+os textos da listagem com as respostas do questionário de privacidade
+([extension/LOJA.md](extension/LOJA.md)), e o empacotador `npm run package:ext`, que reprova
+antes de gastar uma revisão da Loja — arquivo faltando, versão divergente, texto acima do
+limite, ícone declarado e ausente, código remoto. O CI roda a mesma conferência a cada push.
+
+Falta o que exige conta e cartão: conta de desenvolvedor (US$ 5, taxa única), uma captura de
+tela e o envio. O passo a passo está no `LOJA.md`.
+
+
 ### Fase 3b — Conta e Cota da Casa (adiado por decisão)
 
 Quem não quiser configurar chave própria ganharia uma cota pequena da casa. Exige Postgres, autenticação e contagem de uso.
