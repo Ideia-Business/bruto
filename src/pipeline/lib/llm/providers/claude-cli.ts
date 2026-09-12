@@ -123,17 +123,75 @@ export const claudeCliProvider: LlmProvider = {
     return capability === "webSearch";
   },
 
+  /**
+   * Quatro estados distintos, cada um com a sua mensagem — porque "presença de
+   * binário" não é disponibilidade.
+   *
+   * A versão anterior disto rodava `claude --version`, que responde exatamente
+   * igual com e sem sessão válida: com a sessão expirada, o provedor anunciava
+   * "pronto", a extensão dizia "usando o seu plano", e a pessoa só descobria o
+   * contrário no meio de uma aula. Quem separa os dois é `claude auth status`,
+   * medido nesta estação (Claude Code 2.1.269): `--json` é o default, devolve
+   * `loggedIn` e sai 0 quando autenticado, 1 quando não. Não gasta token e não
+   * fala com o modelo.
+   *
+   * Lê-se o `loggedIn` do JSON e usa-se o exit code como rede — se uma versão
+   * futura mudar a semântica de um, o outro ainda decide.
+   *
+   * Detalhe que só aparece medindo: uma `ANTHROPIC_API_KEY` no ambiente também
+   * conta como `loggedIn`, com `authMethod: "api_key"`. Mas este provedor PODA
+   * essa chave do env do subprocesso (é o caminho do plano, não o da chave), e
+   * a checagem roda pelo mesmo `executar`, com o mesmo env podado — então ela
+   * mede exatamente as condições da chamada real, e não um ambiente mais
+   * generoso que o verdadeiro. Quando é esse o caso, a mensagem aponta o
+   * provedor certo em vez de mandar a pessoa fazer um login que ela não quer.
+   */
   async availability() {
+    let r: Saida;
     try {
-      const r = await executar(["--version"], undefined, 15_000);
-      if (r.code === 0) return { ok: true as const };
-      return { ok: false as const, reason: "o comando `claude` respondeu com erro" };
+      r = await executar(["auth", "status"], undefined, 15_000);
     } catch {
       return {
         ok: false as const,
-        reason: "o comando `claude` não está no PATH — instale o Claude Code ou escolha outro provedor em BRUTO_LLM_PROVIDER",
+        reason:
+          "o comando `claude` não está no PATH — instale o Claude Code ou escolha outro provedor em BRUTO_LLM_PROVIDER",
       };
     }
+
+    if (r.timedOut) {
+      return { ok: false as const, reason: "`claude auth status` não respondeu a tempo" };
+    }
+
+    let logado: boolean | null = null;
+    try {
+      const obj = JSON.parse(r.stdout.trim()) as { loggedIn?: unknown };
+      if (typeof obj.loggedIn === "boolean") logado = obj.loggedIn;
+    } catch {
+      /* sem JSON: decide-se pelo exit code, logo abaixo */
+    }
+
+    if (logado === null) {
+      // Nem JSON nem contrato conhecido. O caso provável é um Claude Code
+      // anterior ao subcomando `auth` — dizer isso é mais útil que "sem login",
+      // que mandaria a pessoa fazer um login que já existe.
+      if (r.code === 0) return { ok: true as const };
+      return {
+        ok: false as const,
+        reason:
+          "`claude auth status` não respondeu como esperado — atualize o Claude Code (`claude update`)",
+      };
+    }
+
+    if (logado && r.code === 0) return { ok: true as const };
+
+    // A presença é conferida pelo NOME da variável; o valor nunca é lido.
+    const temChaveAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
+    return {
+      ok: false as const,
+      reason: temChaveAnthropic
+        ? "o Claude Code está instalado mas sem sessão — rode `claude auth login`, ou use o provedor `anthropic`, que é o caminho da chave de API que você já tem"
+        : "o Claude Code está instalado mas sem sessão — rode `claude auth login` para usar seu plano",
+    };
   },
 
   async run(req: LlmRequest, timeoutMs: number): Promise<LlmResult> {
