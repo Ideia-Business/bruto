@@ -77,3 +77,6 @@ STATE.md
 
 # Build da extensão (gerado por npm run build:ext)
 /extension/dist/
+
+# pacote gerado para envio à Chrome Web Store
+/extension/pacote/

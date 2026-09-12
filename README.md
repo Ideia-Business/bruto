@@ -127,7 +127,7 @@ E quando um vídeo te der uma ideia, escreva no fim da aula: ela vai para o **Ca
 
 O resumo usa **exatamente o mesmo prompt** do app local: o build importa de `src/pipeline/prompts/`, então as duas superfícies nunca divergem.
 
-Passo a passo de instalação e teste, com a tabela de erros comuns: [extension/TESTANDO.md](extension/TESTANDO.md).
+Passo a passo de instalação e teste, com a tabela de erros comuns: [extension/TESTANDO.md](extension/TESTANDO.md). O que a extensão faz com dado — e o que não faz: [extension/PRIVACIDADE.md](extension/PRIVACIDADE.md).
 
 ### App clicável no macOS
 

@@ -15,6 +15,7 @@
     "app": "bash launcher/serve.sh",
     "build:ext": "node scripts/build-extension.mjs",
     "dev:ext": "node scripts/build-extension.mjs --watch",
+    "package:ext": "npm run build:ext && node scripts/package-extension.mjs",
     "build:assets": "node scripts/build-assets.mjs"
   },
   "dependencies": {

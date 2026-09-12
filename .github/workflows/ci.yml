@@ -54,10 +54,14 @@ jobs:
       - name: Build da extensão
         run: npm run build:ext
 
-      - name: Conferir o que o Chrome exige
-        run: |
-          for f in manifest.json popup/popup.html popup/popup.js popup/ui.css \
-                   options/options.html options/options.js content/captura.js; do
-            test -s "extension/dist/$f" || { echo "faltou: $f"; exit 1; }
-          done
-          echo "pacote da extensão completo"
+      # Empacota como se fosse enviar à Loja. O script confere arquivo obrigatório,
+      # paridade de versão entre manifesto e package.json, limites de texto e
+      # ausência de código remoto — tudo com exit code. A lista de arquivos vive
+      # só lá dentro: mantê-la aqui também garantiria que uma das duas cópias
+      # ficasse para trás.
+      # `node` direto, não `npm run package:ext`: aquele reconstrói a extensão, e
+      # o passo acima já a construiu. No runner não há Chromium, então o pacote
+      # sai sem ícone e o script avisa — estrutura, versão, limites de texto e
+      # ausência de código remoto continuam sendo conferidos com exit code.
+      - name: Conferir o que a Chrome Web Store exige
+        run: node scripts/package-extension.mjs
