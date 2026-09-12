@@ -50,10 +50,6 @@ export interface Modo {
  */
 let modoEmVoo: Promise<Modo> | null = null;
 
-export function esquecerModo(): void {
-  modoEmVoo = null;
-}
-
 export function verModo(): Promise<Modo> {
   modoEmVoo ??= (async (): Promise<Modo> => {
     const [saude, config] = await Promise.all([verSaudeDoApp(), lerConfig()]);
