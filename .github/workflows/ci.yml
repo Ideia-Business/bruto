@@ -43,6 +43,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Testes
+        run: npm test
+
       - name: Build do app
         env:
           BRUTO_DATA_ROOT: ${{ runner.temp }}/bruto-data
