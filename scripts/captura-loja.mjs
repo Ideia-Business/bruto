@@ -252,6 +252,31 @@ try {
     const pgPopup = await ctx.newPage();
     await pgPopup.goto(`chrome-extension://${id}/options/options.html`);
 
+    /**
+     * PNG gravado ANTES desta correção pode carregar a chave: a versão anterior
+     * fotografava a tela de opções e só avisava depois. Estes arquivos ficam na
+     * pasta de onde saem as imagens que sobem para a Loja, então a existência
+     * deles é dita em voz alta, com a data, toda vez.
+     *
+     * Só LISTA — não tenta adivinhar se há chave dentro da imagem. Detector de
+     * segredo em PNG não funciona, e um detector que não sabe reprovar é pior
+     * que nenhum: daria um "limpo" em que alguém acreditaria. O julgamento fica
+     * com quem sabe olhar.
+     */
+    const antigos = fs
+      .readdirSync(saida)
+      .filter((f) => f.toLowerCase().endsWith(".png"))
+      .map((f) => ({ f, em: fs.statSync(path.join(saida, f)).mtime }));
+    if (antigos.length > 0) {
+      console.log(`\n⚠  já existem ${antigos.length} PNG em ${path.relative(raiz, saida)}:`);
+      for (const { f, em } of antigos) console.log(`     ${em.toISOString().slice(0, 16).replace("T", " ")}  ${f}`);
+      console.log(
+        `   Os gravados antes desta correção podem ter a sua CHAVE dentro — a versão\n` +
+          `   antiga fotografava a tela de opções. Abra e confira antes de subir qualquer\n` +
+          `   um deles à Loja.`,
+      );
+    }
+
     console.log(
       `\nChromium aberto com a extensão carregada. O caminho, na ordem:\n\n` +
         `  1. na aba de opções, escolha o provedor e cole a sua chave;\n` +
