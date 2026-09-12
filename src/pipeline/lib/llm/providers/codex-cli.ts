@@ -41,6 +41,27 @@ import os from "node:os";
 import { ENV_SENSIVEIS, redact } from "../redact";
 import type { LlmCapability, LlmProvider, LlmRequest, LlmResult } from "../types";
 
+/**
+ * A ÚNICA forma de autenticação que este provedor aceita, porque é a única que
+ * consome o plano em vez de cobrar por token. Formas medidas do
+ * `codex login status` (codex-cli 0.153.4, 12/09/2026):
+ *
+ *   plano   exit 0  "Logged in using ChatGPT"
+ *   chave   exit 0  "Logged in using an API key - sk-proj-***0000"
+ *   nenhum  exit 1  "Not logged in"
+ *
+ * E o texto sai em **stderr**, não em stdout — o stdout deste subcomando vem
+ * vazio. Casar contra o stdout daria "não confirmei que é plano" para TODO
+ * mundo, inclusive quem tem plano: falharia fechado, que é o lado certo de
+ * errar, mas desligaria o provedor para quem está certo.
+ *
+ * O casamento é por ALLOWLIST ancorada, não por procura de substring solta: se
+ * um dia o texto mudar, o desconhecido cai no lado "não é plano" e o provedor
+ * se declara indisponível. Falhar fechado aqui custa uma mensagem a mais para
+ * quem tem plano; falhar aberto custa o dinheiro de quem tem chave.
+ */
+const AUTH_DE_PLANO = /^logged in using chatgpt\b/im;
+
 /** Tier → esforço de raciocínio. Portátil: independe do nome do modelo. */
 const ESFORCO: Record<string, string> = {
   fast: "low",
@@ -230,6 +251,24 @@ export const codexCliProvider: LlmProvider = {
       return {
         ok: false as const,
         reason: "o Codex CLI está instalado mas sem login — rode `codex login` para usar seu plano",
+      };
+    }
+
+    // Exit 0 NÃO basta: `codex login --with-api-key` também sai 0. Se
+    // aceitássemos qualquer exit 0, este provedor — que se anuncia como "de
+    // plano" porque `envVar === null` — passaria a queimar a chave de API da
+    // pessoa por token, dizendo a ela que estava usando a assinatura. É a
+    // mentira exata que o provedor existe para eliminar.
+    const statusTexto = `${r.stderr}\n${r.stdout}`.trim();
+    if (!AUTH_DE_PLANO.test(statusTexto)) {
+      return {
+        ok: false as const,
+        // A saída do comando NUNCA entra nesta mensagem: ela ecoa a chave
+        // mascarada ("Logged in using an API key - sk-proj-***0000"), e chave
+        // mascarada continua sendo material de credencial.
+        reason: /api key/i.test(statusTexto)
+          ? "o Codex está autenticado por CHAVE DE API, que cobra por uso — rode `codex login` para entrar com o plano ChatGPT, ou use o provedor `openai` se a intenção é mesmo pagar por token"
+          : "não foi possível confirmar que o login do Codex é por plano — rode `codex login status` para ver como você está autenticado",
       };
     }
     return { ok: true as const };

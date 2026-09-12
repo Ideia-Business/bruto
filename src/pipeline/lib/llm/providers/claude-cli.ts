@@ -24,6 +24,18 @@ import { spawn } from "node:child_process";
 import { ENV_SENSIVEIS, redact } from "../redact";
 import type { LlmCapability, LlmProvider, LlmRequest, LlmResult } from "../types";
 
+/**
+ * Métodos de autenticação que consomem o PLANO. Medido nesta estação (Claude
+ * Code 2.1.269) com `claude auth status --json`:
+ *
+ *   plano   exit 0  {"loggedIn": true,  "authMethod": "claude.ai"}
+ *   chave   exit 0  {"loggedIn": true,  "authMethod": "api_key"}
+ *   nenhum  exit 1  {"loggedIn": false, "authMethod": "none"}
+ *
+ * Allowlist de propósito: o que não está aqui é tratado como "não é plano".
+ */
+const AUTH_DE_PLANO = ["claude.ai"];
+
 const MODELO: Record<string, string> = {
   fast: "haiku",
   balanced: "sonnet",
@@ -123,17 +135,110 @@ export const claudeCliProvider: LlmProvider = {
     return capability === "webSearch";
   },
 
+  /**
+   * Quatro estados distintos, cada um com a sua mensagem — porque "presença de
+   * binário" não é disponibilidade.
+   *
+   * A versão anterior disto rodava `claude --version`, que responde exatamente
+   * igual com e sem sessão válida: com a sessão expirada, o provedor anunciava
+   * "pronto", a extensão dizia "usando o seu plano", e a pessoa só descobria o
+   * contrário no meio de uma aula. Quem separa os dois é `claude auth status`,
+   * medido nesta estação (Claude Code 2.1.269): `--json` é o default, devolve
+   * `loggedIn` e sai 0 quando autenticado, 1 quando não. Não gasta token e não
+   * fala com o modelo.
+   *
+   * Lê-se o `loggedIn` do JSON e usa-se o exit code como rede — se uma versão
+   * futura mudar a semântica de um, o outro ainda decide.
+   *
+   * Detalhe que só aparece medindo: uma `ANTHROPIC_API_KEY` no ambiente também
+   * conta como `loggedIn`, com `authMethod: "api_key"`. Mas este provedor PODA
+   * essa chave do env do subprocesso (é o caminho do plano, não o da chave), e
+   * a checagem roda pelo mesmo `executar`, com o mesmo env podado — então ela
+   * mede exatamente as condições da chamada real, e não um ambiente mais
+   * generoso que o verdadeiro. Quando é esse o caso, a mensagem aponta o
+   * provedor certo em vez de mandar a pessoa fazer um login que ela não quer.
+   */
   async availability() {
+    let r: Saida;
     try {
-      const r = await executar(["--version"], undefined, 15_000);
-      if (r.code === 0) return { ok: true as const };
-      return { ok: false as const, reason: "o comando `claude` respondeu com erro" };
+      r = await executar(["auth", "status"], undefined, 15_000);
     } catch {
       return {
         ok: false as const,
-        reason: "o comando `claude` não está no PATH — instale o Claude Code ou escolha outro provedor em BRUTO_LLM_PROVIDER",
+        reason:
+          "o comando `claude` não está no PATH — instale o Claude Code ou escolha outro provedor em BRUTO_LLM_PROVIDER",
       };
     }
+
+    if (r.timedOut) {
+      return { ok: false as const, reason: "`claude auth status` não respondeu a tempo" };
+    }
+
+    let logado: boolean | null = null;
+    let metodo: string | null = null;
+    let provedorDaApi: string | null = null;
+    try {
+      const obj = JSON.parse(r.stdout.trim()) as {
+        loggedIn?: unknown;
+        authMethod?: unknown;
+        apiProvider?: unknown;
+      };
+      if (typeof obj.loggedIn === "boolean") logado = obj.loggedIn;
+      if (typeof obj.authMethod === "string") metodo = obj.authMethod;
+      if (typeof obj.apiProvider === "string") provedorDaApi = obj.apiProvider;
+    } catch {
+      /* sem JSON: decide-se pelo exit code, logo abaixo */
+    }
+
+    if (logado === null) {
+      // Nem JSON nem contrato conhecido. O caso provável é um Claude Code
+      // anterior ao subcomando `auth` — dizer isso é mais útil que "sem login",
+      // que mandaria a pessoa fazer um login que já existe.
+      if (r.code === 0) return { ok: true as const };
+      return {
+        ok: false as const,
+        reason:
+          "`claude auth status` não respondeu como esperado — atualize o Claude Code (`claude update`)",
+      };
+    }
+
+    if (logado && r.code === 0) {
+      // Estar logado NÃO é estar no plano. Medido: uma ANTHROPIC_API_KEY faz o
+      // status devolver `loggedIn: true` com `authMethod: "api_key"` — e aí
+      // este provedor, que se anuncia "de plano" porque `envVar === null`,
+      // estaria cobrando por token e dizendo que não. Mesma classe do
+      // `codex login --with-api-key`; fechada aqui pelo mesmo critério.
+      //
+      // Allowlist, não deny-list: método desconhecido cai para fora. Falhar
+      // fechado custa uma mensagem a quem tem plano; falhar aberto custa o
+      // dinheiro de quem tem chave.
+      if (metodo !== null && !AUTH_DE_PLANO.includes(metodo)) {
+        return {
+          ok: false as const,
+          reason:
+            metodo === "api_key"
+              ? "o Claude Code está autenticado por CHAVE DE API, que cobra por uso — rode `claude auth login` para entrar com o plano, ou use o provedor `anthropic` se a intenção é mesmo pagar por token"
+              : `não foi possível confirmar que a sessão do Claude Code é de plano (authMethod: ${metodo}) — rode \`claude auth status\` para ver como você está autenticado`,
+        };
+      }
+      // Bedrock/Vertex cobram por token pela conta de nuvem, não pelo plano.
+      if (provedorDaApi !== null && provedorDaApi !== "firstParty") {
+        return {
+          ok: false as const,
+          reason: `o Claude Code está apontado para ${provedorDaApi}, que cobra por uso e não pelo plano — use o provedor correspondente em BRUTO_LLM_PROVIDER`,
+        };
+      }
+      return { ok: true as const };
+    }
+
+    // A presença é conferida pelo NOME da variável; o valor nunca é lido.
+    const temChaveAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
+    return {
+      ok: false as const,
+      reason: temChaveAnthropic
+        ? "o Claude Code está instalado mas sem sessão — rode `claude auth login`, ou use o provedor `anthropic`, que é o caminho da chave de API que você já tem"
+        : "o Claude Code está instalado mas sem sessão — rode `claude auth login` para usar seu plano",
+    };
   },
 
   async run(req: LlmRequest, timeoutMs: number): Promise<LlmResult> {
