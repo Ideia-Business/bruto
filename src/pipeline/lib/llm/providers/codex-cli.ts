@@ -135,6 +135,27 @@ function linhasJson(stdout: string): EventoJsonl[] {
 }
 
 /**
+ * O modelo vem do `~/.codex/config.toml` de quem usa, e este provedor não tem
+ * como validá-lo antes da hora — medido: com um modelo que a conta não aceita,
+ * `codex doctor` sai **0** e reporta "0 fail", então ele é falso-verde e não
+ * serve de pré-voo; a única validação de verdade é gerar, que custa token e
+ * tempo demais para caber num teste de disponibilidade.
+ *
+ * O que dá para fazer, e é o que se faz aqui: quando a falha É essa, dizer onde
+ * mexer. Sem isto a pessoa recebe um 400 cru do outro lado da aula e não tem
+ * como saber que o problema é uma linha de config dela.
+ */
+function explicarSePorConfig(detalhe: string): string {
+  if (/not supported when using Codex|Model metadata for|model.*not supported/i.test(detalhe)) {
+    return `${detalhe}\n→ O modelo configurado não serve para esta conta. Confira a linha \`model\` em ~/.codex/config.toml (ou rode \`codex doctor\` para ver qual está valendo).`;
+  }
+  if (/ReasoningEffortParam|reasoning\.effort/i.test(detalhe)) {
+    return `${detalhe}\n→ O modelo configurado não aceita esforço de raciocínio. Escolha um modelo da família Codex em ~/.codex/config.toml.`;
+  }
+  return detalhe;
+}
+
+/**
  * Extrai a resposta. Formato medido:
  *   {"type":"item.completed","item":{"type":"agent_message","text":"..."}}
  * e, no caminho de falha:
@@ -145,7 +166,8 @@ function extrairResultado(stdout: string): string {
 
   const falha = eventos.find((e) => e.type === "turn.failed");
   if (falha) {
-    throw new Error(`o turno falhou: ${redact(String(falha.error?.message ?? "sem detalhe"))}`);
+    const detalhe = redact(String(falha.error?.message ?? "sem detalhe"));
+    throw new Error(`o turno falhou: ${explicarSePorConfig(detalhe)}`);
   }
 
   const mensagens = eventos.filter(
@@ -180,6 +202,14 @@ export const codexCliProvider: LlmProvider = {
    * Três estados distintos, com mensagem própria para cada um — porque
    * "presença de binário" não é disponibilidade, e a mensagem certa é a
    * diferença entre a pessoa instalar algo ou apenas fazer login.
+   *
+   * O que este teste NÃO cobre, e é honesto dizer: se o `config.toml` da pessoa
+   * apontar para um modelo que a conta dela não aceita, isto aqui responde
+   * `ok` e a falha só aparece na primeira geração. Não é descuido — é que não
+   * existe pré-voo barato: `codex doctor` sai 0 e diz "0 fail" nesse mesmo
+   * cenário (medido), e a única verificação de verdade seria gerar, que custa
+   * token e segundos a cada consulta de disponibilidade. O que se faz em troca
+   * é o erro de runtime apontar a linha de config — ver `explicarSePorConfig`.
    */
   async availability() {
     let r: Saida;
