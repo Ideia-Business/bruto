@@ -318,6 +318,46 @@ a {
   padding: 0 3px;
 }
 
+/* Em qual modo a pessoa está. Borda esquerda grossa em vez de fundo colorido:
+   a gramática da marca é estrutura à vista, e o aviso precisa ser visto sem
+   virar alarme — pagar por token é legítimo, só não pode ser surpresa. */
+.modo {
+  border-left: 3px solid var(--aviso);
+  padding: 6px 0 6px 10px;
+}
+
+.modo.ok {
+  border-left-color: var(--sucesso);
+}
+
+.modo-titulo {
+  margin: 0 0 2px;
+  font-weight: 600;
+}
+
+.modo p {
+  margin: 0;
+}
+
+/* Fixação: cada resposta fica fechada até quem lê decidir olhar. Sem estilo, o
+   `<summary>` parece texto comum e ninguém descobre que clica — a seção existe
+   para revelar o que NÃO se aprendeu, e isso depende de a pessoa tentar antes. */
+.aula details {
+  border-left: 2px solid var(--borda-fraca);
+  padding-left: 8px;
+  margin: 0 0 8px;
+}
+
+.aula summary {
+  cursor: pointer;
+  color: var(--acento);
+  font-size: 12px;
+}
+
+.aula details[open] summary {
+  margin-bottom: 6px;
+}
+
 
 /* --- Bancada ---------------------------------------------------------- */
 /* Lista chapada, uma linha por aula. Sem cartão, sem sombra: cada item se

@@ -3,7 +3,7 @@
   "name": "Bruto — vídeo vira aula",
   "short_name": "Bruto",
   "version": "0.2.0",
-  "description": "Transforma o vídeo que você está assistindo numa aula em português: resumo, transcrição e mapa mental.",
+  "description": "Vira o vídeo do YouTube que você está vendo numa aula em português — pelo plano de IA que você já assina, ou por chave.",
   "homepage_url": "https://github.com/Ideia-Business/bruto",
   "action": {
     "default_title": "Destrinchar este vídeo",
@@ -22,6 +22,7 @@
   "options_page": "options/options.html",
   "permissions": ["storage", "scripting", "activeTab", "downloads"],
   "host_permissions": [
+    "http://127.0.0.1:3000/*",
     "https://api.anthropic.com/*",
     "https://api.openai.com/*",
     "https://openrouter.ai/*",

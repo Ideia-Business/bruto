@@ -13,13 +13,13 @@
 
 import { extrairVideoIdDaUrl } from "../lib/captura";
 import type { BrutoCapturado, CapturaError } from "../lib/captura";
-import { runLLM, LlmError } from "../lib/llm";
-import { lerConfig } from "../lib/config";
+import { runLLM, LlmError, verModo } from "../lib/llm";
 import { guardarAula, listarBancada, esquecerAula, limparBancada } from "../lib/bancada";
 import type { AulaGuardada } from "../lib/bancada";
 import { guardarFaisca, listarFaiscas, esquecerFaisca } from "../lib/caderno";
 import { levarParaLapid } from "../lib/ponte";
-import { summaryPrompt } from "../../../src/pipeline/prompts/summary";
+import { renderMarkdown } from "../lib/markdown";
+import { studyPrompt } from "../../../src/pipeline/prompts/study";
 
 type CodigoCaptura = CapturaError["codigo"];
 type CodigoLlm = LlmError["codigo"];
@@ -104,91 +104,6 @@ let origemAtual: { videoId: string | null; titulo: string | null; url: string | 
  */
 function ehVideoYoutube(url: string | undefined): boolean {
   return url !== undefined && extrairVideoIdDaUrl(url) !== null;
-}
-
-function escapar(t: string): string {
-  return t
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-/** Markdown à mão: títulos, negrito, itálico, código, listas e parágrafos. */
-function renderMarkdown(md: string): string {
-  const linhas = md.replace(/\r\n/g, "\n").split("\n");
-  const saida: string[] = [];
-  let lista: "ul" | "ol" | null = null;
-  let paragrafo: string[] = [];
-
-  const inline = (t: string): string =>
-    escapar(t)
-      .replace(/`([^`]+)`/g, "<code>$1</code>")
-      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-      .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
-
-  const fecharParagrafo = (): void => {
-    if (paragrafo.length > 0) {
-      saida.push(`<p>${inline(paragrafo.join(" "))}</p>`);
-      paragrafo = [];
-    }
-  };
-
-  const fecharLista = (): void => {
-    if (lista) {
-      saida.push(`</${lista}>`);
-      lista = null;
-    }
-  };
-
-  for (const linha of linhas) {
-    const bruta = linha.trim();
-
-    if (bruta === "") {
-      fecharParagrafo();
-      fecharLista();
-      continue;
-    }
-
-    const titulo = /^(#{1,3})\s+(.*)$/.exec(bruta);
-    if (titulo) {
-      fecharParagrafo();
-      fecharLista();
-      const nivel = titulo[1].length;
-      saida.push(`<h${nivel}>${inline(titulo[2])}</h${nivel}>`);
-      continue;
-    }
-
-    const item = /^[-*]\s+(.*)$/.exec(bruta);
-    if (item) {
-      fecharParagrafo();
-      if (lista !== "ul") {
-        fecharLista();
-        saida.push("<ul>");
-        lista = "ul";
-      }
-      saida.push(`<li>${inline(item[1])}</li>`);
-      continue;
-    }
-
-    const numerado = /^\d+[.)]\s+(.*)$/.exec(bruta);
-    if (numerado) {
-      fecharParagrafo();
-      if (lista !== "ol") {
-        fecharLista();
-        saida.push("<ol>");
-        lista = "ol";
-      }
-      saida.push(`<li>${inline(numerado[1])}</li>`);
-      continue;
-    }
-
-    fecharLista();
-    paragrafo.push(bruta);
-  }
-
-  fecharParagrafo();
-  fecharLista();
-  return saida.join("");
 }
 
 function nomeArquivo(titulo: string): string {
@@ -537,14 +452,10 @@ async function destrinchar(): Promise<void> {
     passo(`Fala pega: ${bruto.texto.length.toLocaleString("pt-BR")} caracteres. Destrinchando…`);
 
     // O prompt é o MESMO que o app local usa — vem de src/pipeline/prompts.
-    // `chapters` vazio porque a legenda da aba não traz capítulos; o prompt
-    // trata a ausência omitindo a seção, em vez de inventar estrutura.
-    const prompt = summaryPrompt({
-      title: bruto.titulo,
-      channel: bruto.canal,
-      durationSec: bruto.duracaoSeg,
-      chapters: [],
-    });
+    // É o da AULA, não o do resumo: objetivos, conceitos do zero, glossário e
+    // teste de fixação. É o que a extensão promete na Loja e o que o BRAND.md
+    // define como Aula — antes daqui saía um resumo executivo com esse nome.
+    const prompt = studyPrompt({ title: bruto.titulo, channel: bruto.canal });
 
     const md = await runLLM({
       prompt,
@@ -561,8 +472,9 @@ async function destrinchar(): Promise<void> {
     avisoAula.hidden = true;
     mostrar("aula");
 
-    // Guarda ANTES de qualquer outra coisa: a pessoa gastou a chave dela para
-    // produzir isto, e fechar o popup não pode significar perder o trabalho.
+    // Guarda ANTES de qualquer outra coisa: produzir isto consumiu o plano ou a
+    // chave da pessoa, e fechar o popup não pode significar perder o trabalho.
+    const modoAgora = await verModo();
     void guardarAula({
       videoId: bruto.videoId,
       titulo: bruto.titulo,
@@ -570,7 +482,9 @@ async function destrinchar(): Promise<void> {
       url: `https://www.youtube.com/watch?v=${bruto.videoId}`,
       markdown: aulaMd,
       em: Date.now(),
-      provedor: (await lerConfig())?.provedor ?? null,
+      // Registra de onde a aula veio: no modo app é o plano, e guardar o nome de
+      // um provedor de chave aqui seria registro falso.
+      provedor: modoAgora.qual === "app" ? "app-local" : (modoAgora.config?.provedor ?? null),
     });
   } catch (e: unknown) {
     if (meuControle.signal.aborted) {
@@ -698,8 +612,11 @@ el<HTMLButtonElement>("btn-baixar").addEventListener("click", () => {
 // --- entrada ----------------------------------------------------------
 
 async function iniciar(): Promise<void> {
-  const config = await lerConfig();
-  if (!config) {
+  // A chave só é exigida no modo `chave`. Com o app local de pé e um provedor de
+  // plano, não há chave nenhuma para pedir — mandar alguém configurar uma seria
+  // empurrá-lo a pagar por token justamente por cima do plano que ele assina.
+  const modo = await verModo();
+  if (modo.qual === "chave" && !modo.config) {
     mostrar("semConfig");
     return;
   }
