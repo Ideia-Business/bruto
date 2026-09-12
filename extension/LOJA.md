@@ -198,9 +198,13 @@ são duas coisas diferentes, e confundi-las é fácil:
 
 - **A permissão** é o que deixa a extensão ler a resposta do app. Sem ela, a chamada da extensão
   morre como morreria a de qualquer página.
-- **O que protege o plano é o app exigir `Content-Type: application/json`.** Esse tipo fica fora
-  da lista que o navegador dispensa de verificação prévia, então uma página web que tente a mesma
-  chamada dispara antes um *preflight*, e o preflight morre sem origem autorizada.
+- **O que protege é o app exigir um cabeçalho que o navegador não dispensa** — e são duas portas,
+  cada uma com a sua tranca. Na de gerar a aula, `Content-Type: application/json`. Na de
+  perguntar se o app está de pé, `X-Bruto-Cliente: extensao` — essa rota parece inofensiva, mas
+  **executa programas** para saber se o plano está autenticado, e um laço de chamadas viraria
+  centenas de processos na máquina de quem instalou. Nenhum dos dois cabeçalhos está na lista que
+  dispensa verificação prévia, então uma página web que tente qualquer das duas chamadas dispara
+  antes um *preflight*, e o preflight morre sem origem autorizada.
 
 A explicação tentadora — "o app não manda cabeçalho CORS, então a página não alcança" — **está
 errada**, e vale registrar por quê: sem CORS a página não **lê** a resposta, mas **dispara** a
