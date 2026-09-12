@@ -23,8 +23,8 @@ import { provedorPorId, provedoresDePlano, runLLMComProvedor } from "@/pipeline/
 import type { LlmProvider, LlmRequest } from "@/pipeline/lib/llm";
 import {
   lerCorpoLimitado,
+  recusarSeNaoForChamadaDeCliente,
   recusarSeNaoForJson,
-  recusarSeNaoForLocal,
 } from "@/lib/endpoint-local";
 
 export const dynamic = "force-dynamic";
@@ -92,7 +92,12 @@ async function melhorDePlano(): Promise<LlmProvider | null> {
 }
 
 export async function POST(req: Request) {
-  const recusa = recusarSeNaoForLocal(req) ?? recusarSeNaoForJson(req);
+  // A MESMA guarda das outras rotas com efeito. Esta era a única exceção, e a
+  // exceção era justamente a rota que gasta o dinheiro. O `application/json`
+  // abaixo já força preflight, então o risco concreto era menor — mas regra
+  // aplicada em todo lugar menos num é a forma como a classe fica aberta, e foi
+  // essa a lição desta sessão inteira.
+  const recusa = recusarSeNaoForChamadaDeCliente(req) ?? recusarSeNaoForJson(req);
   if (recusa) return recusa;
 
   const corpoLido = await lerCorpoLimitado(req);

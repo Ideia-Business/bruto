@@ -206,7 +206,7 @@ export const claudeCliProvider: LlmProvider = {
       };
     }
 
-    if (logado && r.code === 0) {
+    if (logado === true && r.code === 0) {
       // Estar logado NÃO é estar no plano. Medido: uma ANTHROPIC_API_KEY faz o
       // status devolver `loggedIn: true` com `authMethod: "api_key"` — e aí
       // este provedor, que se anuncia "de plano" porque `envVar === null`,
@@ -216,7 +216,21 @@ export const claudeCliProvider: LlmProvider = {
       // Allowlist, não deny-list: método desconhecido cai para fora. Falhar
       // fechado custa uma mensagem a quem tem plano; falhar aberto custa o
       // dinheiro de quem tem chave.
-      if (metodo !== null && !AUTH_DE_PLANO.includes(metodo)) {
+      // ACEITAÇÃO POSITIVA, e não recusa por campo errado. A diferença só
+      // aparece quando o sinal FALTA — e é aí que mora o fail-open: com
+      // `{"loggedIn":true}` e sem os outros dois campos (versão nova que omita
+      // metadados, saída parcial), as condições negativas eram todas falsas e
+      // chegava-se ao `ok: true`. Medido: as três variações de campo ausente
+      // devolviam disponível. Campo que falta é sinal que não existe, e sinal
+      // que não existe não confirma nada.
+      if (metodo === null || provedorDaApi === null) {
+        return {
+          ok: false as const,
+          reason:
+            "`claude auth status` não informou o método de autenticação — não dá para confirmar que a sessão é de plano; atualize o Claude Code (`claude update`)",
+        };
+      }
+      if (!AUTH_DE_PLANO.includes(metodo)) {
         return {
           ok: false as const,
           reason:
@@ -226,7 +240,7 @@ export const claudeCliProvider: LlmProvider = {
         };
       }
       // Bedrock/Vertex cobram por token pela conta de nuvem, não pelo plano.
-      if (provedorDaApi !== null && provedorDaApi !== "firstParty") {
+      if (provedorDaApi !== "firstParty") {
         return {
           ok: false as const,
           reason: `o Claude Code está apontado para ${provedorDaApi}, que cobra por uso e não pelo plano — use o provedor correspondente em BRUTO_LLM_PROVIDER`,
