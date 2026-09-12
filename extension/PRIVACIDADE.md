@@ -22,16 +22,26 @@ Tudo em `chrome.storage.local` — **neste navegador, neste perfil**. Nunca em
 
 | O quê | Por que existe | Quando some |
 |---|---|---|
-| **Sua chave de IA** | autentica você no provedor escolhido. Só existe se você a colocou — no modo do app local, não há chave nenhuma | quando você a apaga nas opções, ou desinstala a extensão |
+| **Sua chave de IA** | autentica você no provedor escolhido. Só existe se você a colocou, e no modo do app local não é preciso nenhuma — se você já tinha guardado uma antes, ela continua aqui, guardada e sem uso, até você apagá-la | quando você a apaga nas opções, ou desinstala a extensão |
 | **Bancada** — as aulas que você gerou | para que fechar o popup não perca o trabalho | guarda as 60 mais recentes; a mais antiga sai quando enche |
 | **Caderno de Ideias** — as suas faíscas | é a única coisa aqui que nasce de você | quando você apaga a faísca, ou desinstala a extensão |
 | **Preferências** (provedor, modelo) | para não reconfigurar a cada uso | ao desinstalar |
 
-Desinstalar a extensão apaga tudo isso. Não há cópia em lugar nenhum.
+Desinstalar a extensão apaga tudo isso, e não guardamos cópia em lugar nenhum — não temos onde.
+
+O que **sobrevive** à desinstalação é só o que você mesmo tirou daqui, de propósito: a aula que
+você salvou com **Baixar .md** continua no seu computador, como qualquer arquivo seu, e o que
+você copiou com **Copiar** (ou com **Lapidar**) continua na área de transferência até você copiar
+outra coisa. São cópias suas, no seu aparelho; apagá-las é com você.
 
 ## Para onde os dados vão — a lista completa
 
-Quatro destinos, e nenhum é nosso. Um deles é a sua própria máquina.
+Quatro destinos. Um é a sua própria máquina; dois são de terceiros que **você** escolheu; e o
+quarto — o Lapid.ai — **é da mesma empresa que publica o Bruto**, e por isso está descrito por
+extenso no item 3. Nenhum deles recebe dado seu sem você mandar.
+
+O que não existe é servidor **do Bruto**: não há, em lugar nenhum, um serviço nosso que receba o
+que você faz aqui.
 
 ### 0. O app do Bruto, na sua máquina — quando você o está rodando
 
@@ -64,8 +74,11 @@ você escolheu:
 `api.anthropic.com` · `api.openai.com` · `openrouter.ai` · `ollama.com` ·
 `generativelanguage.googleapis.com`
 
-Esses endereços, mais o `127.0.0.1` do item anterior, são os **únicos** que a extensão pode
-alcançar (declarados em `host_permissions` no manifesto; o navegador bloqueia qualquer outro).
+Esses endereços, mais o `127.0.0.1` do item anterior, são os **únicos de onde a extensão busca ou
+para onde ela envia dados por conta própria** (declarados em `host_permissions` no manifesto; o
+navegador bloqueia qualquer outro). Há um destino a mais, que não entra nessa lista porque não é
+busca nem envio automático: o **Lapid.ai**, que só é aberto — como uma aba nova, igual a clicar
+num link — quando você aperta "Lapidar". Está descrito no item 3.
 O tratamento que cada provedor dá ao que recebe é regido pela política **dele**, não por esta —
 e a conta é sua, então a relação também.
 
