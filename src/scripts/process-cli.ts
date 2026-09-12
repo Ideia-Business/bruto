@@ -7,7 +7,7 @@
  */
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { jobs, videos, artifacts, categories } from "@/db/schema";
+import { jobs, brutos, artifacts, categories } from "@/db/schema";
 import { parseMediaUrl, artifactPaths } from "@/pipeline/lib/paths";
 import { bus } from "@/pipeline/bus";
 import { runJobSync } from "@/pipeline/runner";
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const video = db.select().from(videos).where(eq(videos.id, job.videoId!)).get();
+  const video = db.select().from(brutos).where(eq(brutos.id, job.videoId!)).get();
   const cat = video?.categoryId
     ? db.select().from(categories).where(eq(categories.id, video.categoryId)).get()
     : null;

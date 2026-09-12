@@ -12,14 +12,14 @@ import {
 } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatDuration } from "@/lib/format";
-import type { VideoCard } from "@/lib/api-types";
+import type { BrutoCard } from "@/lib/api-types";
 
 /** Busca ⌘K no catálogo (título/canal). */
 export function SearchCommand() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<VideoCard[]>([]);
+  const [results, setResults] = useState<BrutoCard[]>([]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {

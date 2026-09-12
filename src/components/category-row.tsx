@@ -7,28 +7,28 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
-import { VideoCard } from "./video-card";
-import type { VideoCard as VideoCardData } from "@/lib/api-types";
+import { BrutoCard } from "./bruto-card";
+import type { BrutoCard as BrutoCardData } from "@/lib/api-types";
 
 /** Uma "row" da Netflix: título da categoria + carrossel horizontal de cards. */
-export function CategoryRow({ title, videos }: { title: string; videos: VideoCardData[] }) {
-  if (videos.length === 0) return null;
+export function CategoryRow({ title, brutos }: { title: string; brutos: BrutoCardData[] }) {
+  if (brutos.length === 0) return null;
   return (
     <section className="group/row space-y-3">
       <div className="flex items-baseline gap-3 px-1">
         <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground">
           {title}
         </h2>
-        <span className="text-sm tabular-nums text-muted-foreground">{videos.length}</span>
+        <span className="text-sm tabular-nums text-muted-foreground">{brutos.length}</span>
       </div>
       <Carousel opts={{ align: "start", dragFree: true, containScroll: "trimSnaps" }}>
         <CarouselContent className="-ml-3">
-          {videos.map((v) => (
+          {brutos.map((v) => (
             <CarouselItem
               key={v.id}
               className="basis-1/2 pl-3 sm:basis-1/3 md:basis-1/4 lg:basis-1/5"
             >
-              <VideoCard video={v} />
+              <BrutoCard video={v} />
             </CarouselItem>
           ))}
         </CarouselContent>

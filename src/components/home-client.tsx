@@ -86,11 +86,11 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
       )}
 
       {data.catalog.map((row) => (
-        <CategoryRow key={row.category.id} title={row.category.name} videos={row.videos} />
+        <CategoryRow key={row.category.id} title={row.category.name} brutos={row.brutos} />
       ))}
 
       {data.history.length > 0 && (
-        <CategoryRow title="Histórico" videos={data.history} />
+        <CategoryRow title="Histórico" brutos={data.history} />
       )}
     </div>
   );

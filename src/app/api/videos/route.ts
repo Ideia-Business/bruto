@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCatalog, getHistory, getHeroVideo, getActiveJobs, searchVideos, isVideoDone } from "@/db/queries";
+import { getCatalog, getHistory, getHeroBruto, getActiveJobs, searchBrutos, isBrutoDone } from "@/db/queries";
 import { parseMediaUrl } from "@/pipeline/lib/paths";
 import { enqueue } from "@/pipeline/runner";
 
@@ -8,10 +8,10 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q");
   if (q !== null) {
-    return NextResponse.json({ results: searchVideos(q) });
+    return NextResponse.json({ results: searchBrutos(q) });
   }
   return NextResponse.json({
-    hero: getHeroVideo(),
+    hero: getHeroBruto(),
     catalog: getCatalog(),
     history: getHistory(),
     activeJobs: getActiveJobs(),
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
   const videoId = ref.id;
   // Dedupe: vídeo já processado → 409 com o id para a UI redirecionar.
   // (short links sem id extraível pulam esta checagem — o pipeline dedupa pelo id do yt-dlp.)
-  if (videoId && isVideoDone(videoId)) {
+  if (videoId && isBrutoDone(videoId)) {
     return NextResponse.json(
       { error: "Vídeo já processado", videoId, duplicate: true },
       { status: 409 },

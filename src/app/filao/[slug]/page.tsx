@@ -2,9 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
-import { VideoCard } from "@/components/video-card";
+import { BrutoCard } from "@/components/bruto-card";
 import { getFilaoBrutos, getFilaoBySlug } from "@/db/queries";
-import type { VideoCard as VideoCardData } from "@/lib/api-types";
+import type { BrutoCard as BrutoCardData } from "@/lib/api-types";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,7 @@ export default async function FilaoPage({ params }: { params: Promise<{ slug: st
   const filao = getFilaoBySlug(slug);
   if (!filao) notFound();
 
-  const brutos = getFilaoBrutos(filao.id) as unknown as VideoCardData[];
+  const brutos = getFilaoBrutos(filao.id) as unknown as BrutoCardData[];
 
   return (
     <>
@@ -58,7 +58,7 @@ export default async function FilaoPage({ params }: { params: Promise<{ slug: st
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {brutos.map((v) => (
                 <li key={v.id}>
-                  <VideoCard video={v} />
+                  <BrutoCard video={v} />
                 </li>
               ))}
             </ul>

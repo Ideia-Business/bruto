@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { NextResponse } from "next/server";
-import { getVideoById } from "@/db/queries";
+import { getBrutoById } from "@/db/queries";
 import { artifactPaths } from "@/pipeline/lib/paths";
 import { runStudy } from "@/pipeline/steps/07-study";
 import { runExport } from "@/pipeline/steps/06-export";
@@ -21,7 +21,7 @@ export const maxDuration = 300;
  */
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const video = getVideoById(id);
+  const video = getBrutoById(id);
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
 
   const paths = artifactPaths(id);

@@ -5,13 +5,13 @@ import { FileText, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Thumb } from "./thumb";
 import { formatDuration } from "@/lib/format";
-import type { VideoCard } from "@/lib/api-types";
+import type { BrutoCard } from "@/lib/api-types";
 
 /**
  * Destaque calmo "Continue de onde parou": card claro com thumbnail nítida ao
  * lado (nunca atrás do texto), sem gradiente nem altura de tela cheia.
  */
-export function HeroBanner({ video }: { video: VideoCard }) {
+export function HeroBanner({ video }: { video: BrutoCard }) {
   return (
     <section className="flex flex-col gap-5 rounded-xl border border-border bg-card p-5 shadow-xs sm:flex-row sm:items-center sm:p-6">
       <Link

@@ -64,7 +64,7 @@ interface Category {
 }
 
 interface DetailData {
-  video: {
+  bruto: {
     id: string;
     url: string;
     platform: string;
@@ -112,7 +112,7 @@ function humanSize(bytes: number | null): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function VideoDetail({
+export function BrutoDetail({
   data,
   categories,
 }: {
@@ -131,7 +131,7 @@ export function VideoDetail({
   async function generateStudy() {
     setStudyBusy(true);
     try {
-      const res = await fetch(`/api/videos/${data.video.id}/study`, { method: "POST" });
+      const res = await fetch(`/api/videos/${data.bruto.id}/study`, { method: "POST" });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(d.error ?? "Não foi possível montar a aula.");
@@ -148,18 +148,18 @@ export function VideoDetail({
 
   // Edição inline do título cadastrado.
   const [editingTitle, setEditingTitle] = useState(false);
-  const [titleDraft, setTitleDraft] = useState(data.video.title);
+  const [titleDraft, setTitleDraft] = useState(data.bruto.title);
   async function saveTitle() {
     const title = titleDraft.trim();
     if (!title) {
       toast.error("O título não pode ficar vazio.");
       return;
     }
-    if (title === data.video.title) {
+    if (title === data.bruto.title) {
       setEditingTitle(false);
       return;
     }
-    const res = await fetch(`/api/videos/${data.video.id}`, {
+    const res = await fetch(`/api/videos/${data.bruto.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title }),
@@ -175,7 +175,7 @@ export function VideoDetail({
   }
 
   async function changeCategory(categoryId: string) {
-    const res = await fetch(`/api/videos/${data.video.id}`, {
+    const res = await fetch(`/api/videos/${data.bruto.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ categoryId: Number(categoryId) }),
@@ -207,7 +207,7 @@ export function VideoDetail({
   async function remove() {
     if (!confirm("Excluir este vídeo e todos os arquivos gerados?")) return;
     setBusy(true);
-    const res = await fetch(`/api/videos/${data.video.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/videos/${data.bruto.id}`, { method: "DELETE" });
     if (res.ok) {
       toast.success("Vídeo excluído.");
       router.push("/");
@@ -238,7 +238,7 @@ export function VideoDetail({
               onKeyDown={(e) => {
                 if (e.key === "Enter") saveTitle();
                 if (e.key === "Escape") {
-                  setTitleDraft(data.video.title);
+                  setTitleDraft(data.bruto.title);
                   setEditingTitle(false);
                 }
               }}
@@ -253,7 +253,7 @@ export function VideoDetail({
                 size="sm"
                 variant="ghost"
                 onClick={() => {
-                  setTitleDraft(data.video.title);
+                  setTitleDraft(data.bruto.title);
                   setEditingTitle(false);
                 }}
                 className="gap-1.5"
@@ -265,11 +265,11 @@ export function VideoDetail({
         ) : (
           <div className="group flex max-w-3xl items-start gap-2">
             <h1 className="font-heading text-3xl font-semibold leading-tight text-foreground">
-              {data.video.title}
+              {data.bruto.title}
             </h1>
             <button
               onClick={() => {
-                setTitleDraft(data.video.title);
+                setTitleDraft(data.bruto.title);
                 setEditingTitle(true);
               }}
               title="Renomear"
@@ -282,13 +282,13 @@ export function VideoDetail({
         )}
 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted-foreground">
-          <span>{data.video.channel}</span>
-          {data.video.durationSec ? (
-            <span className="tabular-nums">· {formatDuration(data.video.durationSec)}</span>
+          <span>{data.bruto.channel}</span>
+          {data.bruto.durationSec ? (
+            <span className="tabular-nums">· {formatDuration(data.bruto.durationSec)}</span>
           ) : null}
-          {data.video.uploadDate ? <span>· {formatUploadDate(data.video.uploadDate)}</span> : null}
+          {data.bruto.uploadDate ? <span>· {formatUploadDate(data.bruto.uploadDate)}</span> : null}
           <Select
-            value={data.video.categoryId ? String(data.video.categoryId) : undefined}
+            value={data.bruto.categoryId ? String(data.bruto.categoryId) : undefined}
             onValueChange={changeCategory}
           >
             <SelectTrigger size="sm" className="h-7 w-auto gap-1 border-border bg-secondary text-xs">
@@ -302,17 +302,17 @@ export function VideoDetail({
               ))}
             </SelectContent>
           </Select>
-          <FilaoPicker videoId={data.video.id} />
+          <FilaoPicker videoId={data.bruto.id} />
           <Badge variant="secondary">
-            {PLATFORM_LABEL[data.video.platform] ?? data.video.platform}
+            {PLATFORM_LABEL[data.bruto.platform] ?? data.bruto.platform}
           </Badge>
-          {data.video.transcriptSource && (
+          {data.bruto.transcriptSource && (
             <Badge variant="outline">
-              {TRANSCRIPT_SOURCE_LABEL[data.video.transcriptSource] ?? data.video.transcriptSource}
+              {TRANSCRIPT_SOURCE_LABEL[data.bruto.transcriptSource] ?? data.bruto.transcriptSource}
             </Badge>
           )}
           <a
-            href={data.video.url}
+            href={data.bruto.url}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1 hover:text-foreground"
@@ -334,10 +334,10 @@ export function VideoDetail({
             {ERROR_HINT[data.latestJob.errorCode ?? "UNKNOWN"]}
           </p>
           <div className="flex gap-2">
-            <Button size="sm" disabled={busy} onClick={() => action(`/api/videos/${data.video.id}/retry`, "Reprocessando…")}>
+            <Button size="sm" disabled={busy} onClick={() => action(`/api/videos/${data.bruto.id}/retry`, "Reprocessando…")}>
               <RefreshCw className="mr-1.5 size-4" /> Tentar de novo
             </Button>
-            <Button size="sm" variant="secondary" disabled={busy} onClick={() => action(`/api/videos/${data.video.id}/retry?whisper=1`, "Reprocessando com Whisper…")}>
+            <Button size="sm" variant="secondary" disabled={busy} onClick={() => action(`/api/videos/${data.bruto.id}/retry?whisper=1`, "Reprocessando com Whisper…")}>
               <Sparkles className="mr-1.5 size-4" /> Usar Whisper
             </Button>
           </div>
@@ -346,14 +346,14 @@ export function VideoDetail({
         <>
           {/* Ações */}
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => action(`/api/videos/${data.video.id}/retry`, "Reprocessando…")}>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => action(`/api/videos/${data.bruto.id}/retry`, "Reprocessando…")}>
               <RefreshCw className="mr-1.5 size-4" /> Destrinchar de novo
             </Button>
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => action(`/api/videos/${data.video.id}/retry?whisper=1`, "Retranscrevendo com Whisper…")}>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => action(`/api/videos/${data.bruto.id}/retry?whisper=1`, "Retranscrevendo com Whisper…")}>
               <Sparkles className="mr-1.5 size-4" /> Retranscrever (Whisper)
             </Button>
             {!data.content.transcriptTranslated && (
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => action(`/api/videos/${data.video.id}/retry?traduzir=1`, "Traduzindo para PT-BR…")}>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => action(`/api/videos/${data.bruto.id}/retry?traduzir=1`, "Traduzindo para PT-BR…")}>
                 <Languages className="mr-1.5 size-4" /> Traduzir tudo
               </Button>
             )}

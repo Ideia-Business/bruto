@@ -7,8 +7,8 @@ export const categories = sqliteTable("categories", {
   sortOrder: integer("sort_order").notNull().default(0),
 });
 
-export const videos = sqliteTable(
-  "videos",
+export const brutos = sqliteTable(
+  "brutos",
   {
     // youtube_id (11 chars) — PK natural: reprocessar substitui, nunca duplica
     id: text("id").primaryKey(),
@@ -27,15 +27,17 @@ export const videos = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     lastOpenedAt: integer("last_opened_at", { mode: "timestamp" }),
   },
-  (t) => [index("videos_category_idx").on(t.categoryId)],
+  (t) => [index("brutos_category_idx").on(t.categoryId)],
 );
 
 export const jobs = sqliteTable(
   "jobs",
   {
     id: text("id").primaryKey(), // nanoid
-    videoId: text("video_id").references(() => videos.id),
-    // url existe antes do video — a etapa metadata é quem cria o registro em videos
+    videoId: text("video_id").references(() => brutos.id),
+    // A url existe antes do bruto — a etapa metadata é quem cria o registro
+    // em `brutos`. A coluna continua chamando-se `video_id` no banco: o débito
+    // pago aqui era o da TABELA; renomear coluna é migração à parte.
     url: text("url").notNull(),
     status: text("status").notNull(), // 'queued' | 'running' | 'done' | 'error'
     // 'metadata' | 'transcript' | 'summary' | 'mindmap' | 'category' | 'export'
@@ -60,7 +62,7 @@ export const artifacts = sqliteTable(
     id: text("id").primaryKey(), // nanoid
     videoId: text("video_id")
       .notNull()
-      .references(() => videos.id),
+      .references(() => brutos.id),
     // 'transcript' | 'transcript_ts' | 'summary_md' | 'mindmap_md' | 'mindmap_svg'
     // | 'mindmap_png' | 'docx' | 'pdf' | 'info_json'
     kind: text("kind").notNull(),
@@ -76,10 +78,6 @@ export const artifacts = sqliteTable(
  * que é a classificação automática do passo 05 (uma por bruto, escolhida pela
  * máquina). Aqui quem decide é quem usa, e um bruto pode estar em vários filões
  * ao mesmo tempo — daí a tabela de junção.
- *
- * debt: no léxico do produto o material chama-se "bruto", não "vídeo"
- * (ver BRAND.md). A tabela `videos` nasceu antes do nome e renomeá-la é
- * refactor à parte — as tabelas novas já usam o termo canônico.
  */
 export const filoes = sqliteTable("filoes", {
   id: text("id").primaryKey(), // nanoid
@@ -97,7 +95,7 @@ export const filaoBrutos = sqliteTable(
       .references(() => filoes.id, { onDelete: "cascade" }),
     videoId: text("video_id")
       .notNull()
-      .references(() => videos.id, { onDelete: "cascade" }),
+      .references(() => brutos.id, { onDelete: "cascade" }),
     addedAt: integer("added_at", { mode: "timestamp" }).notNull(),
   },
   (t) => [
@@ -109,7 +107,7 @@ export const filaoBrutos = sqliteTable(
 );
 
 export type Category = typeof categories.$inferSelect;
-export type Video = typeof videos.$inferSelect;
+export type Bruto = typeof brutos.$inferSelect;
 export type Job = typeof jobs.$inferSelect;
 export type Artifact = typeof artifacts.$inferSelect;
 export type Filao = typeof filoes.$inferSelect;

@@ -1,13 +1,13 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { categories, videos } from "@/db/schema";
+import { categories, brutos } from "@/db/schema";
 import { runLLMText } from "@/pipeline/lib/llm";
 import { categoryPrompt, parseCategorySlug, type CategorySlug } from "@/pipeline/prompts/category";
 import type { VideoMetadata } from "@/pipeline/types";
 
 /**
  * Etapa 5 — classificação de categoria via `claude -p` (haiku, chamada leve).
- * Atualiza videos.categoryId. Resposta fora da lista → "outros".
+ * Atualiza brutos.categoryId. Resposta fora da lista → "outros".
  */
 export async function runCategory(
   meta: VideoMetadata,
@@ -29,7 +29,7 @@ export async function runCategory(
 
   const cat = db.select({ id: categories.id }).from(categories).where(eq(categories.slug, slug)).get();
   if (cat) {
-    db.update(videos).set({ categoryId: cat.id }).where(eq(videos.id, meta.id)).run();
+    db.update(brutos).set({ categoryId: cat.id }).where(eq(brutos.id, meta.id)).run();
   }
   return slug;
 }

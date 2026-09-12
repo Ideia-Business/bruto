@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { Thumb } from "./thumb";
 import { formatDuration, TRANSCRIPT_SOURCE_LABEL } from "@/lib/format";
-import type { VideoCard as VideoCardData } from "@/lib/api-types";
+import type { BrutoCard as BrutoCardData } from "@/lib/api-types";
 
 /** Card de vídeo clean: thumbnail nítida (sem overlay) + texto ABAIXO dela. */
-export function VideoCard({ video }: { video: VideoCardData }) {
+export function BrutoCard({ video }: { video: BrutoCardData }) {
   const duration = formatDuration(video.durationSec);
   return (
     <Link

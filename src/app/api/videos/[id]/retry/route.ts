@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getVideoById } from "@/db/queries";
+import { getBrutoById } from "@/db/queries";
 import { enqueue } from "@/pipeline/runner";
 
 /**
@@ -8,7 +8,7 @@ import { enqueue } from "@/pipeline/runner";
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const video = getVideoById(id);
+  const video = getBrutoById(id);
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
 
   const { searchParams } = new URL(req.url);

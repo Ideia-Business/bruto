@@ -2,10 +2,10 @@ import fs from "node:fs";
 import { nanoid } from "nanoid";
 import { and, desc, eq, like, or, inArray } from "drizzle-orm";
 import { db } from "./client";
-import { artifacts, categories, filaoBrutos, filoes, jobs, videos } from "./schema";
-import type { Artifact, Category, Filao, Job, Video } from "./schema";
+import { artifacts, categories, filaoBrutos, filoes, jobs, brutos } from "./schema";
+import type { Artifact, Category, Filao, Job, Bruto } from "./schema";
 
-export interface VideoCard {
+export interface BrutoCard {
   id: string;
   platform: string;
   title: string;
@@ -19,10 +19,10 @@ export interface VideoCard {
 
 export interface CategoryRow {
   category: Category;
-  videos: VideoCard[];
+  brutos: BrutoCard[];
 }
 
-function toCard(v: Video): VideoCard {
+function toCard(v: Bruto): BrutoCard {
   return {
     id: v.id,
     platform: v.platform,
@@ -43,22 +43,22 @@ export function getCatalog(): CategoryRow[] {
   for (const category of cats) {
     const vids = db
       .select()
-      .from(videos)
-      .where(eq(videos.categoryId, category.id))
-      .orderBy(desc(videos.createdAt))
+      .from(brutos)
+      .where(eq(brutos.categoryId, category.id))
+      .orderBy(desc(brutos.createdAt))
       .all();
-    if (vids.length > 0) rows.push({ category, videos: vids.map(toCard) });
+    if (vids.length > 0) rows.push({ category, brutos: vids.map(toCard) });
   }
   return rows;
 }
 
 /** Histórico completo — todos os vídeos, mais recentes primeiro. */
-export function getHistory(limit = 40): VideoCard[] {
-  return db.select().from(videos).orderBy(desc(videos.createdAt)).limit(limit).all().map(toCard);
+export function getHistory(limit = 40): BrutoCard[] {
+  return db.select().from(brutos).orderBy(desc(brutos.createdAt)).limit(limit).all().map(toCard);
 }
 
 /** Vídeo em destaque no hero: o mais recente concluído. */
-export function getHeroVideo(): VideoCard | null {
+export function getHeroBruto(): BrutoCard | null {
   const doneVideoIds = db
     .select({ id: jobs.videoId })
     .from(jobs)
@@ -67,35 +67,35 @@ export function getHeroVideo(): VideoCard | null {
     .map((r) => r.id)
     .filter((id): id is string => id !== null);
   if (doneVideoIds.length === 0) {
-    const any = db.select().from(videos).orderBy(desc(videos.createdAt)).limit(1).get();
+    const any = db.select().from(brutos).orderBy(desc(brutos.createdAt)).limit(1).get();
     return any ? toCard(any) : null;
   }
   const v = db
     .select()
-    .from(videos)
-    .where(inArray(videos.id, doneVideoIds))
-    .orderBy(desc(videos.createdAt))
+    .from(brutos)
+    .where(inArray(brutos.id, doneVideoIds))
+    .orderBy(desc(brutos.createdAt))
     .limit(1)
     .get();
   return v ? toCard(v) : null;
 }
 
 /** Busca por título ou canal (case-insensitive via LIKE). */
-export function searchVideos(query: string): VideoCard[] {
+export function searchBrutos(query: string): BrutoCard[] {
   const q = `%${query.trim()}%`;
   if (!query.trim()) return [];
   return db
     .select()
-    .from(videos)
-    .where(or(like(videos.title, q), like(videos.channel, q)))
-    .orderBy(desc(videos.createdAt))
+    .from(brutos)
+    .where(or(like(brutos.title, q), like(brutos.channel, q)))
+    .orderBy(desc(brutos.createdAt))
     .limit(50)
     .all()
     .map(toCard);
 }
 
-export interface VideoDetail {
-  video: Video;
+export interface BrutoDetail {
+  bruto: Bruto;
   category: Category | null;
   artifacts: Artifact[];
   /** Job mais recente do vídeo (para status/progresso na página de detalhe). */
@@ -117,12 +117,12 @@ function readIfExists(filePath: string | undefined): string | null {
 }
 
 /** Detalhe completo de um vídeo + conteúdo das abas. null se não existe. */
-export function getVideoDetail(id: string): VideoDetail | null {
-  const video = db.select().from(videos).where(eq(videos.id, id)).get();
-  if (!video) return null;
+export function getBrutoDetail(id: string): BrutoDetail | null {
+  const bruto = db.select().from(brutos).where(eq(brutos.id, id)).get();
+  if (!bruto) return null;
 
-  const category = video.categoryId
-    ? (db.select().from(categories).where(eq(categories.id, video.categoryId)).get() ?? null)
+  const category = bruto.categoryId
+    ? (db.select().from(categories).where(eq(categories.id, bruto.categoryId)).get() ?? null)
     : null;
 
   const arts = db.select().from(artifacts).where(eq(artifacts.videoId, id)).all();
@@ -138,7 +138,7 @@ export function getVideoDetail(id: string): VideoDetail | null {
       .get() ?? null;
 
   return {
-    video,
+    bruto,
     category,
     artifacts: arts,
     latestJob,
@@ -172,12 +172,12 @@ export function getArtifactById(id: string): Artifact | null {
   return db.select().from(artifacts).where(eq(artifacts.id, id)).get() ?? null;
 }
 
-export function getVideoById(id: string): Video | null {
-  return db.select().from(videos).where(eq(videos.id, id)).get() ?? null;
+export function getBrutoById(id: string): Bruto | null {
+  return db.select().from(brutos).where(eq(brutos.id, id)).get() ?? null;
 }
 
 /** Vídeo já processado com sucesso? (dedupe do POST de nova URL). */
-export function isVideoDone(id: string): boolean {
+export function isBrutoDone(id: string): boolean {
   const done = db
     .select({ id: jobs.id })
     .from(jobs)
@@ -192,13 +192,13 @@ export function listCategories(): Category[] {
 }
 
 /** Atualiza a categoria de um vídeo (edição manual na UI). */
-export function setVideoCategory(videoId: string, categoryId: number): void {
-  db.update(videos).set({ categoryId }).where(eq(videos.id, videoId)).run();
+export function setBrutoCategory(videoId: string, categoryId: number): void {
+  db.update(brutos).set({ categoryId }).where(eq(brutos.id, videoId)).run();
 }
 
 /** Renomeia o título cadastrado de um vídeo (edição manual na UI). */
-export function setVideoTitle(videoId: string, title: string): void {
-  db.update(videos).set({ title }).where(eq(videos.id, videoId)).run();
+export function setBrutoTitle(videoId: string, title: string): void {
+  db.update(brutos).set({ title }).where(eq(brutos.id, videoId)).run();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,7 +254,7 @@ export function getFilaoBySlug(slug: string): Filao | null {
 }
 
 /** Brutos de um filão, na ordem em que foram adicionados (mais recentes primeiro). */
-export function getFilaoBrutos(filaoId: string): VideoCard[] {
+export function getFilaoBrutos(filaoId: string): BrutoCard[] {
   const links = db
     .select()
     .from(filaoBrutos)
@@ -263,7 +263,7 @@ export function getFilaoBrutos(filaoId: string): VideoCard[] {
     .all();
   if (links.length === 0) return [];
   const ids = links.map((l) => l.videoId);
-  const vids = db.select().from(videos).where(inArray(videos.id, ids)).all();
+  const vids = db.select().from(brutos).where(inArray(brutos.id, ids)).all();
   // Preserva a ordem dos links (o inArray não garante ordem).
   const byId = new Map(vids.map((v) => [v.id, v]));
   return links.flatMap((l) => {
@@ -302,7 +302,7 @@ export function deleteFilao(id: string): void {
 }
 
 /** Os filões em que um bruto está — usado pelo seletor na página do bruto. */
-export function getFiloesForVideo(videoId: string): string[] {
+export function getFiloesForBruto(videoId: string): string[] {
   return db
     .select({ filaoId: filaoBrutos.filaoId })
     .from(filaoBrutos)
@@ -315,8 +315,8 @@ export function getFiloesForVideo(videoId: string): string[] {
  * Define em quais filões o bruto está, de uma vez (o seletor manda o conjunto
  * inteiro). Idempotente: reenviar o mesmo conjunto não muda nada.
  */
-export function setFiloesForVideo(videoId: string, filaoIds: string[]): void {
-  const atual = new Set(getFiloesForVideo(videoId));
+export function setFiloesForBruto(videoId: string, filaoIds: string[]): void {
+  const atual = new Set(getFiloesForBruto(videoId));
   const alvo = new Set(filaoIds);
   const now = new Date();
 

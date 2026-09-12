@@ -1,6 +1,6 @@
 /** Tipos leves usados pelos client components (sem importar código de servidor). */
 
-export interface VideoCard {
+export interface BrutoCard {
   id: string;
   platform: string;
   title: string;
@@ -21,7 +21,7 @@ export interface Category {
 
 export interface CategoryRow {
   category: Category;
-  videos: VideoCard[];
+  brutos: BrutoCard[];
 }
 
 export interface Job {
@@ -39,9 +39,9 @@ export interface Job {
 }
 
 export interface CatalogResponse {
-  hero: VideoCard | null;
+  hero: BrutoCard | null;
   catalog: CategoryRow[];
-  history: VideoCard[];
+  history: BrutoCard[];
   activeJobs: Job[];
 }
 

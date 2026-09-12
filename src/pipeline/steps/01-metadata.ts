@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { categories, videos } from "@/db/schema";
+import { categories, brutos } from "@/db/schema";
 import { fetchMetadata, downloadThumbnail } from "@/pipeline/lib/ytdlp";
 import { artifactPaths, ensureVideoDir } from "@/pipeline/lib/paths";
 import { recordArtifact } from "@/pipeline/lib/artifacts";
@@ -29,11 +29,11 @@ export async function runMetadata(url: string): Promise<VideoMetadata> {
     .where(eq(categories.slug, "outros"))
     .get();
 
-  const existing = db.select({ id: videos.id }).from(videos).where(eq(videos.id, meta.id)).get();
+  const existing = db.select({ id: brutos.id }).from(brutos).where(eq(brutos.id, meta.id)).get();
   const thumbnailPath = fs.existsSync(paths.thumb) ? paths.thumb : null;
 
   if (existing) {
-    db.update(videos)
+    db.update(brutos)
       .set({
         url: meta.url,
         platform: meta.platform,
@@ -44,10 +44,10 @@ export async function runMetadata(url: string): Promise<VideoMetadata> {
         language: meta.language,
         thumbnailPath,
       })
-      .where(eq(videos.id, meta.id))
+      .where(eq(brutos.id, meta.id))
       .run();
   } else {
-    db.insert(videos)
+    db.insert(brutos)
       .values({
         id: meta.id,
         url: meta.url,

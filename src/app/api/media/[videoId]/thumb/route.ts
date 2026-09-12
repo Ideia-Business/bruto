@@ -1,10 +1,10 @@
 import fs from "node:fs";
-import { getVideoById } from "@/db/queries";
+import { getBrutoById } from "@/db/queries";
 
 /** GET /api/media/[videoId]/thumb → thumbnail do disco (offline-first). */
 export async function GET(_req: Request, { params }: { params: Promise<{ videoId: string }> }) {
   const { videoId } = await params;
-  const video = getVideoById(videoId);
+  const video = getBrutoById(videoId);
   if (video?.thumbnailPath && fs.existsSync(video.thumbnailPath)) {
     const data = fs.readFileSync(video.thumbnailPath);
     return new Response(new Uint8Array(data), {

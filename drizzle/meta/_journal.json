@@ -8,6 +8,13 @@
       "when": 1789181499556,
       "tag": "0000_esquema_inicial",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789232131945,
+      "tag": "0001_brutos_no_lugar_de_videos",
+      "breakpoints": true
     }
   ]
 }

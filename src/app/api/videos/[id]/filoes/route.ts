@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { getFiloesForVideo, setFiloesForVideo } from "@/db/queries";
+import { getFiloesForBruto, setFiloesForBruto } from "@/db/queries";
 
 /** GET /api/videos/:id/filoes → ids dos filões em que este bruto está. */
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  return NextResponse.json({ filaoIds: getFiloesForVideo(id) });
+  return NextResponse.json({ filaoIds: getFiloesForBruto(id) });
 }
 
 /**
@@ -30,6 +30,6 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     );
   }
 
-  setFiloesForVideo(id, raw as string[]);
-  return NextResponse.json({ filaoIds: getFiloesForVideo(id) });
+  setFiloesForBruto(id, raw as string[]);
+  return NextResponse.json({ filaoIds: getFiloesForBruto(id) });
 }

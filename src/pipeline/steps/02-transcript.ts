@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { videos } from "@/db/schema";
+import { brutos } from "@/db/schema";
 import { downloadBestVtt, downloadAudio } from "@/pipeline/lib/ytdlp";
 import { parseVtt } from "@/pipeline/lib/vtt-parser";
 import { transcreverAudio, transcricaoDisponivel, SEM_BACKEND } from "@/pipeline/lib/transcribe";
@@ -23,7 +23,7 @@ export interface TranscriptOptions {
  *   D)   fallback whisper local (áudio) quando não há legenda ou forceWhisper
  *
  * Grava transcript.txt + transcript.timestamps.txt, registra artifacts e
- * atualiza videos.transcriptSource. `isPortuguese` informa o runner se a
+ * atualiza brutos.transcriptSource. `isPortuguese` informa o runner se a
  * tradução (etapa opcional) é necessária.
  */
 export async function runTranscript(
@@ -98,9 +98,9 @@ export async function runTranscript(
   recordArtifact(meta.id, "transcript", paths.transcript);
   recordArtifact(meta.id, "transcript_ts", paths.transcriptTimestamps);
 
-  db.update(videos)
+  db.update(brutos)
     .set({ transcriptSource: result.source })
-    .where(eq(videos.id, meta.id))
+    .where(eq(brutos.id, meta.id))
     .run();
 
   return result;

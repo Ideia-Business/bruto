@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
-import { VideoDetail } from "@/components/video-detail";
-import { getVideoDetail, listCategories } from "@/db/queries";
+import { BrutoDetail } from "@/components/bruto-detail";
+import { getBrutoDetail, listCategories } from "@/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ export default async function VideoPage({
 }) {
   const { id } = await params;
   const { tab } = await searchParams;
-  const detail = getVideoDetail(id);
+  const detail = getBrutoDetail(id);
   if (!detail) notFound();
 
   // Serializa para o client component (datas viram string via JSON).
@@ -25,7 +25,7 @@ export default async function VideoPage({
     <>
       <SiteHeader />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">
-        <VideoDetail data={data} categories={categories} />
+        <BrutoDetail data={data} categories={categories} />
       </main>
     </>
   );

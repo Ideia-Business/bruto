@@ -1,6 +1,6 @@
 import { SiteHeader } from "@/components/site-header";
 import { HomeClient } from "@/components/home-client";
-import { getCatalog, getHistory, getHeroVideo, getActiveJobs } from "@/db/queries";
+import { getCatalog, getHistory, getHeroBruto, getActiveJobs } from "@/db/queries";
 import type { CatalogResponse } from "@/lib/api-types";
 
 // Sempre dinâmico: o catálogo muda a cada processamento.
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default function HomePage() {
   const initial = {
-    hero: getHeroVideo(),
+    hero: getHeroBruto(),
     catalog: getCatalog(),
     history: getHistory(),
     activeJobs: getActiveJobs(),

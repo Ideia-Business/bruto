@@ -2,14 +2,14 @@ import fs from "node:fs";
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { artifacts, jobs, videos } from "@/db/schema";
-import { getVideoDetail, setVideoCategory, setVideoTitle } from "@/db/queries";
+import { artifacts, jobs, brutos } from "@/db/schema";
+import { getBrutoDetail, setBrutoCategory, setBrutoTitle } from "@/db/queries";
 import { videoDir } from "@/pipeline/lib/paths";
 
 /** GET /api/videos/[id] → detalhe + conteúdo das abas. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const detail = getVideoDetail(id);
+  const detail = getBrutoDetail(id);
   if (!detail) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });
   return NextResponse.json(detail);
 }
@@ -21,13 +21,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   let touched = false;
   if (typeof body.categoryId === "number") {
-    setVideoCategory(id, body.categoryId);
+    setBrutoCategory(id, body.categoryId);
     touched = true;
   }
   if (typeof body.title === "string") {
     const title = body.title.trim();
     if (!title) return NextResponse.json({ error: "O título não pode ficar vazio." }, { status: 400 });
-    setVideoTitle(id, title.slice(0, 300));
+    setBrutoTitle(id, title.slice(0, 300));
     touched = true;
   }
   if (!touched) {
@@ -42,7 +42,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   // Ordem: artifacts → jobs → video (FKs), depois a pasta no disco.
   db.delete(artifacts).where(eq(artifacts.videoId, id)).run();
   db.delete(jobs).where(eq(jobs.videoId, id)).run();
-  db.delete(videos).where(eq(videos.id, id)).run();
+  db.delete(brutos).where(eq(brutos.id, id)).run();
   fs.rmSync(videoDir(id), { recursive: true, force: true });
   return NextResponse.json({ ok: true });
 }

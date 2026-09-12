@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getArtifactById, getVideoById } from "@/db/queries";
+import { getArtifactById, getBrutoById } from "@/db/queries";
 
 /** Nome amigável do arquivo para download, por tipo de artefato. */
 const DOWNLOAD_LABEL: Record<string, (title: string) => string> = {
@@ -38,7 +38,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!art || !fs.existsSync(art.filePath)) {
     return new Response("Artefato não encontrado", { status: 404 });
   }
-  const video = getVideoById(art.videoId);
+  const video = getBrutoById(art.videoId);
   const title = sanitize(video?.title ?? art.videoId);
   const labelFn = DOWNLOAD_LABEL[art.kind];
   const filename = sanitize(labelFn ? labelFn(title) : path.basename(art.filePath));
