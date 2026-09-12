@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recusarSeNaoForChamadaDeCliente } from "@/lib/endpoint-local";
 import { createFilao, listFiloes } from "@/db/queries";
 
 /** GET /api/filoes → todos os filões com a contagem de brutos de cada um. */
@@ -8,6 +9,9 @@ export async function GET() {
 
 /** POST /api/filoes { name } → cria um filão. */
 export async function POST(req: Request) {
+  const recusa = recusarSeNaoForChamadaDeCliente(req);
+  if (recusa) return recusa;
+
   let body: { name?: string };
   try {
     body = await req.json();

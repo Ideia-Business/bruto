@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { NextResponse } from "next/server";
+import { recusarSeNaoForChamadaDeCliente } from "@/lib/endpoint-local";
 import { getBrutoById } from "@/db/queries";
 import { artifactPaths } from "@/pipeline/lib/paths";
 import { runStudy } from "@/pipeline/steps/07-study";
@@ -19,7 +20,10 @@ export const maxDuration = 300;
  * POST /api/videos/[id]/study → monta a aula didática sob demanda.
  * Síncrona: o cliente espera com estado de carregamento. Retorna o markdown.
  */
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const recusa = recusarSeNaoForChamadaDeCliente(req);
+  if (recusa) return recusa;
+
   const { id } = await params;
   const video = getBrutoById(id);
   if (!video) return NextResponse.json({ error: "Vídeo não encontrado" }, { status: 404 });

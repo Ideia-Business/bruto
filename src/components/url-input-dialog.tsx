@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { fetchApp } from "@/lib/fetch-app";
 
 /**
  * Dialog para colar uma URL do YouTube e disparar o processamento.
@@ -37,7 +38,7 @@ export function UrlInputDialog({
     if (!url.trim()) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/videos", {
+      const res = await fetchApp("/api/videos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url, forceWhisper: whisper, translate }),

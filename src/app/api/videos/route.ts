@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recusarSeNaoForChamadaDeCliente } from "@/lib/endpoint-local";
 import { getCatalog, getHistory, getHeroBruto, getActiveJobs, searchBrutos, isBrutoDone } from "@/db/queries";
 import { catalogoParaWire } from "@/lib/wire";
 import { parseMediaUrl } from "@/pipeline/lib/paths";
@@ -23,6 +24,9 @@ export async function GET(req: Request) {
 
 /** POST /api/videos { url, forceWhisper?, translate? } → cria job. Dedupe 409. */
 export async function POST(req: Request) {
+  const recusa = recusarSeNaoForChamadaDeCliente(req);
+  if (recusa) return recusa;
+
   let body: { url?: string; forceWhisper?: boolean; translate?: boolean };
   try {
     body = await req.json();

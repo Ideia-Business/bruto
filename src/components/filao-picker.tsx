@@ -14,6 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import type { FilaoRow } from "@/lib/api-types";
+import { fetchApp } from "@/lib/fetch-app";
 
 /**
  * Escolhe em quais filões este bruto está. Manda o conjunto inteiro no PUT —
@@ -31,8 +32,8 @@ export function FilaoPicker({ videoId }: { videoId: string }) {
     setCarregando(true);
     try {
       const [fRes, vRes] = await Promise.all([
-        fetch("/api/filoes"),
-        fetch(`/api/videos/${videoId}/filoes`),
+        fetchApp("/api/filoes"),
+        fetchApp(`/api/videos/${videoId}/filoes`),
       ]);
       const f = (await fRes.json()) as { filoes: FilaoRow[] };
       const v = (await vRes.json()) as { filaoIds: string[] };
@@ -59,7 +60,7 @@ export function FilaoPicker({ videoId }: { videoId: string }) {
     async (proximo: Set<string>) => {
       setMarcados(proximo);
       try {
-        const res = await fetch(`/api/videos/${videoId}/filoes`, {
+        const res = await fetchApp(`/api/videos/${videoId}/filoes`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ filaoIds: [...proximo] }),
@@ -87,7 +88,7 @@ export function FilaoPicker({ videoId }: { videoId: string }) {
     const name = novo.trim();
     if (!name) return;
     try {
-      const res = await fetch("/api/filoes", {
+      const res = await fetchApp("/api/filoes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),

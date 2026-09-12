@@ -38,6 +38,7 @@ import { FilaoPicker } from "./filao-picker";
 import { CopyButton } from "./copy-button";
 import { TranscriptView } from "./transcript-view";
 import { JobProgressBar, useJobProgress } from "./job-progress";
+import { fetchApp } from "@/lib/fetch-app";
 import {
   formatDuration,
   formatUploadDate,
@@ -131,7 +132,7 @@ export function BrutoDetail({
   async function generateStudy() {
     setStudyBusy(true);
     try {
-      const res = await fetch(`/api/videos/${data.bruto.id}/study`, { method: "POST" });
+      const res = await fetchApp(`/api/videos/${data.bruto.id}/study`, { method: "POST" });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(d.error ?? "Não foi possível montar a aula.");
@@ -159,7 +160,7 @@ export function BrutoDetail({
       setEditingTitle(false);
       return;
     }
-    const res = await fetch(`/api/videos/${data.bruto.id}`, {
+    const res = await fetchApp(`/api/videos/${data.bruto.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title }),
@@ -175,7 +176,7 @@ export function BrutoDetail({
   }
 
   async function changeCategory(categoryId: string) {
-    const res = await fetch(`/api/videos/${data.bruto.id}`, {
+    const res = await fetchApp(`/api/videos/${data.bruto.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ categoryId: Number(categoryId) }),
@@ -191,7 +192,7 @@ export function BrutoDetail({
   async function action(path: string, okMsg: string) {
     setBusy(true);
     try {
-      const res = await fetch(path, { method: "POST" });
+      const res = await fetchApp(path, { method: "POST" });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         toast.error(d.error ?? "Falhou.");
@@ -207,7 +208,7 @@ export function BrutoDetail({
   async function remove() {
     if (!confirm("Excluir este vídeo e todos os arquivos gerados?")) return;
     setBusy(true);
-    const res = await fetch(`/api/videos/${data.bruto.id}`, { method: "DELETE" });
+    const res = await fetchApp(`/api/videos/${data.bruto.id}`, { method: "DELETE" });
     if (res.ok) {
       toast.success("Vídeo excluído.");
       router.push("/");

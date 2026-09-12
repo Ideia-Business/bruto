@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recusarSeNaoForChamadaDeCliente } from "@/lib/endpoint-local";
 import { getFiloesForBruto, setFiloesForBruto } from "@/db/queries";
 
 /** GET /api/videos/:id/filoes → ids dos filões em que este bruto está. */
@@ -13,6 +14,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
  * um delta. Idempotente: reenviar o mesmo conjunto não muda nada.
  */
 export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const recusa = recusarSeNaoForChamadaDeCliente(req);
+  if (recusa) return recusa;
+
   const { id } = await ctx.params;
 
   let body: { filaoIds?: unknown };

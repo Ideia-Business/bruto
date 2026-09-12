@@ -13,6 +13,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatDuration } from "@/lib/format";
 import type { BrutoCard } from "@/lib/api-types";
+import { fetchApp } from "@/lib/fetch-app";
 
 /** Busca ⌘K no catálogo (título/canal). */
 export function SearchCommand() {
@@ -42,7 +43,7 @@ export function SearchCommand() {
     }
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/videos?q=${encodeURIComponent(query)}`);
+        const res = await fetchApp(`/api/videos?q=${encodeURIComponent(query)}`);
         const data = await res.json();
         setResults(data.results ?? []);
       } catch {
