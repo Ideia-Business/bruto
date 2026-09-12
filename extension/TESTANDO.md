@@ -6,9 +6,25 @@ Existe um trecho que **nenhum teste automático cobre**: a captura da legenda s�
 
 ---
 
-## 1. Tenha uma chave de IA em mãos
+## 1. Escolha o modo que você vai testar
 
-A extensão não usa o Claude Code CLI — ele é um binário local e não existe dentro do navegador. Você precisa de uma chave de API de verdade, de um destes cinco:
+São dois, e a extensão decide sozinha qual usar. **Teste os dois** — cada um tem o seu jeito de falhar.
+
+| Modo | Quando acontece | O que conferir |
+|---|---|---|
+| **Plano** | o app do Bruto está rodando em `http://127.0.0.1:3000` com um provedor de plano pronto | as opções dizem "Usando o seu plano"; a aula sai **sem nenhuma chave configurada** |
+| **Chave** | sem app, ou app sem provedor de plano | as opções dizem "Usando chave de API — você paga por uso", **e explicam por quê** |
+
+O modo é detectado quando o popup (ou a tela de opções) **abre**. Subiu o app depois? Feche e abra de novo — não há nada para clicar.
+
+Para o modo plano, suba o app (`npm run app`) e confirme antes:
+
+```bash
+curl -s http://127.0.0.1:3000/api/llm/saude
+# tem de responder {"ok":true,"provedores":[...]} com algum `"plano":true,"disponivel":true`
+```
+
+Para o modo chave, você precisa de uma chave de API de verdade, de um destes cinco. (A extensão não executa o Claude Code CLI: ele é um binário local, e binário não roda dentro do navegador — é justamente por isso que o modo plano passa pelo app.)
 
 | Provedor | Onde pegar | Nota |
 |---|---|---|
