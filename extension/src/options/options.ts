@@ -7,7 +7,7 @@
 
 import type { Config } from "../lib/config";
 import { PROVEDORES, lerConfig, salvarConfig, limparConfig } from "../lib/config";
-import { testarCredencial } from "../lib/llm";
+import { testarCredencial, verModo } from "../lib/llm";
 
 type Provedor = (typeof PROVEDORES)[number];
 type ProvedorId = Config["provedor"];
@@ -26,6 +26,9 @@ const btnRevelar = el<HTMLButtonElement>("btn-revelar");
 const campoModelo = el<HTMLDivElement>("campo-modelo");
 const inputModelo = el<HTMLInputElement>("modelo");
 const ajudaModelo = el<HTMLParagraphElement>("ajuda-modelo");
+const caixaModo = el<HTMLElement>("modo");
+const modoTitulo = el<HTMLParagraphElement>("modo-titulo");
+const modoPorque = el<HTMLParagraphElement>("modo-porque");
 const btnTestar = el<HTMLButtonElement>("btn-testar");
 const btnApagar = el<HTMLButtonElement>("btn-apagar");
 const estado = el<HTMLParagraphElement>("estado");
@@ -160,8 +163,41 @@ btnApagar.addEventListener("click", () => {
 
 // --- entrada ----------------------------------------------------------
 
+/**
+ * Diz em qual modo a extensão está e POR QUÊ.
+ *
+ * O silêncio aqui seria a pior opção: quem instalou o Bruto para usar o plano
+ * que já assina, e está de fato pagando por token porque o app não subiu, não
+ * teria como saber. O motivo vem do próprio app quando ele o fornece — se ele
+ * sabe dizer "o `claude` não está instalado", isso vale mais que qualquer texto
+ * genérico que a extensão invente.
+ */
+async function pintarModo(): Promise<void> {
+  const modo = await verModo();
+  caixaModo.hidden = false;
+
+  if (modo.qual === "app") {
+    const plano = modo.saude?.provedores.find((p) => p.plano && p.disponivel);
+    caixaModo.className = "modo ok";
+    modoTitulo.textContent = `Usando o seu plano${plano ? ` — ${plano.label}` : ""}`;
+    modoPorque.textContent =
+      "O app do Bruto está aberto nesta máquina e o consumo sai da assinatura que você já paga. Não é preciso chave, e o que estiver guardado abaixo não vai ser usado.";
+    return;
+  }
+
+  caixaModo.className = "modo";
+  modoTitulo.textContent = "Usando chave de API — você paga por uso";
+  const indisponiveis = (modo.saude?.provedores ?? []).filter((p) => p.plano && !p.disponivel);
+  const motivo = indisponiveis.find((p) => typeof p.motivo === "string")?.motivo;
+  modoPorque.textContent =
+    modo.saude === null
+      ? "O app do Bruto não está aberto nesta máquina. Com ele aberto, o consumo sairia do plano que você já assina, sem chave e sem cobrança por token."
+      : `O app do Bruto está aberto, mas nenhum provedor de plano está pronto nele${motivo ? `: ${motivo}` : "."}`;
+}
+
 async function iniciar(): Promise<void> {
   montarProvedores();
+  void pintarModo();
   const config = await lerConfig();
   if (config) {
     marcar(config.provedor);

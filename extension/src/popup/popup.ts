@@ -13,8 +13,7 @@
 
 import { extrairVideoIdDaUrl } from "../lib/captura";
 import type { BrutoCapturado, CapturaError } from "../lib/captura";
-import { runLLM, LlmError } from "../lib/llm";
-import { lerConfig } from "../lib/config";
+import { runLLM, LlmError, verModo } from "../lib/llm";
 import { guardarAula, listarBancada, esquecerAula, limparBancada } from "../lib/bancada";
 import type { AulaGuardada } from "../lib/bancada";
 import { guardarFaisca, listarFaiscas, esquecerFaisca } from "../lib/caderno";
@@ -473,8 +472,9 @@ async function destrinchar(): Promise<void> {
     avisoAula.hidden = true;
     mostrar("aula");
 
-    // Guarda ANTES de qualquer outra coisa: a pessoa gastou a chave dela para
-    // produzir isto, e fechar o popup não pode significar perder o trabalho.
+    // Guarda ANTES de qualquer outra coisa: produzir isto consumiu o plano ou a
+    // chave da pessoa, e fechar o popup não pode significar perder o trabalho.
+    const modoAgora = await verModo();
     void guardarAula({
       videoId: bruto.videoId,
       titulo: bruto.titulo,
@@ -482,7 +482,9 @@ async function destrinchar(): Promise<void> {
       url: `https://www.youtube.com/watch?v=${bruto.videoId}`,
       markdown: aulaMd,
       em: Date.now(),
-      provedor: (await lerConfig())?.provedor ?? null,
+      // Registra de onde a aula veio: no modo app é o plano, e guardar o nome de
+      // um provedor de chave aqui seria registro falso.
+      provedor: modoAgora.qual === "app" ? "app-local" : (modoAgora.config?.provedor ?? null),
     });
   } catch (e: unknown) {
     if (meuControle.signal.aborted) {
@@ -610,8 +612,11 @@ el<HTMLButtonElement>("btn-baixar").addEventListener("click", () => {
 // --- entrada ----------------------------------------------------------
 
 async function iniciar(): Promise<void> {
-  const config = await lerConfig();
-  if (!config) {
+  // A chave só é exigida no modo `chave`. Com o app local de pé e um provedor de
+  // plano, não há chave nenhuma para pedir — mandar alguém configurar uma seria
+  // empurrá-lo a pagar por token justamente por cima do plano que ele assina.
+  const modo = await verModo();
+  if (modo.qual === "chave" && !modo.config) {
     mostrar("semConfig");
     return;
   }

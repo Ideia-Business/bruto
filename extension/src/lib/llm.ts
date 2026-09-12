@@ -19,11 +19,53 @@
  */
 
 import { descreverProvedor, lerConfig, type Config, type ProvedorId } from "./config";
+import { pedirAoApp, verSaudeDoApp, type SaudeDoApp } from "./app-local";
 
 export type Tier = "fast" | "balanced";
 
+/**
+ * Em qual dos dois caminhos a extensão está — e por quê, porque a tela de opções
+ * precisa dizer isso a quem instalou justamente para não pagar por token.
+ *
+ * `app`   — o app local está de pé com um provedor de plano: o consumo sai da
+ *           assinatura que a pessoa já paga, e nenhuma chave é necessária.
+ * `chave` — não há app (o caso comum), ou o app não tem plano disponível:
+ *           volta a ser chave de API, cobrada por uso.
+ */
+export type QualModo = "app" | "chave";
+
+export interface Modo {
+  qual: QualModo;
+  /** Presente no modo `chave`; `null` quando nem chave há. */
+  config: Config | null;
+  /** O que o app respondeu, quando respondeu. `null` = app fora do ar. */
+  saude: SaudeDoApp | null;
+}
+
+/**
+ * A detecção é memoizada pelo tempo de vida da página. O popup vive segundos e
+ * pergunta o modo mais de uma vez (ao abrir, ao destrinchar); repetir a sondagem
+ * a cada pergunta só adiciona espera. Fechar e reabrir o popup redetecta — que é
+ * exatamente o que alguém faz depois de subir o app.
+ */
+let modoEmVoo: Promise<Modo> | null = null;
+
+export function esquecerModo(): void {
+  modoEmVoo = null;
+}
+
+export function verModo(): Promise<Modo> {
+  modoEmVoo ??= (async (): Promise<Modo> => {
+    const [saude, config] = await Promise.all([verSaudeDoApp(), lerConfig()]);
+    return { qual: saude?.temPlano === true ? "app" : "chave", config, saude };
+  })();
+  return modoEmVoo;
+}
+
 export interface PedidoLlm {
   prompt: string;
+  /** O que a tarefa é, no vocabulário do app. Default: "study". */
+  task?: "summary" | "mindmap" | "category" | "translate" | "study" | "references";
   /** Texto longo que acompanha o prompt (transcrição, seleção da página). */
   input?: string;
   /** Default: "balanced". */
@@ -403,15 +445,34 @@ async function executar(
  * na segunda vez, então esse caso sai na primeira.
  */
 export async function runLLM(p: PedidoLlm): Promise<string> {
-  const c = await lerConfig();
-  if (!c) {
-    throw new LlmError(
-      "SEM_CONFIG",
-      "Nenhum provedor de IA configurado. Abra as opções da extensão, escolha um provedor e cole sua chave — ela fica só neste aparelho.",
+  const modo = await verModo();
+  const timeoutMs = p.timeoutMs ?? TIMEOUT_PADRAO_MS;
+
+  if (modo.qual === "app") {
+    // Sem repetição e SEM QUEDA PARA A CHAVE: a escolha do modo já foi feita, e
+    // quem instalou isto para usar o plano que assina não pode ser mandado, em
+    // silêncio, gastar por token porque o app piscou. Falhou, a pessoa vê o
+    // motivo e tenta de novo — e a tentativa seguinte redetecta o modo.
+    return stripFences(
+      await pedirAoApp({
+        task: p.task ?? "study",
+        prompt: p.prompt,
+        ...(p.input === undefined ? {} : { input: p.input }),
+        tier: p.tier ?? "balanced",
+        timeoutMs,
+        ...(p.signal === undefined ? {} : { signal: p.signal }),
+      }),
     );
   }
 
-  const timeoutMs = p.timeoutMs ?? TIMEOUT_PADRAO_MS;
+  const c = modo.config;
+  if (!c) {
+    throw new LlmError(
+      "SEM_CONFIG",
+      "Nenhum provedor de IA configurado. Duas saídas: abra o app do Bruto nesta máquina para usar o plano que você já assina, ou abra as opções da extensão e cole uma chave — ela fica só neste aparelho.",
+    );
+  }
+
   let ultimo: unknown;
 
   for (let tentativa = 1; tentativa <= 2; tentativa++) {
