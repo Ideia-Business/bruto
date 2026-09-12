@@ -18,7 +18,6 @@ import { lerConfig } from "../lib/config";
 import { guardarAula, listarBancada, esquecerAula, limparBancada } from "../lib/bancada";
 import type { AulaGuardada } from "../lib/bancada";
 import { guardarFaisca, listarFaiscas, esquecerFaisca } from "../lib/caderno";
-import type { Faisca } from "../lib/caderno";
 import { levarParaLapid } from "../lib/ponte";
 import { summaryPrompt } from "../../../src/pipeline/prompts/summary";
 
