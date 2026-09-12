@@ -18,7 +18,7 @@ git clone https://github.com/Ideia-Business/bruto.git
 cd bruto
 npm install
 npx playwright install chromium
-npm run db:push && npm run db:seed
+npm run db:migrate && npm run db:seed
 npm run doctor          # diz exatamente qual dependência falta
 npm run dev
 ```

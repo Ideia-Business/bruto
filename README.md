@@ -53,7 +53,7 @@ brew install yt-dlp                 # obrigatório
 uv tool install mlx-whisper         # opcional — vídeos sem legenda (ver abaixo)
 npm install
 npx playwright install chromium     # exports .pdf + imagem do mapa
-npm run db:push && npm run db:seed
+npm run db:migrate && npm run db:seed
 npm run doctor                      # confere as dependências
 ```
 

@@ -34,7 +34,7 @@ jobs:
         env:
           BRUTO_DATA_ROOT: ${{ runner.temp }}/bruto-data
         run: |
-          npm run db:push -- --force
+          npm run db:migrate
           npm run db:seed
 
       - name: Tipos

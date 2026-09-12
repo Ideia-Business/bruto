@@ -13,8 +13,9 @@ const DATA_ROOT =
 
 // Em clone novo o diretório ainda não existe, e o better-sqlite3 não o cria:
 // falha ao abrir o arquivo e — pior — o drizzle-kit ainda assim sai com código
-// 0, então `db:push && db:seed` seguia para o seed e estourava com um confuso
-// "no such table: categories". Criar aqui elimina a causa.
+// 0, então a preparação do banco seguia para o seed e estourava com um confuso
+// "no such table: categories". Criar aqui elimina a causa. (Hoje quem aplica o
+// schema é `db:migrate`; este config serve ao `db:generate` e ao `db:studio`.)
 fs.mkdirSync(DATA_ROOT, { recursive: true });
 
 export default defineConfig({
