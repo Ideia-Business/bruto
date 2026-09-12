@@ -79,26 +79,56 @@ export function recusarSeNaoForJson(req: Request): NextResponse | null {
 }
 
 /**
- * Lê o corpo respeitando o teto. Confere o `Content-Length` anunciado E o
- * tamanho real do que chegou — o cabeçalho é informação de quem chama, e quem
- * chama pode mentir.
+ * Lê o corpo respeitando o teto — **lendo aos pedaços e abortando ao passar**.
+ *
+ * A versão anterior conferia o `Content-Length` e depois chamava `req.text()`.
+ * Isso limitava o que era ANUNCIADO, não o que era CONSUMIDO: num corpo
+ * `chunked` não há `Content-Length`, e o `req.text()` bufferizava tudo antes de
+ * qualquer checagem. Medido antes do conserto, com 300 MB enviados a este
+ * endpoint: o servidor aceitou 314 MB e o RSS do processo foi de 746 MB para
+ * 1486 MB — e só então devolveu o 413. O teto existia no papel; a memória subia
+ * do mesmo jeito.
+ *
+ * Agora o fluxo é consumido pedaço a pedaço e o laço para no primeiro byte
+ * acima do limite, cancelando a leitura. O `Content-Length` continua sendo
+ * conferido antes de tudo, porque quando ele existe e é honesto evita começar
+ * uma leitura que se sabe grande demais — mas ele é conveniência, não a trava.
  */
 export async function lerCorpoLimitado(
   req: Request,
 ): Promise<{ ok: true; texto: string } | { ok: false; resposta: NextResponse }> {
+  const grandeDemais = () => ({
+    ok: false as const,
+    resposta: NextResponse.json({ error: "Corpo grande demais." }, { status: 413 }),
+  });
+
   const anunciado = Number(req.headers.get("content-length") ?? "0");
-  if (Number.isFinite(anunciado) && anunciado > LIMITE_CORPO_BYTES) {
+  if (Number.isFinite(anunciado) && anunciado > LIMITE_CORPO_BYTES) return grandeDemais();
+
+  if (!req.body) return { ok: true, texto: "" };
+
+  const leitor = req.body.getReader();
+  const partes: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await leitor.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > LIMITE_CORPO_BYTES) {
+        // Nada mais é acumulado, e o resto do upload deixa de ser lido.
+        await leitor.cancel().catch(() => {});
+        return grandeDemais();
+      }
+      partes.push(value);
+    }
+  } catch {
     return {
       ok: false,
-      resposta: NextResponse.json({ error: "Corpo grande demais." }, { status: 413 }),
+      resposta: NextResponse.json({ error: "Falha ao ler o corpo." }, { status: 400 }),
     };
   }
-  const texto = await req.text();
-  if (Buffer.byteLength(texto, "utf8") > LIMITE_CORPO_BYTES) {
-    return {
-      ok: false,
-      resposta: NextResponse.json({ error: "Corpo grande demais." }, { status: 413 }),
-    };
-  }
-  return { ok: true, texto };
+
+  return { ok: true, texto: Buffer.concat(partes).toString("utf8") };
 }
