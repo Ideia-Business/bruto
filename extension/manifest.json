@@ -3,7 +3,7 @@
   "name": "Bruto — vídeo vira aula",
   "short_name": "Bruto",
   "version": "0.2.0",
-  "description": "Destrincha o vídeo do YouTube que você está vendo numa aula em português, com a sua chave de IA e sem servidor nenhum.",
+  "description": "Vira o vídeo do YouTube que você está vendo numa aula em português: conceitos do zero, glossário e teste de fixação.",
   "homepage_url": "https://github.com/Ideia-Business/bruto",
   "action": {
     "default_title": "Destrinchar este vídeo",

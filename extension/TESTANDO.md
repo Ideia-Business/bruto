@@ -83,7 +83,9 @@ Você só precisa do domínio do provedor que vai usar — deixar os outros desl
 2. Clique no ícone do **Bruto**.
 3. Clique em **Destrinchar**.
 
-O esperado: *"Pegando a fala…"*, depois *"Fala pega: N caracteres. Destrinchando…"*, e o resumo aparece. Confira **Copiar** e **Baixar .md**.
+O esperado: *"Pegando a fala…"*, depois *"Fala pega: N caracteres. Destrinchando…"*, e a **Aula** aparece. Confira **Copiar** e **Baixar .md**.
+
+A Aula tem seções fixas, e é isso que a listagem da Loja promete — **confira as quatro**: *O que você vai aprender*, *A aula* (em 3 a 6 conceitos), *Glossário essencial* e *Teste seu entendimento*. No teste, cada resposta começa **escondida**: clique em "Ver resposta" para abrir. Se as respostas vierem à mostra, ou aparecer `<details>` escrito por extenso na tela, o renderizador quebrou — é o caso de `tests/extension/markdown.test.ts`.
 
 Feche o popup e abra de novo: clique em **Bancada**, no topo. A aula tem de estar lá.
 

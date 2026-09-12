@@ -68,43 +68,26 @@ sua chave — item 3 acima.
 
 ---
 
-## Decidir antes de enviar — a descrição promete mais do que a extensão faz
+## O que a extensão entrega — conferido contra o código
 
-Auditoria de 12/09/2026, cruzando os textos daqui com o código da extensão. O achado é de uma
-classe só: **os textos descrevem o aplicativo local, não a extensão.** O que cada surface faz:
+Auditoria de 12/09/2026, cruzando os textos daqui com o código. O achado foi de uma classe só:
+**os textos descreviam o aplicativo local, não a extensão.** Resolvido em 13/09, por decisão do
+dono, pelo caminho de fazer o produto cumprir o texto — não o contrário.
 
 | Entrega | Aplicativo local | Extensão |
 |---|---|---|
-| Resumo estruturado | sim | **sim** — é o que ela faz |
+| Aula: objetivos, conceitos do zero, glossário, teste de fixação | sim | **sim** — desde 13/09, usa o mesmo `studyPrompt` |
 | Transcrição para quem usa | sim | **não** — a fala é lida e mandada ao provedor, e nunca aparece na tela nem no arquivo |
-| Mapa mental | sim (`src/pipeline/prompts/mindmap.ts`) | **não** — não existe nenhum mapa na extensão |
-| Aula com objetivos, glossário e teste | sim (`src/pipeline/prompts/study.ts`) | **não** — ver abaixo |
-| Instagram e TikTok | sim | não, e os textos já dizem isso corretamente |
+| Mapa mental | sim (`src/pipeline/prompts/mindmap.ts`) | **não** — não existe mapa na extensão |
+| Instagram e TikTok | sim | não — e os textos daqui já dizem isso corretamente |
 
-As duas primeiras linhas já estão corrigidas: saíram da descrição curta e do manifesto.
+As duas linhas com **não** saíram da descrição curta e do manifesto: um texto de loja não promete
+o que a surface não faz, ainda que o projeto faça noutro lugar. As duas continuam sendo do
+aplicativo local, e a descrição completa é quem diz isso a quem lê.
 
-**A terceira precisa da sua decisão.** A descrição completa abaixo diz *"o que você deveria saber
-ao final, cada conceito explicado desde o começo, um glossário dos termos que o autor assumiu que
-você já conhecia, e um teste para descobrir se entendeu mesmo"*. A extensão chama a saída de
-"Aula" na tela, mas o prompt que ela usa é o do **resumo executivo**
-(`extension/src/popup/popup.ts` importa `summaryPrompt`), e ele produz quatro seções: Visão Geral,
-Pontos Principais, Conceitos e Definições, Conclusões e Ações. **Não há objetivos de aprendizagem
-e não há teste.** Um revisor que instalar a extensão e comparar com o texto vê a diferença.
-
-Dois caminhos, e o primeiro é o que honra o que o produto diz ser:
-
-1. **Fazer a extensão entregar a aula de verdade** — trocar `summaryPrompt` por `studyPrompt` no
-   popup. Não é uma linha: `studyPrompt` pede o `VideoMetadata` inteiro, e a extensão não tem
-   esses campos (foi por isso que `summaryPrompt` ganhou o tipo reduzido `MetaDoPrompt`). O
-   conserto é dar a `studyPrompt` o mesmo tipo reduzido. A resposta também fica mais longa, o que
-   custa mais tokens da chave de quem usa.
-2. **Baixar o texto ao que a extensão entrega hoje** — tirar da descrição completa a promessa de
-   glossário e teste. Mais barato, mas contradiz o `BRAND.md`, que define **Aula** como algo
-   *construído* e manda evitar o termo "resumo detalhado".
-
-Enquanto a decisão não sai, **a descrição completa abaixo está com a promessa de glossário e teste
-ainda escrita** — de propósito, para não rebaixar em silêncio o que o produto diz ser. Não cole no
-console antes de escolher.
+> Antes de 13/09 a extensão chamava a saída de "Aula" e produzia um resumo executivo — o popup
+> importava `summaryPrompt`. Quem mexer aqui: a Aula é a saída contratada com a Loja, e trocar o
+> prompt de volta tornaria a listagem falsa.
 
 ---
 
@@ -119,11 +102,11 @@ Bruto — vídeo vira aula
 **Descrição curta** (máx. 132 — a que aparece no card de busca; é o `description` do manifesto)
 
 ```
-Destrincha o vídeo do YouTube que você está vendo numa aula em português, com a sua chave de IA e sem servidor nenhum.
+Vira o vídeo do YouTube que você está vendo numa aula em português: conceitos do zero, glossário e teste de fixação.
 ```
 
 > A versão anterior deste campo dizia "resumo, **transcrição** e **mapa mental**". Nenhum dos dois
-> existe na extensão — são do aplicativo local. Ver a seção **Decidir antes de enviar**.
+> últimos existe na extensão — são do aplicativo local. Ver a seção acima.
 
 **Categoria:** Produtividade · **Idioma principal:** Português (Brasil)
 
@@ -198,8 +181,8 @@ do usuário, com o conteúdo que ele mesmo escreveu, para um destino nomeado na 
 
 ## Antes de clicar em enviar
 
-- [ ] a decisão da seção **Decidir antes de enviar** foi tomada, e a descrição completa reflete o
-      que a extensão entrega de fato
+- [ ] a aula que sai numa instalação limpa tem mesmo as seções que a descrição promete —
+      objetivos, glossário e teste (o roteiro de `TESTANDO.md` cobre isso)
 - [ ] `npm run package:ext` rodou **com** Chromium instalado e não avisou "SEM ÍCONES"
 - [ ] a versão em `package.json` e no manifesto subiu desde o envio anterior
 - [ ] a política de privacidade está acessível no endereço informado
