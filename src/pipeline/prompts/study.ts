@@ -1,12 +1,25 @@
 import type { VideoMetadata } from "../types";
 
 /**
+ * O mínimo que este prompt precisa saber sobre o bruto — as duas únicas coisas
+ * que ele de fato usa.
+ *
+ * Existe pelo mesmo motivo do `MetaDoPrompt` do resumo: a extensão do navegador
+ * captura a legenda da aba e não tem os campos de pipeline (caminho de arquivo,
+ * data de publicação, capítulos). Exigir o `VideoMetadata` inteiro obrigaria a
+ * extensão a inventar campos vazios só para satisfazer o tipo, e campo inventado
+ * vira dado falso. `VideoMetadata` continua satisfazendo isto por estrutura, então
+ * o pipeline chama sem mudar nada.
+ */
+export type MetaDaAula = Pick<VideoMetadata, "title" | "channel">;
+
+/**
  * Prompt da aula didática ("Estudar sobre o conteúdo"). A transcrição entra via
  * stdin. O objetivo é transformar o vídeo numa aula estruturada que faça o leitor
  * ABSORVER o que importa — não um resumo, mas ensino de verdade: conceitos
  * explicados do zero, analogias, fixação e caminhos para aprofundar.
  */
-export function studyPrompt(meta: VideoMetadata): string {
+export function studyPrompt(meta: MetaDaAula): string {
   return `Você é um professor didático e generoso. A partir da transcrição do vídeo "${meta.title}" (canal "${meta.channel ?? "desconhecido"}"), recebida via stdin, monte uma AULA em português brasileiro que faça o leitor realmente entender e absorver o conteúdo que importa — não um resumo, mas ensino.
 
 Responda SOMENTE com markdown, seguindo EXATAMENTE esta estrutura:

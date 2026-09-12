@@ -19,7 +19,8 @@ import { guardarAula, listarBancada, esquecerAula, limparBancada } from "../lib/
 import type { AulaGuardada } from "../lib/bancada";
 import { guardarFaisca, listarFaiscas, esquecerFaisca } from "../lib/caderno";
 import { levarParaLapid } from "../lib/ponte";
-import { summaryPrompt } from "../../../src/pipeline/prompts/summary";
+import { renderMarkdown } from "../lib/markdown";
+import { studyPrompt } from "../../../src/pipeline/prompts/study";
 
 type CodigoCaptura = CapturaError["codigo"];
 type CodigoLlm = LlmError["codigo"];
@@ -104,91 +105,6 @@ let origemAtual: { videoId: string | null; titulo: string | null; url: string | 
  */
 function ehVideoYoutube(url: string | undefined): boolean {
   return url !== undefined && extrairVideoIdDaUrl(url) !== null;
-}
-
-function escapar(t: string): string {
-  return t
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-/** Markdown à mão: títulos, negrito, itálico, código, listas e parágrafos. */
-function renderMarkdown(md: string): string {
-  const linhas = md.replace(/\r\n/g, "\n").split("\n");
-  const saida: string[] = [];
-  let lista: "ul" | "ol" | null = null;
-  let paragrafo: string[] = [];
-
-  const inline = (t: string): string =>
-    escapar(t)
-      .replace(/`([^`]+)`/g, "<code>$1</code>")
-      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-      .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
-
-  const fecharParagrafo = (): void => {
-    if (paragrafo.length > 0) {
-      saida.push(`<p>${inline(paragrafo.join(" "))}</p>`);
-      paragrafo = [];
-    }
-  };
-
-  const fecharLista = (): void => {
-    if (lista) {
-      saida.push(`</${lista}>`);
-      lista = null;
-    }
-  };
-
-  for (const linha of linhas) {
-    const bruta = linha.trim();
-
-    if (bruta === "") {
-      fecharParagrafo();
-      fecharLista();
-      continue;
-    }
-
-    const titulo = /^(#{1,3})\s+(.*)$/.exec(bruta);
-    if (titulo) {
-      fecharParagrafo();
-      fecharLista();
-      const nivel = titulo[1].length;
-      saida.push(`<h${nivel}>${inline(titulo[2])}</h${nivel}>`);
-      continue;
-    }
-
-    const item = /^[-*]\s+(.*)$/.exec(bruta);
-    if (item) {
-      fecharParagrafo();
-      if (lista !== "ul") {
-        fecharLista();
-        saida.push("<ul>");
-        lista = "ul";
-      }
-      saida.push(`<li>${inline(item[1])}</li>`);
-      continue;
-    }
-
-    const numerado = /^\d+[.)]\s+(.*)$/.exec(bruta);
-    if (numerado) {
-      fecharParagrafo();
-      if (lista !== "ol") {
-        fecharLista();
-        saida.push("<ol>");
-        lista = "ol";
-      }
-      saida.push(`<li>${inline(numerado[1])}</li>`);
-      continue;
-    }
-
-    fecharLista();
-    paragrafo.push(bruta);
-  }
-
-  fecharParagrafo();
-  fecharLista();
-  return saida.join("");
 }
 
 function nomeArquivo(titulo: string): string {
@@ -537,14 +453,10 @@ async function destrinchar(): Promise<void> {
     passo(`Fala pega: ${bruto.texto.length.toLocaleString("pt-BR")} caracteres. Destrinchando…`);
 
     // O prompt é o MESMO que o app local usa — vem de src/pipeline/prompts.
-    // `chapters` vazio porque a legenda da aba não traz capítulos; o prompt
-    // trata a ausência omitindo a seção, em vez de inventar estrutura.
-    const prompt = summaryPrompt({
-      title: bruto.titulo,
-      channel: bruto.canal,
-      durationSec: bruto.duracaoSeg,
-      chapters: [],
-    });
+    // É o da AULA, não o do resumo: objetivos, conceitos do zero, glossário e
+    // teste de fixação. É o que a extensão promete na Loja e o que o BRAND.md
+    // define como Aula — antes daqui saía um resumo executivo com esse nome.
+    const prompt = studyPrompt({ title: bruto.titulo, channel: bruto.canal });
 
     const md = await runLLM({
       prompt,
