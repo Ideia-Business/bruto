@@ -35,6 +35,14 @@ const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(raiz, "extension", "dist");
 const saida = path.join(raiz, "extension", "pacote", "capturas");
 
+/**
+ * Telas que o modo `--ao-vivo` se recusa a fotografar, porque a chave da pessoa
+ * aparece nelas. Vale só ao vivo: no modo padrão o perfil é recém-criado e não
+ * existe chave nenhuma para vazar — é justamente por isso que a tela de opções
+ * limpa serve de peça para a listagem.
+ */
+const ALVO_PROIBIDO = /\/options\//;
+
 /** Fundo da marca (BRAND.md, tema claro) — a moldura, não a interface. */
 const FUNDO = "#F5F2EC";
 const LARGURA = 1280;
@@ -244,6 +252,31 @@ try {
     const pgPopup = await ctx.newPage();
     await pgPopup.goto(`chrome-extension://${id}/options/options.html`);
 
+    /**
+     * PNG gravado ANTES desta correção pode carregar a chave: a versão anterior
+     * fotografava a tela de opções e só avisava depois. Estes arquivos ficam na
+     * pasta de onde saem as imagens que sobem para a Loja, então a existência
+     * deles é dita em voz alta, com a data, toda vez.
+     *
+     * Só LISTA — não tenta adivinhar se há chave dentro da imagem. Detector de
+     * segredo em PNG não funciona, e um detector que não sabe reprovar é pior
+     * que nenhum: daria um "limpo" em que alguém acreditaria. O julgamento fica
+     * com quem sabe olhar.
+     */
+    const antigos = fs
+      .readdirSync(saida)
+      .filter((f) => f.toLowerCase().endsWith(".png"))
+      .map((f) => ({ f, em: fs.statSync(path.join(saida, f)).mtime }));
+    if (antigos.length > 0) {
+      console.log(`\n⚠  já existem ${antigos.length} PNG em ${path.relative(raiz, saida)}:`);
+      for (const { f, em } of antigos) console.log(`     ${em.toISOString().slice(0, 16).replace("T", " ")}  ${f}`);
+      console.log(
+        `   Os gravados antes desta correção podem ter a sua CHAVE dentro — a versão\n` +
+          `   antiga fotografava a tela de opções. Abra e confira antes de subir qualquer\n` +
+          `   um deles à Loja.`,
+      );
+    }
+
     console.log(
       `\nChromium aberto com a extensão carregada. O caminho, na ordem:\n\n` +
         `  1. na aba de opções, escolha o provedor e cole a sua chave;\n` +
@@ -252,8 +285,9 @@ try {
         `  3. volte para a aba de opções e abra  chrome-extension://${id}/popup/popup.html\n` +
         `     (ou recarregue, se já estiver nela). Clique em Bancada e abra a aula;\n` +
         `  4. deixe a aula na tela, na frente, e volte aqui.\n\n` +
-        `  A aba de opções mostra a sua chave. Se ela estiver visível quando você\n` +
-        `  fotografar, a chave vai junto no PNG — aviso de novo antes de gravar.\n`,
+        `  A aba de OPÇÕES mostra a sua chave, então eu me RECUSO a fotografá-la:\n` +
+        `  se ela estiver na frente na hora do disparo, nada é gravado e eu digo\n` +
+        `  o porquê. Deixe a aula na frente.\n`,
     );
 
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -274,16 +308,34 @@ try {
         if (v) visiveis.push(p);
       }
       const alvo = visiveis.at(-1) ?? pgPopup;
-      await alvo.setViewportSize({ width: LARGURA, height: ALTURA });
-      await alvo.screenshot({ path: arq });
-      console.log(`\n✔ ${path.relative(raiz, arq)} (${LARGURA}×${ALTURA})`);
-      if (alvo.url().includes("/options/")) {
-        console.log(
-          `\n⚠  a foto é da tela de OPÇÕES, que é onde a chave aparece.\n` +
-            `   Confira o PNG antes de subir à Loja — e apague-o se a chave estiver nele.\n`,
+
+      /**
+       * RECUSA, e não aviso. A tela de opções tem o campo da chave, e o botão
+       * "Mostrar" a revela — deixá-la na frente gravaria a chave num PNG dentro
+       * de `capturas/`, que é justamente a pasta de onde saem as imagens que
+       * sobem para a Loja. A versão anterior fotografava e avisava DEPOIS: aviso
+       * posterior não desfaz arquivo gravado, e quem não lê o terminal publica.
+       *
+       * Mascarar o campo antes do disparo seria a alternativa; foi descartada
+       * porque depende de acertar um seletor, e seletor quebra calado — o modo
+       * de falha voltaria a ser a chave no PNG, só que sem ninguém saber.
+       *
+       * É a ÚNICA tela da extensão onde a chave aparece: o popup nunca a mostra
+       * (confirmado no código; ele só a usa) e a aula não a contém.
+       */
+      if (ALVO_PROIBIDO.test(alvo.url())) {
+        console.error(
+          `\n✖ não fotografei: a tela na frente é a de OPÇÕES, onde a sua chave aparece.\n` +
+            `   Um PNG dessa tela pode carregar a chave para dentro de capturas/, que é\n` +
+            `   de onde saem as imagens da Loja.\n\n` +
+            `   Deixe na frente a aula (pela Bancada) e rode de novo.\n`,
         );
+        process.exitCode = 1;
+      } else {
+        await alvo.setViewportSize({ width: LARGURA, height: ALTURA });
+        await alvo.screenshot({ path: arq });
+        console.log(`\n✔ ${path.relative(raiz, arq)} (${LARGURA}×${ALTURA})\n`);
       }
-      console.log("");
     }
   } else {
     /**

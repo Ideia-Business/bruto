@@ -40,6 +40,30 @@ const TIMEOUT_SAUDE_MS = 1500;
 /** Teto do texto vindo do app — uma aula grande dá ~40 KB; 2 MB é folga com fim. */
 const MAX_TEXTO = 2_000_000;
 
+/**
+ * Tetos de BYTES por rota, aplicados antes de qualquer `JSON.parse`.
+ *
+ * `127.0.0.1:3000` não é prova de identidade: outro processo pode ter tomado a
+ * porta antes do app e devolver centenas de MB. `r.json()` bufferiza tudo antes
+ * de devolver, então os limites de `lerSaude`/`lerTexto` chegariam tarde — a
+ * memória já teria ido. O corte é na leitura.
+ */
+const TETO_SAUDE_BYTES = 64 * 1024;
+const TETO_GERACAO_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Cabeçalho exigido pelo app na rota de saúde (contrato de 13/09/2026).
+ *
+ * A saúde é um GET, e GET simples qualquer página dispara — sem CORS, sem ler
+ * resposta. Só que essa rota **cria subprocessos** (`claude auth status`,
+ * `codex login status`): um laço de `fetch` de um site num separador esquecido
+ * viraria centenas de processos na máquina de quem instalou. `X-Bruto-Cliente`
+ * não está na lista de cabeçalhos dispensados de verificação prévia, então a
+ * tentativa vira preflight — e o preflight morre sem origem autorizada. É a
+ * mesma tranca do `Content-Type` no POST, na porta que tinha ficado de fora.
+ */
+const CABECALHO_CLIENTE = { "X-Bruto-Cliente": "extensao" } as const;
+
 export interface ProvedorDoApp {
   id: string;
   label: string;
@@ -146,11 +170,75 @@ async function buscar(caminho: string, init: RequestInit, timeoutMs: number): Pr
  * Nunca lança: a ausência do app é o estado NORMAL de quem só instalou a
  * extensão, e não pode virar erro na cara de ninguém.
  */
+/**
+ * Lê o corpo com TETO DE BYTES e só então parseia.
+ *
+ * `r.json()` bufferiza o corpo inteiro antes de devolver: contra um processo
+ * hostil que tomou a porta e responde 300 MB, os limites de `lerSaude`/`lerTexto`
+ * chegam depois de a memória já ter ido. Aqui o corte é na leitura.
+ *
+ * Os dois controles existem porque nenhum basta: o `Content-Length` é barato mas
+ * é **declarado pelo outro lado** (pode mentir, ou faltar num corpo em pedaços),
+ * e o teto no fluxo é o que vale de fato.
+ */
+async function lerJsonComTeto(r: Response, tetoBytes: number): Promise<unknown> {
+  const declarado = Number(r.headers.get("content-length"));
+  if (Number.isFinite(declarado) && declarado > tetoBytes) {
+    throw new AppLocalError("RESPOSTA_INVALIDA", "O app do Bruto devolveu um corpo grande demais.");
+  }
+
+  const fluxo = r.body;
+  let bruto: string;
+
+  if (fluxo === null) {
+    // Ambiente sem corpo em fluxo: o `Content-Length` já foi conferido acima, e
+    // o texto ainda passa pelo corte de tamanho antes de virar objeto.
+    bruto = await r.text();
+    if (bruto.length > tetoBytes) {
+      throw new AppLocalError("RESPOSTA_INVALIDA", "O app do Bruto devolveu um corpo grande demais.");
+    }
+  } else {
+    const leitor = fluxo.getReader();
+    const pedacos: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await leitor.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > tetoBytes) {
+        await leitor.cancel().catch(() => {});
+        throw new AppLocalError(
+          "RESPOSTA_INVALIDA",
+          "O app do Bruto devolveu um corpo grande demais.",
+        );
+      }
+      pedacos.push(value);
+    }
+    const inteiro = new Uint8Array(total);
+    let pos = 0;
+    for (const p of pedacos) {
+      inteiro.set(p, pos);
+      pos += p.byteLength;
+    }
+    bruto = new TextDecoder().decode(inteiro);
+  }
+
+  try {
+    return JSON.parse(bruto);
+  } catch {
+    throw new AppLocalError("RESPOSTA_INVALIDA", "O app do Bruto devolveu um corpo ilegível.");
+  }
+}
+
 export async function verSaudeDoApp(timeoutMs: number = TIMEOUT_SAUDE_MS): Promise<SaudeDoApp | null> {
   try {
-    const r = await buscar("/api/llm/saude", { method: "GET" }, timeoutMs);
+    const r = await buscar(
+      "/api/llm/saude",
+      { method: "GET", headers: { ...CABECALHO_CLIENTE } },
+      timeoutMs,
+    );
     if (!r.ok) return null;
-    return lerSaude(await r.json());
+    return lerSaude(await lerJsonComTeto(r, TETO_SAUDE_BYTES));
   } catch {
     return null;
   }
@@ -250,13 +338,7 @@ export async function pedirAoApp(p: PedidoAoApp): Promise<string> {
     throw new AppLocalError("INDISPONIVEL", `O app do Bruto falhou (${r.status}).`);
   }
 
-  let json: unknown;
-  try {
-    json = await r.json();
-  } catch {
-    throw new AppLocalError("RESPOSTA_INVALIDA", "O app do Bruto devolveu um corpo ilegível.");
-  }
-
+  const json = await lerJsonComTeto(r, TETO_GERACAO_BYTES);
   const texto = lerTexto(json);
   if (texto === null) {
     throw new AppLocalError("RESPOSTA_INVALIDA", "O app do Bruto devolveu uma resposta sem texto.");

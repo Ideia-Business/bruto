@@ -56,6 +56,18 @@ const servidor = http.createServer((req, res) => {
       return;
     }
 
+    // E a saúde EXIGE `X-Bruto-Cliente`, como o app real passou a exigir. A
+    // razão é a mesma do `Content-Type`, na porta que tinha ficado de fora: a
+    // saúde é um GET simples, que qualquer página dispara sem CORS e sem ler
+    // resposta — só que essa rota CRIA SUBPROCESSOS (`claude auth status`,
+    // `codex login status`). Um laço de `fetch` viraria centenas de processos na
+    // máquina de quem instalou. Um cabeçalho não-safelisted força preflight.
+    if (req.method === "GET" && req.headers["x-bruto-cliente"] !== "extensao") {
+      res.writeHead(403, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "cabeçalho X-Bruto-Cliente ausente" }));
+      return;
+    }
+
     responder(req, res);
   });
 });
@@ -171,6 +183,38 @@ describe("verSaudeDoApp — contra um servidor de verdade", () => {
     assert.equal(s?.temPlano, true);
   });
 
+  test("MANDA `X-Bruto-Cliente: extensao` — sem ele a saúde nem responde", async () => {
+    // A saúde cria subprocessos no app (`claude auth status`, `codex login
+    // status`). Um cabeçalho não-safelisted é o que obriga uma página web a
+    // passar por preflight antes de conseguir disparar isso em laço. O duplo
+    // devolve 403 sem ele (ver o servidor acima), então este teste morre se
+    // alguém tirar o cabeçalho da sonda.
+    responderJson(SAUDE_COM_PLANO);
+    const s = await verSaudeDoApp();
+    assert.equal(s?.temPlano, true, "sem o cabeçalho o duplo recusa e isto vira null");
+    assert.equal(ultimosCabecalhos["x-bruto-cliente"], "extensao");
+  });
+
+  test("corpo gigante É CORTADO ANTES de virar objeto — mesmo sendo JSON válido", async () => {
+    // `127.0.0.1:3000` não prova identidade: outro processo pode ter tomado a
+    // porta. A carga aqui é uma saúde PERFEITAMENTE válida, só que inflada — se
+    // o teto não existisse, ela seria aceita e `temPlano` viria `true`. Em
+    // pedaços, sem `content-length`, para exercer o teto do FLUXO.
+    const provedores = [{ id: "claude-cli", label: "Claude", plano: true, disponivel: true }];
+    for (let i = 0; i < 4000; i++) {
+      provedores.push({ id: `enche-${i}`, label: "x".repeat(40), plano: false, disponivel: false });
+    }
+    const carga = JSON.stringify({ ok: true, provedores });
+    assert.ok(carga.length > 64 * 1024, "a carga do teste precisa passar do teto para medir algo");
+
+    responder = (_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" }); // sem content-length → chunked
+      for (let i = 0; i < carga.length; i += 8192) res.write(carga.slice(i, i + 8192));
+      res.end();
+    };
+    assert.equal(await verSaudeDoApp(), null, "corpo acima do teto não pode virar objeto");
+  });
+
   test("app respondendo erro 500 é o mesmo que app ausente", async () => {
     responder = (_req, res) => {
       res.writeHead(500);
@@ -259,6 +303,38 @@ describe("pedirAoApp — contra um servidor de verdade", () => {
         assert.match(e.message, /longo demais/);
         return true;
       },
+    );
+  });
+
+  test("geração acima do teto é recusada pelo `content-length` declarado", async () => {
+    // Caminho barato: o outro lado declarou o tamanho, e nem chegamos a ler.
+    const enorme = JSON.stringify({ text: "a".repeat(5 * 1024 * 1024) });
+    responder = (_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" }); // node calcula o content-length
+      res.end(enorme);
+    };
+    await assert.rejects(
+      () => pedirAoApp({ task: "study", prompt: "p" }),
+      (e: unknown) => {
+        assert.ok(e instanceof AppLocalError && e.causa === "RESPOSTA_INVALIDA");
+        assert.match(e.message, /grande demais/);
+        return true;
+      },
+    );
+  });
+
+  test("e também quando o tamanho não é declarado — o teto do fluxo é o que vale", async () => {
+    // `content-length` é declarado pelo outro lado: pode faltar, e pode mentir.
+    // Em pedaços não há o que conferir antes, então o corte tem de ser na leitura.
+    const enorme = JSON.stringify({ text: "a".repeat(5 * 1024 * 1024) });
+    responder = (_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" }); // chunked: sem content-length
+      for (let i = 0; i < enorme.length; i += 64 * 1024) res.write(enorme.slice(i, i + 64 * 1024));
+      res.end();
+    };
+    await assert.rejects(
+      () => pedirAoApp({ task: "study", prompt: "p" }),
+      (e: unknown) => e instanceof AppLocalError && e.causa === "RESPOSTA_INVALIDA",
     );
   });
 

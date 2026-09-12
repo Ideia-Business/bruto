@@ -20,7 +20,8 @@ O modo é detectado quando o popup (ou a tela de opções) **abre**. Subiu o app
 Para o modo plano, suba o app (`npm run app`) e confirme antes:
 
 ```bash
-curl -s http://127.0.0.1:3000/api/llm/saude
+curl -s -H "X-Bruto-Cliente: extensao" http://127.0.0.1:3000/api/llm/saude
+# o cabeçalho é OBRIGATÓRIO: sem ele o app recusa, e você concluiria que está quebrado
 # tem de responder {"ok":true,"provedores":[...]} com algum `"plano":true,"disponivel":true`
 ```
 
