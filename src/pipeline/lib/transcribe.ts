@@ -467,13 +467,13 @@ export async function transcricaoDoctor(): Promise<{ ok: boolean; linhas: string
   const temFfmpeg = noPath("ffmpeg");
   const backend = await detectarBackend();
 
-  if (await temMlx()) linhas.push("mlx-whisper (Python)");
+  // Nomes curtos: esta lista é impressa numa linha só. A única exceção é o
+  // whisper.cpp sem modelo, porque aí o aviso É a informação útil — o binário
+  // está lá e mesmo assim não transcreve.
+  if (await temMlx()) linhas.push("mlx-whisper");
   if (noPath("whisper")) linhas.push("whisper CLI");
   const bin = binWhisperCpp();
-  if (bin) {
-    const m = modeloWhisperCpp();
-    linhas.push(`${bin}${m ? ` (modelo: ${m})` : " (modelo ggml AUSENTE)"}`);
-  }
+  if (bin) linhas.push(modeloWhisperCpp() ? bin : `${bin} (sem o modelo ggml)`);
 
   return { ok: temFfmpeg && backend !== null, linhas };
 }

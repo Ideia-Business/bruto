@@ -23,9 +23,18 @@ instalada agora funciona em clone limpo. O backend de REDE do script antigo (a A
 transcrição da OpenAI) não foi portado de propósito: transcrever áudio não precisa de
 credencial, e o que não precisa de credencial não recebe credencial.
 
-**Verificado em 11/09/2026**: áudio de conteúdo conhecido devolvido corretamente; vídeo real
-baixado e transcrito de ponta a ponta; caminho de falha exercido com o PATH sem transcritor,
-devolvendo `NO_TRANSCRIPT` com as três instalações possíveis nomeadas.
+**Verificado em 11/09/2026, nos três backends** — cada um instalado e exercido com um áudio de
+conteúdo conhecido, que voltou correto em todos:
+
+| Backend | Tempo no mesmo áudio |
+|---|---|
+| mlx-whisper | 2,1 s |
+| whisper.cpp | 14,8 s |
+| whisper CLI (OpenAI) | 19,5 s |
+
+Também exercidos: vídeo real baixado e transcrito de ponta a ponta; segunda chamada servida pelo
+cache; e o caminho de falha, com o PATH sem transcritor nenhum, devolvendo `NO_TRANSCRIPT` com as
+três instalações possíveis nomeadas.
 
 ### Seis caminhos para o modelo, com a sua chave
 
