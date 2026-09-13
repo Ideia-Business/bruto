@@ -36,9 +36,11 @@ Também exercidos: vídeo real baixado e transcrito de ponta a ponta; segunda ch
 cache; e o caminho de falha, com o PATH sem transcritor nenhum, devolvendo `NO_TRANSCRIPT` com as
 três instalações possíveis nomeadas.
 
-### Seis caminhos para o modelo, com a sua chave
+### Sete caminhos para o modelo — dois pelo seu plano, cinco por chave
 
-Claude Code CLI (sem chave, pela sessão local), Anthropic, OpenAI, OpenRouter, Ollama Cloud e Google. Sem dependência nova: os provedores de API são chamadas `fetch` diretas, e os três que falam o dialeto da OpenAI compartilham uma fábrica — acrescentar um sétimo é uma chamada de função.
+**Pelo plano, sem chave nenhuma:** Claude Code CLI (plano Claude) e Codex CLI (plano ChatGPT), pela sessão já autenticada na máquina. Os dois **confirmam positivamente** que a sessão é de plano e recusam autenticação por chave de API — inclusive `codex login --with-api-key`, que passa no mesmo comando de status e cobraria por token dizendo que não cobrava.
+
+**Por chave:** Anthropic, OpenAI, OpenRouter, Ollama Cloud e Google. Sem dependência nova: são chamadas `fetch` diretas, e os três que falam o dialeto da OpenAI compartilham uma fábrica — acrescentar mais um é uma chamada de função (foi assim que o Codex entrou).
 
 O pipeline pede **tier** (`fast`, `balanced`), nunca nome de modelo. Erro é classificado por status HTTP, e o corpo da resposta do fornecedor **nunca** atravessa a camada de rede: ele pode conter a chave de quem usa, e mensagem de erro acaba gravada em banco.
 

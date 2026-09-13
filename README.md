@@ -21,7 +21,7 @@
 
 Cole o link de um vídeo — **YouTube, Instagram ou TikTok** — e receba **resumo**, **transcrição**, **mapa mental** e uma **aula completa** em português: objetivos, conceitos explicados do zero, glossário e teste de fixação. Exporta `.docx` e `.pdf`.
 
-Roda na sua máquina, com a sua chave de IA. Sem assinatura, sem limite, sem lock-in.
+Roda na sua máquina, **pelo plano de IA que você já assina** — Claude ou ChatGPT, sem chave nenhuma — ou com a sua chave de API, se preferir. Sem assinatura nova, sem limite, sem lock-in.
 
 > **Não resume. Ensina.**
 > As dezenas de extensões que resumem vídeo devolvem cinco bullets e um paywall. O Bruto entrega uma **aula**: o que você deveria saber ao final, cada conceito explicado desde o começo, um glossário dos termos que o autor assumiu que você conhecia, e um teste para descobrir se entendeu mesmo.
@@ -74,9 +74,18 @@ legenda faz é falhar dizendo exatamente isto, em vez de devolver resumo vazio.
 
 `npm run doctor` mostra qual foi detectado. Para trocar o modelo: `BRUTO_WHISPER_MODEL=small`.
 
-### O modelo de linguagem — a sua chave, o seu custo
+### O modelo de linguagem — o seu plano, ou a sua chave
 
-O Bruto precisa de um modelo para resumir. **Você escolhe qual, e a chave é sua.** Copie o exemplo e preencha **uma** linha:
+O Bruto precisa de um modelo para resumir, e há dois caminhos. **O mais barato é não pagar nada a mais:** se você já assina o Claude ou o ChatGPT, o Bruto usa a sessão do CLI que já está na sua máquina — nenhuma chave, nenhum custo por token.
+
+| Caminho | O que exige | Como fica o custo |
+|---|---|---|
+| **Pelo seu plano** (recomendado) | `claude` ou `codex` instalado e logado | sai da assinatura que você já paga |
+| Por chave de API | uma chave de um dos cinco provedores | você paga por token consumido |
+
+Para o caminho do plano, basta estar logado — `claude auth login` ou `codex login`. O Bruto verifica sozinho e **recusa** se a autenticação for por chave de API disfarçada de plano, em vez de gastar o seu dinheiro sem avisar.
+
+Para o caminho da chave, copie o exemplo e preencha **uma** linha:
 
 ```bash
 cp .env.example .env
@@ -89,9 +98,10 @@ cp .env.example .env
 | OpenRouter | `OPENROUTER_API_KEY` | openrouter.ai — um cadastro, centenas de modelos |
 | Ollama Cloud | `OLLAMA_API_KEY` | ollama.com — modelos abertos, hospedados |
 | Google Gemini | `GOOGLE_API_KEY` | aistudio.google.com |
-| Claude Code CLI | *nenhuma* | já autenticado na sua máquina |
+| Claude Code CLI | *nenhuma* | já autenticado na sua máquina — usa o **plano Claude** |
+| Codex CLI | *nenhuma* | já autenticado na sua máquina — usa o **plano ChatGPT** |
 
-Se você **já usa o Claude Code**, não precisa de chave nenhuma: o Bruto detecta o CLI e usa sua sessão. É o caminho de zero configuração.
+Se você **já usa o Claude Code ou o Codex**, não precisa de chave nenhuma: o Bruto detecta o CLI, confirma que a sessão é de plano e a usa. É o caminho de zero configuração e de zero custo adicional.
 
 A chave fica no seu `.env`, que está no `.gitignore`. Ela nunca sai da sua máquina, nunca vai para o repositório e nunca aparece em mensagem de erro — o texto de erro dos provedores é descartado no transporte, e só o código de status atravessa.
 
@@ -111,15 +121,20 @@ npm run process -- "https://www.youtube.com/watch?v=<id>" [--whisper] [--traduzi
 
 ## Extensão de navegador
 
-Resume o vídeo que você **já está assistindo**, sem sair da aba. Ela lê a legenda da página e chama o modelo com a sua chave — não baixa mídia nenhuma.
+Transforma em aula o vídeo que você **já está assistindo**, sem sair da aba. Ela lê a legenda da página e chama o modelo — não baixa mídia nenhuma.
+
+Funciona de **dois modos**, e a tela de opções diz em qual você está:
+
+- **pelo seu plano** — com o app do Bruto aberto nesta máquina (`npm run dev`), a extensão pede a aula a ele, e o consumo sai da assinatura que você já paga. Nenhuma chave é necessária;
+- **por chave de API** — sem o app no ar, a extensão fala direto com o provedor que você configurou, e aí você paga por token.
 
 ```bash
 npm run build:ext
 ```
 
-Depois, no Chrome: `chrome://extensions` → **Modo do desenvolvedor** → **Carregar sem compactação** → escolha `extension/dist`. Abra as opções da extensão, escolha o provedor e cole a sua chave.
+Depois, no Chrome: `chrome://extensions` → **Modo do desenvolvedor** → **Carregar sem compactação** → escolha `extension/dist`. Abra as opções: se o app do Bruto estiver de pé, ela já mostra *"usando o seu plano"* e não pede nada. Senão, escolha o provedor e cole a sua chave.
 
-A chave fica em `chrome.storage.local` — **só neste navegador**, nunca sincronizada com sua conta Google, nunca enviada para servidor nenhum nosso. A extensão fala direto com o provedor que você escolheu.
+A chave, quando existe, fica em `chrome.storage.local` — **só neste navegador**, nunca sincronizada com sua conta Google, nunca enviada para servidor nenhum nosso. No modo do plano ela não é necessária, e **nunca trafega** para o app local: vão só o texto do vídeo e o pedido.
 
 As aulas que você destrincha ficam na **Bancada**, no mesmo lugar: neste navegador, sem conta, sem nuvem. As 60 mais recentes; a bancada esquece a mais antiga quando enche. Fechar o popup não perde mais nada.
 

@@ -19,7 +19,8 @@ Use estes nomes. Sinônimo circulando é dívida.
 | **Faísca** | Ideia própria de quem usa, capturada no instante em que o conteúdo a provocou. É dela, não do Bruto | nota, insight |
 | **Caderno de Ideias** | Onde as faíscas ficam | workspace, biblioteca |
 | **Bancada** | A área de trabalho: brutos em fila, destrinchados, caderno. Na extensão, é onde as aulas ficam guardadas | painel, dashboard, home, histórico |
-| **Sua Chave** | A chave de IA de quem usa. É o modo padrão | API key, token |
+| **Seu Plano** | A assinatura de IA que a pessoa **já paga** (Claude, ChatGPT), usada pela sessão local do CLI. É o modo padrão, e não custa nada a mais | plano grátis, sem custo |
+| **Sua Chave** | A chave de IA de quem usa, cobrada por token. É a alternativa para quem não tem plano | API key, token |
 
 ## Tom
 
