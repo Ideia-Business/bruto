@@ -236,6 +236,14 @@ do usuário, com o conteúdo que ele mesmo escreveu, para um destino nomeado na 
 
 ## Criar a conta de desenvolvedor
 
+> ✅ **Feito em 12/09/2026.** Conta criada, taxa paga, e-mail de contato
+> (`desenvolvimento@ideiabusiness.com.br`) **verificado**, nome de exibição **DEV IDEIA BUSINESS**,
+> declaração de negociante marcada como **conta de negociante** e verificação de comerciante
+> concluída. O passo seguinte é criar o item e subir o pacote.
+>
+> O passo a passo abaixo fica como registro de como foi feito — e para quem precisar repetir
+> noutro produto.
+
 Escrito em 12/09/2026. **Os rótulos do console mudam** — o fluxo abaixo é estável, os nomes exatos
 dos botões podem ter mudado. Onde o texto não bater, o que vale é a etapa, não a palavra.
 
