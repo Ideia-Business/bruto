@@ -11,9 +11,9 @@ Demanda no DevTasks: `7d0dff5e-ac73-4ff1-9dd3-24279f232fcd`.
 
 Nada disto é automatizável — exige conta, cartão e cliques:
 
-1. **Conta de desenvolvedor** em [chrome.google.com/webstore/devconsole](https://chrome.google.com/webstore/devconsole)
-   — taxa **única** de US$ 5. Use a identidade da empresa, não pessoal
-   (ver `deploy-identity` no IdeiaOS: publicação sai sob identidade de serviço).
+1. **Conta de desenvolvedor** — taxa **única** de US$ 5, sob a identidade da empresa.
+   Passo a passo detalhado na seção **[Criar a conta de desenvolvedor](#criar-a-conta-de-desenvolvedor)**,
+   no fim deste documento. Leia antes de abrir o console: a primeira decisão é irreversível.
 2. **Colar o endereço da política de privacidade** no console. Não precisa hospedar nada: o
    arquivo está versionado e o endereço já responde publicamente (conferido em 12/09/2026,
    `HTTP 200` sem nenhuma credencial). Cole exatamente isto:
@@ -231,3 +231,80 @@ do usuário, com o conteúdo que ele mesmo escreveu, para um destino nomeado na 
 - [ ] a política de privacidade está acessível no endereço informado
 - [ ] pelo menos uma captura de tela em 1280×800, e a principal mostra uma aula de verdade
 - [ ] o roteiro de [`TESTANDO.md`](TESTANDO.md) passou numa instalação limpa
+
+---
+
+## Criar a conta de desenvolvedor
+
+Escrito em 12/09/2026. **Os rótulos do console mudam** — o fluxo abaixo é estável, os nomes exatos
+dos botões podem ter mudado. Onde o texto não bater, o que vale é a etapa, não a palavra.
+
+### Passo 0 — a decisão irreversível, antes de abrir qualquer página
+
+**Qual conta Google vai ser dona da extensão?** Quem cria o item é o publicador; mudar depois
+exige transferência entre contas, que é burocrática e nem sempre possível.
+
+A Chrome Web Store **não está** em `manifests/deploy-identities.json` do IdeiaOS (conferido em
+12/09/2026: há `vercel`, `github`, `supabase`, `lovable`, `devtasks`, `gcloud`, `plaud`). Por
+`deploy-identity`, plataforma não mapeada exige decisão do dono — não assuma.
+
+O candidato coerente com o resto da frota é **`desenvolvimento@ideiabusiness.com.br`**, que já é a
+conta confirmada de Vercel e Supabase e o contato de segurança do `CONTRIBUTING.md`. **Nunca uma
+conta pessoal**: a extensão fica atrelada a ela para sempre, e quem sair da empresa leva o item.
+
+Decidida, **registre no registry** (`identities.chrome_web_store`) para a próxima pessoa não
+precisar adivinhar.
+
+### Passo 1 — entrar e aceitar o acordo
+
+Acesse **<https://chrome.google.com/webstore/devconsole>** e entre **com a conta do Passo 0**.
+
+> Se o navegador já estiver logado noutra conta Google, use uma janela anônima. Entrar com a conta
+> errada aqui é o erro mais caro desta lista, e ele não avisa.
+
+Aceite o **Contrato de Desenvolvedor**.
+
+### Passo 2 — pagar a taxa de US$ 5
+
+Cobrança **única por conta** (não por extensão), por cartão, via Google Payments. É
+**não-reembolsável**. Um cartão da empresa mantém a coerência com o Passo 0.
+
+Pode ser exigida verificação do e-mail de contato antes de liberar o envio.
+
+### Passo 3 — dados do publicador
+
+No console, em **Account / Publisher settings**:
+
+- **Nome de exibição:** `Ideia Business` — é o que aparece sob o nome da extensão.
+- **E-mail de contato:** o mesmo do Passo 0, **verificado**.
+- **Site:** `https://ideiabusiness.com.br` — verificar o domínio faz o nome aparecer como
+  publicador confirmado, o que ajuda na confiança e na revisão.
+
+### Passo 4 — declaração de *trader* (a que costuma pegar de surpresa)
+
+Exigida na União Europeia (DSA). Publicando **pela empresa**, a resposta é **trader** — e isso
+obriga a informar **razão social, endereço, telefone e e-mail**, que ficam **públicos** na ficha
+da loja.
+
+Decida antes se o endereço a publicar é o da sede. Sem essa declaração, o item **não** é
+distribuído na UE — e o console não deixa concluir o envio.
+
+### Passo 5 — criar o item
+
+**Add new item** → subir o zip:
+
+```
+extension/pacote/bruto-0.2.0.zip
+```
+
+A partir daqui, tudo o que o console pedir já está pronto neste documento: nome, descrições,
+categoria, idioma, justificativa de cada permissão, política de privacidade e o questionário.
+
+### O que esperar depois
+
+A revisão costuma levar de alguns dias a duas semanas. **Espere pergunta sobre
+`http://127.0.0.1:3000`** — permissão de localhost chama atenção. A resposta pronta está na seção
+do questionário, acima.
+
+Recusa não é o fim: o console diz o motivo, você corrige e reenvia. **Se reenviar, suba a versão**
+em `package.json` **e** no manifesto — o console recusa pacote com versão repetida.
