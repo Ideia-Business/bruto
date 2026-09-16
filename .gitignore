@@ -81,3 +81,14 @@ STATE.md
 
 # pacote gerado para envio à Chrome Web Store
 /extension/pacote/
+.cursor/rules/agents/
+.github/agents/
+!.review/
+.review/*
+!.review/evidence/
+.review/evidence/*.md
+!.review/cross-vendor-ledger.log
+.codex/*
+!.codex/agents/
+.codex/agents/*
+!.codex/agents/*.toml
