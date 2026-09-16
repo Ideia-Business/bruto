@@ -87,3 +87,8 @@ STATE.md
 !.codex/agents/
 .codex/agents/*
 !.codex/agents/*.toml
+!.review/
+.review/*
+!.review/evidence/
+.review/evidence/*.md
+!.review/cross-vendor-ledger.log
