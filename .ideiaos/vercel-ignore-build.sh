@@ -38,6 +38,7 @@ IDEIAOS_DOUTRINA_SE_FALTA=(
   docs/playbook-implantacao.md
   docs/postmortems/.gitkeep
   .security/review-ledger.log
+  .review/cross-vendor-ledger.log
 )
 IDEIAOS_DOUTRINA_AGENTES=(
   .codex/agents/build_error_resolver.toml
