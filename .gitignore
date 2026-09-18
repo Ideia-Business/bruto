@@ -87,3 +87,12 @@ STATE.md
 !.codex/agents/
 .codex/agents/*
 !.codex/agents/*.toml
+supabase/.temp/
+.claude/rules/ideiaos-common-*
+.cursor/rules/ideiaos-*
+.codex/ideiaos-rules.md
+!.review/
+.review/*
+!.review/evidence/
+.review/evidence/*.md
+!.review/cross-vendor-ledger.log
