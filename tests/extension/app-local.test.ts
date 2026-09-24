@@ -243,6 +243,22 @@ describe("verSaudeDoApp — contra um servidor de verdade", () => {
     assert.equal(await verSaudeDoApp(300), null);
     assert.ok(Date.now() - t0 < 3000, "não pode travar o popup esperando");
   });
+
+  // Achado P2 da revisão cross-vendor de 24/09/2026: `fetch()` resolve assim
+  // que os CABEÇALHOS chegam, não quando o corpo termina. Se o relógio for
+  // desarmado no retorno do `fetch` (em vez de depois de o corpo terminar de
+  // ser lido), este cenário — cabeçalho 200 chegou, corpo nunca fecha — fica
+  // SEM proteção nenhuma: o teste anterior (conexão aceita, nada responde)
+  // não pega isso, porque ali nem os cabeçalhos chegam.
+  test("app que manda os cabeçalhos e trava o corpo respeita o teto de tempo", async () => {
+    responder = (_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.write('{"ok":true,"prov'); // corpo aberto, nunca fecha
+    };
+    const t0 = Date.now();
+    assert.equal(await verSaudeDoApp(300), null);
+    assert.ok(Date.now() - t0 < 3000, "o corpo travado não pode segurar o popup além do teto");
+  });
 });
 
 describe("pedirAoApp — contra um servidor de verdade", () => {

@@ -157,16 +157,40 @@ function unirSinais(deQuemChamou: AbortSignal | undefined, relogio: AbortSignal)
   return juntos.signal;
 }
 
-async function buscar(caminho: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+interface RespostaComRelogio {
+  resposta: Response;
+  /**
+   * O `fetch` resolve assim que os CABEÇALHOS chegam — não quando o corpo
+   * termina de ser lido. Um `finally` aqui dentro que desarmasse o relógio no
+   * retorno deste `fetch` deixaria a leitura do corpo (`lerJsonComTeto`, que
+   * roda DEPOIS, no chamador) sem proteção nenhuma: um processo que responde
+   * 200 e trava no meio do stream nunca seria cortado, apesar do prazo
+   * anunciado. Por isso quem decide quando o relógio pode parar é o
+   * chamador — depois de terminar de ler o corpo (ou de decidir que não vai
+   * lê-lo). Achado P2 da revisão cross-vendor de 24/09/2026.
+   */
+  encerrarRelogio: () => void;
+}
+
+async function buscar(
+  caminho: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<RespostaComRelogio> {
   const relogio = new AbortController();
   const corte = setTimeout(() => relogio.abort(), timeoutMs);
+  const encerrarRelogio = () => clearTimeout(corte);
   try {
-    return await fetch(`${APP_BASE}${caminho}`, {
+    const resposta = await fetch(`${APP_BASE}${caminho}`, {
       ...init,
       signal: unirSinais(init.signal ?? undefined, relogio.signal),
     });
-  } finally {
-    clearTimeout(corte);
+    return { resposta, encerrarRelogio };
+  } catch (err) {
+    // Nunca chegou a resposta — não há corpo para ler, então o relógio
+    // encerra aqui mesmo; não sobra ninguém para encerrá-lo depois.
+    encerrarRelogio();
+    throw err;
   }
 }
 
@@ -238,13 +262,19 @@ async function lerJsonComTeto(r: Response, tetoBytes: number): Promise<unknown> 
 
 export async function verSaudeDoApp(timeoutMs: number = TIMEOUT_SAUDE_MS): Promise<SaudeDoApp | null> {
   try {
-    const r = await buscar(
+    const { resposta: r, encerrarRelogio } = await buscar(
       "/api/llm/saude",
       { method: "GET", headers: { ...CABECALHO_CLIENTE } },
       timeoutMs,
     );
-    if (!r.ok) return null;
-    return lerSaude(await lerJsonComTeto(r, TETO_SAUDE_BYTES));
+    try {
+      if (!r.ok) return null;
+      return lerSaude(await lerJsonComTeto(r, TETO_SAUDE_BYTES));
+    } finally {
+      // Só agora o corpo já foi lido (ou a leitura foi descartada de propósito
+      // pelo `!r.ok`) — o relógio pode parar.
+      encerrarRelogio();
+    }
   } catch {
     return null;
   }
@@ -286,8 +316,9 @@ export async function pedirAoApp(p: PedidoAoApp): Promise<string> {
   });
 
   let r: Response;
+  let encerrarRelogio: () => void;
   try {
-    r = await buscar(
+    ({ resposta: r, encerrarRelogio } = await buscar(
       "/api/llm",
       {
         method: "POST",
@@ -310,49 +341,57 @@ export async function pedirAoApp(p: PedidoAoApp): Promise<string> {
         signal: p.signal,
       },
       p.timeoutMs ?? 180_000,
-    );
+    ));
   } catch (err) {
-    // Cancelamento de quem chamou atravessa; o resto é "o app sumiu".
+    // Cancelamento de quem chamou atravessa; o resto é "o app sumiu". Não há
+    // corpo para ler em nenhum dos dois casos — `buscar` já encerrou o relógio.
     if (p.signal?.aborted) throw err;
     throw new AppLocalError("INDISPONIVEL", "O app do Bruto não respondeu.");
   }
 
-  if (r.status === 503) {
-    throw new AppLocalError(
-      "SEM_PLANO",
-      "O app do Bruto está de pé, mas nenhum provedor de plano está disponível nele.",
-    );
-  }
-  if (r.status === 400) {
-    // A rota só atende provedor de PLANO — pedir um provedor de chave por ela dá
-    // 400. Este código nunca manda `provedor`, então um 400 aqui é defeito nosso.
-    throw new AppLocalError("PEDIDO_INVALIDO", "O app do Bruto recusou o pedido.");
-  }
-  if (r.status === 413) {
-    // `input` carrega a transcrição inteira; vídeo muito longo estoura 1 MB.
-    // Quem está na frente da tela precisa entender o que fazer, não ver "413".
-    throw new AppLocalError(
-      "GRANDE_DEMAIS",
-      "Esse vídeo é longo demais para o app dar conta de uma vez. Tente um vídeo menor, ou use uma chave de API nas opções.",
-    );
-  }
-  if (r.status === 415) {
-    // Só acontece se ALGUÉM TIROU o `content-type` daqui. Diz isso, em vez de
-    // mandar a pessoa caçar problema na máquina dela.
-    throw new AppLocalError(
-      "TIPO_RECUSADO",
-      "O app recusou o formato do pedido (415). Isso é defeito da extensão, não da sua máquina — relate o problema.",
-    );
-  }
-  if (!r.ok) {
-    // Só o número atravessa — o corpo do erro é descartado, mesma regra do `llm.ts`.
-    throw new AppLocalError("INDISPONIVEL", `O app do Bruto falhou (${r.status}).`);
-  }
+  try {
+    if (r.status === 503) {
+      throw new AppLocalError(
+        "SEM_PLANO",
+        "O app do Bruto está de pé, mas nenhum provedor de plano está disponível nele.",
+      );
+    }
+    if (r.status === 400) {
+      // A rota só atende provedor de PLANO — pedir um provedor de chave por ela dá
+      // 400. Este código nunca manda `provedor`, então um 400 aqui é defeito nosso.
+      throw new AppLocalError("PEDIDO_INVALIDO", "O app do Bruto recusou o pedido.");
+    }
+    if (r.status === 413) {
+      // `input` carrega a transcrição inteira; vídeo muito longo estoura 1 MB.
+      // Quem está na frente da tela precisa entender o que fazer, não ver "413".
+      throw new AppLocalError(
+        "GRANDE_DEMAIS",
+        "Esse vídeo é longo demais para o app dar conta de uma vez. Tente um vídeo menor, ou use uma chave de API nas opções.",
+      );
+    }
+    if (r.status === 415) {
+      // Só acontece se ALGUÉM TIROU o `content-type` daqui. Diz isso, em vez de
+      // mandar a pessoa caçar problema na máquina dela.
+      throw new AppLocalError(
+        "TIPO_RECUSADO",
+        "O app recusou o formato do pedido (415). Isso é defeito da extensão, não da sua máquina — relate o problema.",
+      );
+    }
+    if (!r.ok) {
+      // Só o número atravessa — o corpo do erro é descartado, mesma regra do `llm.ts`.
+      throw new AppLocalError("INDISPONIVEL", `O app do Bruto falhou (${r.status}).`);
+    }
 
-  const json = await lerJsonComTeto(r, TETO_GERACAO_BYTES);
-  const texto = lerTexto(json);
-  if (texto === null) {
-    throw new AppLocalError("RESPOSTA_INVALIDA", "O app do Bruto devolveu uma resposta sem texto.");
+    const json = await lerJsonComTeto(r, TETO_GERACAO_BYTES);
+    const texto = lerTexto(json);
+    if (texto === null) {
+      throw new AppLocalError("RESPOSTA_INVALIDA", "O app do Bruto devolveu uma resposta sem texto.");
+    }
+    return texto;
+  } finally {
+    // Cobre os dois caminhos: corpo lido até o fim (`lerJsonComTeto`) e corpo
+    // descartado de propósito pelos status acima — nos dois, a proteção do
+    // relógio só pode parar aqui, nunca no retorno do `fetch`.
+    encerrarRelogio();
   }
-  return texto;
 }

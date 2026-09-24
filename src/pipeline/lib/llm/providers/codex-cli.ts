@@ -12,7 +12,27 @@
  *   exec                      subcomando não-interativo
  *   --sandbox read-only       o subprocesso NÃO escreve em disco (valores
  *                             possíveis medidos: read-only, workspace-write,
- *                             danger-full-access)
+ *                             danger-full-access) — mas LÊ o disco inteiro;
+ *                             não é isolamento de leitura, só de escrita
+ *   --disable shell_tool      desliga a ferramenta de shell (medida em
+ *                             `codex features list`: "shell_tool  stable  true").
+ *                             O `req.input` aqui é a transcrição de um vídeo de
+ *                             TERCEIRO — texto que a pessoa não escreveu e não
+ *                             revisou — e sem esta flag uma instrução escondida
+ *                             na legenda vira comando de shell com leitura do
+ *                             disco inteiro (`~/.ssh`, `.env`, `~/.codex/auth.json`).
+ *                             É o mesmo motivo do `--tools ""` no `claude-cli`.
+ *                             Residual conhecido: isto NÃO desliga MCP servers
+ *                             que a pessoa tenha configurado em
+ *                             `~/.codex/config.toml` — não existe flag estável
+ *                             equivalente a `--strict-mcp-config` nesta versão,
+ *                             e `--ignore-user-config` fecharia o MCP mas também
+ *                             apagaria o `model` escolhido pela pessoa (ver
+ *                             comentário abaixo sobre por que o modelo não é
+ *                             passado por flag). Achado S-01/P1 da revisão de
+ *                             24/09/2026 — fechar o residual de MCP é decisão
+ *                             do dono, porque troca segurança por previsibilidade
+ *                             de modelo.
  *   --ephemeral               não persiste arquivo de sessão
  *   --skip-git-repo-check     permite rodar fora de repositório git — usamos um
  *                             diretório temporário como raiz de trabalho, para
@@ -286,6 +306,8 @@ export const codexCliProvider: LlmProvider = {
       "exec",
       "--sandbox",
       "read-only",
+      "--disable",
+      "shell_tool",
       "--ephemeral",
       "--skip-git-repo-check",
       "--json",
