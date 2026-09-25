@@ -145,9 +145,12 @@ try {
                 Aviso-Visivel "Bruto: o build falhou e o app não vai abrir.`n`nVeja o log em`n$Log`n`nSe você acabou de instalar Node/npm, feche esta janela, abra um terminal novo e rode o atalho de novo (às vezes é preciso uma sessão nova para o PATH atualizar)."
                 exit 1
             }
-            if ($commitAtual) {
-                [System.IO.File]::WriteAllText($commitMarkerPath, $commitAtual)
-            }
+            # Grava o marcador sempre — vazio quando não há git. Sem ele, todo
+            # início a frio rebuildaria (Grok, rodada 9). Quando o git voltar,
+            # o marcador vazio difere do commit e o próximo início rebuilda.
+            $marcador = ''
+            if ($commitAtual) { $marcador = $commitAtual }
+            [System.IO.File]::WriteAllText($commitMarkerPath, $marcador)
         }
 
         "$(Get-Date) — iniciando servidor…" | Out-File -FilePath $Log -Append -Encoding utf8
