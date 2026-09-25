@@ -29,6 +29,13 @@ param(
     [string]$Dir
 )
 
+# Capturados ANTES de mexer neles: em modo `irm | iex` este script roda no
+# escopo da sessão interativa de quem chamou (não num processo filho) — sem
+# isto, $ErrorActionPreference e o diretório atual ficariam alterados depois
+# que o instalador termina. Restaurados no `finally` no fim do arquivo.
+$ErrorActionPreferenceOriginal = $ErrorActionPreference
+$LocalizacaoOriginal = (Get-Location).Path
+
 $ErrorActionPreference = 'Stop'
 
 try {
@@ -216,6 +223,13 @@ function Instalar-Bruto {
         Sucesso "Rodando de dentro do clone em $ProjectDir"
     }
 
+    # Absolutiza ANTES do Set-Location abaixo — depois dele, um $ProjectDir
+    # relativo (ex.: -Dir Bruto) passaria a apontar para dentro de si mesmo
+    # (Bruto\Bruto\...) em todo Join-Path posterior, porque seria resolvido
+    # contra o NOVO diretório atual. Mesma ordem que o instalar.sh usa com
+    # $PWD antes do `cd "$BRUTO_ALVO"`.
+    $ProjectDir = [System.IO.Path]::GetFullPath($ProjectDir)
+
     Set-Location -LiteralPath $ProjectDir
 
     # -----------------------------------------------------------------------
@@ -308,6 +322,12 @@ function Instalar-Bruto {
     }
 
     uv tool update-shell
+    if ($LASTEXITCODE -ne 0) {
+        # Não aborta — mesmo texto e mesma decisão do instalar.sh: é um aviso,
+        # não uma dependência obrigatória (o instalador já corrigiu o PATH da
+        # sessão atual via Atualizar-Path logo abaixo).
+        Write-Host "  ⚠️  não consegui garantir %USERPROFILE%\.local\bin no PATH permanente — rode 'uv tool update-shell' você mesmo, ou adicione essa pasta ao PATH manualmente" -ForegroundColor Yellow
+    }
     Atualizar-Path
 
     # -----------------------------------------------------------------------
@@ -333,12 +353,18 @@ function Instalar-Bruto {
     # 9. Chromium do Playwright.
     # -----------------------------------------------------------------------
 
-    Etapa "Instalando o Chromium do Playwright"
+    # Chromium do Playwright: só serve para exportar PDF e a imagem do mapa
+    # mental (src/pipeline/lib/browser.ts); o resto do Bruto funciona sem ele.
+    # Por isso uma falha aqui é AVISO, nunca aborta a instalação — mesmo texto
+    # e mesma decisão do instalar.sh.
+    Etapa "Instalando o Chromium do Playwright (exporta PDF/imagem do mapa mental)"
     npx.cmd playwright install chromium
     if ($LASTEXITCODE -ne 0) {
-        Falha "npx playwright install chromium falhou (código $LASTEXITCODE)" "Veja o erro acima, resolva e rode este instalador de novo."
+        Write-Host "  ⚠️  npx playwright install chromium falhou — só afeta exportar PDF e imagem do mapa mental; o resto do Bruto funciona sem isso" -ForegroundColor Yellow
+        Write-Host "      rode manualmente depois: npx.cmd playwright install chromium" -ForegroundColor Yellow
+    } else {
+        Sucesso "Chromium instalado"
     }
-    Sucesso "Chromium instalado"
 
     # -----------------------------------------------------------------------
     # 10. Banco: migrate + seed.
@@ -456,4 +482,11 @@ try {
     if ($PSCommandPath) {
         exit 1
     }
+} finally {
+    # Roda em sucesso E em falha (inclusive quando `exit 1` acima dispara —
+    # `exit` desenrola `finally` pendente antes de encerrar o processo). Em
+    # modo -File isto é irrelevante (o processo termina de qualquer forma);
+    # em modo iex é o que devolve a sessão da pessoa como ela estava antes.
+    $ErrorActionPreference = $ErrorActionPreferenceOriginal
+    Set-Location -LiteralPath $LocalizacaoOriginal
 }

@@ -131,7 +131,7 @@ instalar_pacote_linux() {
   case "$GERENCIADOR" in
     apt) cmd="sudo apt-get update && sudo apt-get install -y $pacotes" ;;
     dnf) cmd="sudo dnf install -y $pacotes" ;;
-    pacman) cmd="sudo pacman -Sy --noconfirm $pacotes" ;;
+    pacman) cmd="sudo pacman -S --needed --noconfirm $pacotes" ;;  # sem -y: atualização parcial quebra o Arch
     zypper) cmd="sudo zypper install -y $pacotes" ;;
     *) return 1 ;;
   esac

@@ -8,6 +8,10 @@
 # Aqui ninguém mais disputa: o yt-dlp do uv continua vencendo, e o Node é o
 # primeiro >= 20 que existir.
 #
+# A última escolha fica gravada em ~/.local/share/bruto/nodebin: o atalho não
+# herda o PATH do nvm/fnm/Volta, e é por esse link que ele reencontra um Node
+# que só existia lá (Grok, passada final, 25/09).
+#
 # Uso: . launcher/_node.sh && bruto_escolher_node   (retorna 1 se não houver)
 
 bruto_node_major() {
@@ -24,6 +28,7 @@ bruto_escolher_node() {
     /usr/local/bin/node \
     "$HOME/.local/bin/node" \
     /usr/bin/node \
+    "$HOME/.local/share/bruto/nodebin/node" \
     "$(command -v node 2>/dev/null)"; do
     [ -n "$candidato" ] && [ -x "$candidato" ] || continue
     major="$(bruto_node_major "$candidato")"
