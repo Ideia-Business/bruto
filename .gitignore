@@ -91,11 +91,12 @@ supabase/.temp/
 .claude/rules/ideiaos-common-*
 .cursor/rules/ideiaos-*
 .codex/ideiaos-rules.md
-!.review/
-.review/*
-!.review/evidence/
 .review/evidence/*.md
-!.review/cross-vendor-ledger.log
 **/.claude/rules/ideiaos-common-*
 **/.cursor/rules/ideiaos-*
 **/.codex/ideiaos-rules.md
+!.review/
+.review/*
+!.review/evidence/
+!.review/evidence/*.md
+!.review/cross-vendor-ledger.log
