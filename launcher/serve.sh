@@ -11,7 +11,15 @@ set -u
 # macOS. $HOME/.local/bin vem PRIMEIRO: se o sistema também tem uma versão
 # antiga de algo (ex.: yt-dlp de pacote da distro), a instalada pelo `uv tool`
 # tem que ganhar, nunca a de /usr/bin.
-export PATH="$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+if [ "$(uname -s)" = "Darwin" ]; then
+  # macOS: o Homebrew manda (é de lá que vem o Node); ~/.local/bin só para os
+  # shims do uv. Um Node velho em ~/.local/bin não pode vencer o do brew.
+  export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+else
+  # Linux: ~/.local/bin PRIMEIRO — o Node 22 que o instalador baixa mora lá e
+  # tem de vencer o Node 18 da distro em /usr/bin.
+  export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+fi
 
 # Raiz do projeto = diretório pai deste script. Funciona em qualquer clone,
 # de qualquer usuário, sem edição.
@@ -49,6 +57,14 @@ if ! is_up; then
     else
       echo "$(date) — build falhou" >>"$LOG"
       echo "Build falhou — veja $LOG"
+      # Aberto por atalho não há terminal: sem este aviso, o clique não faz
+      # nada e ninguém sabe por quê (achado do Grok, 25/09).
+      MSG="O Bruto não abriu: o build falhou. Detalhes em $LOG"
+      if command -v notify-send >/dev/null 2>&1; then
+        notify-send "Bruto" "$MSG" 2>/dev/null || true
+      elif command -v osascript >/dev/null 2>&1; then
+        osascript -e "display notification \"$MSG\" with title \"Bruto\"" 2>/dev/null || true
+      fi
       exit 1
     fi
   fi

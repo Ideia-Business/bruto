@@ -156,6 +156,23 @@ describe("pythonDaFerramentaUv — Python isolado de `uv tool install`", () => {
     }
   });
 
+  test("POSIX: $XDG_DATA_HOME/uv/tools vence o padrão de $HOME", () => {
+    const home = dirTemp();
+    const xdg = dirTemp();
+    criarVenvFalso(path.join(home, ".local", "share", "uv", "tools"), "mlx-whisper", "posix");
+    const esperado = criarVenvFalso(path.join(xdg, "uv", "tools"), "mlx-whisper", "posix");
+    try {
+      const achado = pythonDaFerramentaUv("mlx-whisper", {
+        plataforma: "darwin",
+        env: { HOME: home, XDG_DATA_HOME: xdg },
+      });
+      assert.equal(achado, esperado);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+      fs.rmSync(xdg, { recursive: true, force: true });
+    }
+  });
+
   test("win32: usa %APPDATA%\\uv\\data\\tools\\<ferramenta>\\Scripts\\python.exe quando UV_TOOL_DIR não está setada", () => {
     const appdata = dirTemp();
     const esperado = criarVenvFalso(path.join(appdata, "uv", "data", "tools"), "mlx-whisper", "win32");

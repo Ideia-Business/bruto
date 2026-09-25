@@ -13,7 +13,15 @@ set -euo pipefail
 # $HOME/.local/bin PRIMEIRO: é onde `uv tool install` grava os shims
 # (yt-dlp, whisper). Se o sistema também tiver uma versão de pacote da
 # distro em /usr/bin, a nossa tem que ganhar — nunca a antiga.
-export PATH="$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+if [ "$(uname -s)" = "Darwin" ]; then
+  # macOS: o Homebrew manda (é de lá que vem o Node); ~/.local/bin só para os
+  # shims do uv. Um Node velho em ~/.local/bin não pode vencer o do brew.
+  export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+else
+  # Linux: ~/.local/bin PRIMEIRO — o Node 22 que o instalador baixa mora lá e
+  # tem de vencer o Node 18 da distro em /usr/bin.
+  export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+fi
 
 # Rede de segurança: qualquer falha não tratada explicitamente também avisa
 # como retomar, em vez de morrer em silêncio. Comandos usados como condição

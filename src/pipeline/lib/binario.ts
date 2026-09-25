@@ -109,7 +109,7 @@ export function dividirPath(pathVar: string, plataforma: NodeJS.Platform = proce
  * doc oficial (`docs.astral.sh/uv/reference/storage`):
  *   1. `$UV_TOOL_DIR`, se setada — sobrescreve tudo, é o contrato do próprio uv.
  *   2. Default por plataforma:
- *      - POSIX (macOS/Linux): `$HOME/.local/share/uv/tools`
+ *      - POSIX (macOS/Linux): `$XDG_DATA_HOME/uv/tools`, ou `$HOME/.local/share/uv/tools`
  *        (medido nesta estação: `uv tool dir` devolveu exatamente isso).
  *      - win32: `%APPDATA%\uv\data\tools` — não `%APPDATA%\uv\tools`; o
  *        `\data\` intermediário é o que a doc confirma (é fácil errar essa
@@ -141,6 +141,9 @@ function baseUvTools(plataforma: NodeJS.Platform, env: Record<string, string | u
     if (!env.APPDATA) return null;
     return path.join(env.APPDATA, "uv", "data", "tools");
   }
+  // O uv segue o XDG: `$XDG_DATA_HOME/uv/tools` quando a variável existe
+  // (achado do Codex, 25/09). Só sem ela cai no padrão `~/.local/share`.
+  if (env.XDG_DATA_HOME) return path.join(env.XDG_DATA_HOME, "uv", "tools");
   if (!env.HOME) return null;
   return path.join(env.HOME, ".local", "share", "uv", "tools");
 }
