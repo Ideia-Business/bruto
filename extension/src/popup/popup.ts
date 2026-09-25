@@ -32,6 +32,7 @@ import {
   NAO_SUPORTADO,
   PLATAFORMAS,
   PLATAFORMA_POR_ID,
+  reconhecerLink,
   type PlataformaId,
 } from "../../../src/lib/plataformas";
 
@@ -558,9 +559,12 @@ function passo(texto: string): void {
 async function levarParaRotaComTranscricao(tabId: number, url: string): Promise<void> {
   const id = extrairVideoIdDaUrl(url);
   if (id === null) return;
-  if (!new URL(url).pathname.startsWith("/shorts/")) return;
+  const { hostname, pathname } = new URL(url);
+  // Só a rota /watch tem o painel "Mostrar transcrição". Shorts, embed, live
+  // e youtu.be são o mesmo vídeo por outra porta: levamos à porta certa.
+  if (hostname.replace(/^(www|m|music)\./, "") === "youtube.com" && pathname.startsWith("/watch")) return;
 
-  passo("Shorts não tem transcrição — abrindo o mesmo vídeo pela rota normal…");
+  passo("Essa rota não tem o painel de transcrição — abrindo o mesmo vídeo pela rota normal…");
   await chrome.tabs.update(tabId, { url: `https://www.youtube.com/watch?v=${id}` });
 
   // Espera a navegação terminar. Sem isso, injetamos o content script na página
@@ -786,7 +790,11 @@ async function iniciar(): Promise<void> {
   // o app local, e pedir chave para uma aba que a extensão nem vai destrinchar
   // seria cobrar por um serviço que não é dela. `detectarPlataforma` também
   // reconhece o YouTube (home, canal — sem ID de vídeo); esses caem no caso 3.
-  const plataforma: PlataformaId | null = detectarPlataforma(aba.url);
+  // `reconhecerLink` exige um VÍDEO (reel, post, /video/…): a home do Instagram
+  // ou um perfil do TikTok têm o host certo e nenhum vídeo — e o app recusaria
+  // com 400. Esses caem no caso 3 (achado do Grok 4.7, revisão de 25/09).
+  const plataforma: PlataformaId | null =
+    reconhecerLink(aba.url) !== null ? detectarPlataforma(aba.url) : null;
   if (plataforma === "instagram" || plataforma === "tiktok") {
     abaId = aba.id;
     urlDaAba = aba.url;

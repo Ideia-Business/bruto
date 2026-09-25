@@ -167,8 +167,11 @@ export function reconhecerLink(input: string): ReferenciaDeMidia | null {
     case "tiktok": {
       const m = url.pathname.match(/\/video\/(\d+)/);
       if (m) return { plataforma, id: m[1] };
-      // vm./vt.tiktok.com/<código>: o id só aparece depois do redirect.
-      return host !== "tiktok.com" ? { plataforma, id: "" } : null;
+      // vm./vt.tiktok.com/<código>: o id só aparece depois do redirect. Só
+      // esses dois: shop., ads. e afins têm o host certo e vídeo nenhum.
+      const codigo = url.pathname.slice(1).split("/")[0];
+      const ehLinkCurto = (host === "vm.tiktok.com" || host === "vt.tiktok.com") && /^[A-Za-z0-9]+$/.test(codigo);
+      return ehLinkCurto ? { plataforma, id: "" } : null;
     }
   }
 }

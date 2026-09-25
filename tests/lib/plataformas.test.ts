@@ -174,3 +174,20 @@ describe("reconhecerLink — negativos gerais", () => {
     assert.equal(reconhecerLink("isto não é uma url nem um id"), null);
   });
 });
+
+describe("achados da revisão cross-vendor de 25/09", () => {
+  test("subdomínio do TikTok sem vídeo (shop., ads.) não vira link curto", () => {
+    assert.equal(reconhecerLink("https://shop.tiktok.com/"), null);
+    assert.equal(reconhecerLink("https://ads.tiktok.com/campanhas"), null);
+    assert.equal(reconhecerLink("https://vm.tiktok.com/"), null);
+  });
+  test("home do Instagram e perfil do TikTok têm host certo e vídeo nenhum", () => {
+    assert.equal(detectarPlataforma("https://www.instagram.com/"), "instagram");
+    assert.equal(reconhecerLink("https://www.instagram.com/"), null);
+    assert.equal(reconhecerLink("https://www.tiktok.com/@usuario"), null);
+  });
+  test("embed e live do YouTube são reconhecidos com o mesmo id", () => {
+    assert.deepEqual(reconhecerLink("https://www.youtube.com/embed/dQw4w9WgXcQ"), { plataforma: "youtube", id: "dQw4w9WgXcQ" });
+    assert.deepEqual(reconhecerLink("https://www.youtube.com/live/dQw4w9WgXcQ"), { plataforma: "youtube", id: "dQw4w9WgXcQ" });
+  });
+});
