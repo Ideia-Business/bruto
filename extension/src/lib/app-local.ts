@@ -272,6 +272,8 @@ const ID_DE_VIDEO_VALIDO = /^[A-Za-z0-9_-]{1,64}$/;
 export type ResultadoEnvio =
   | { resultado: "enfileirado" }
   | { resultado: "duplicado"; videoId: string }
+  /** Ninguém atendeu em 127.0.0.1:3000 (ou não atendeu a tempo): o app não está de pé. */
+  | { resultado: "semApp" }
   | { resultado: "recusado"; motivo: string };
 
 /**
@@ -290,6 +292,12 @@ async function lerCorpoDeEnvio(r: Response): Promise<Record<string, unknown> | n
 
 /**
  * Manda um link (Instagram/TikTok/…) para o app local destrinchar.
+ *
+ * O PRÓPRIO POST É A SONDA. Não se consulta `/api/llm/saude` antes: aquela rota
+ * dispara subprocessos (`claude auth status`, `codex login status`) e pode levar
+ * mais que o teto de 1,5 s da sonda — e aí a extensão declararia "app fechado"
+ * com o app de pé (achado do revisor Codex, 25/09). Se ninguém atender na
+ * porta, a recusa de conexão volta na hora e vira `semApp`.
  *
  * Mesma doutrina do topo do arquivo: a resposta é ENTRADA NÃO CONFIÁVEL. O
  * `videoId` do caso 409 só vira `duplicado` se bater no formato esperado —
@@ -310,7 +318,7 @@ export async function enviarLinkAoApp(url: string): Promise<ResultadoEnvio> {
       TIMEOUT_ENVIO_MS,
     ));
   } catch {
-    return { resultado: "recusado", motivo: "O app do Bruto não respondeu." };
+    return { resultado: "semApp" };
   }
 
   try {

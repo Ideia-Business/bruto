@@ -121,7 +121,7 @@ link, transcreve o áudio e monta a aula. Na **Bancada** do app, a aula aparece.
 
 1. Abra um Reel ou vídeo.
 2. Clique no ícone do **Bruto**.
-3. Clique em **Destrinchar**.
+3. Clique em **Destrinchar no app local**.
 
 O esperado: o popup avisa *"O app do Bruto não está aberto. Abra-o e tente de novo."* (ou mensagem similar). Nada é encaminhado.
 

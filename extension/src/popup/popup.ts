@@ -18,7 +18,6 @@ import {
   AppLocalError,
   APP_BASE,
   enviarLinkAoApp,
-  verSaudeDoApp,
   type FalhaDoApp,
   type ResultadoEnvio,
 } from "../lib/app-local";
@@ -193,31 +192,30 @@ function tituloAppLocal(plataforma: "instagram" | "tiktok"): string {
 }
 
 /**
- * Monta a tela de Instagram/TikTok e sonda o app ANTES de deixar clicar —
- * sem app de pé, o POST falharia de todo jeito, e é melhor dizer isso na
- * hora de abrir a tela do que só depois do clique.
+ * Monta a tela de Instagram/TikTok. O botão nasce habilitado: não há sonda
+ * prévia, porque a rota de saúde dispara subprocessos e pode demorar mais que
+ * qualquer teto razoável — a tela diria "app fechado" com o app de pé. Quem
+ * prova que o app está de pé é o próprio envio (`enviarLinkAoApp`), e falhar
+ * ali custa uma recusa de conexão imediata, não um clique perdido.
  */
-async function prepararTelaAppLocal(plataforma: "instagram" | "tiktok"): Promise<void> {
+function prepararTelaAppLocal(plataforma: "instagram" | "tiktok"): void {
   const p = PLATAFORMA_POR_ID[plataforma];
   appLocalTitulo.textContent = tituloAppLocal(plataforma);
   appLocalNota.textContent = p.nota;
   appLocalEstado.hidden = true;
-  btnAppLocal.disabled = true;
+  btnAppLocal.disabled = false;
   telaInicial = "appLocal";
   mostrar("appLocal");
+}
 
-  const saude = await verSaudeDoApp();
-  if (saude === null) {
+function mostrarResultadoDoEnvio(resultado: ResultadoEnvio): void {
+  if (resultado.resultado === "semApp") {
     appLocalEstado.hidden = false;
     appLocalEstado.className = "estado atencao";
     appLocalEstado.textContent =
       "O app do Bruto não está aberto. Abra-o (npm run app) e clique de novo.";
     return;
   }
-  btnAppLocal.disabled = false;
-}
-
-function mostrarResultadoDoEnvio(resultado: ResultadoEnvio): void {
   if (resultado.resultado === "recusado") {
     appLocalEstado.hidden = false;
     appLocalEstado.className = "estado ruim";
@@ -792,7 +790,7 @@ async function iniciar(): Promise<void> {
   if (plataforma === "instagram" || plataforma === "tiktok") {
     abaId = aba.id;
     urlDaAba = aba.url;
-    await prepararTelaAppLocal(plataforma);
+    prepararTelaAppLocal(plataforma);
     return;
   }
 
