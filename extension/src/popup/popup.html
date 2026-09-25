@@ -45,12 +45,31 @@
         </div>
       </section>
 
-      <!-- 2. aba que não é vídeo do YouTube -->
+      <!-- 2. aba que não é vídeo do YouTube (nem de outra plataforma reconhecida) -->
       <section id="tela-nao-youtube" class="tela pilha" hidden>
         <h2>Aqui não tem vídeo</h2>
         <p class="secundario">
-          Abra um vídeo do YouTube e clique no Bruto de novo.
+          Abra um vídeo do YouTube e clique no Bruto de novo. É o que ele reconhece:
         </p>
+        <ul id="nao-youtube-lista" class="lista-plataformas"></ul>
+        <p class="secundario">
+          <strong>Não entra:</strong> <span id="nao-youtube-nao-suportado"></span>
+        </p>
+      </section>
+
+      <!-- 2b. Instagram/TikTok — a extensão não lê, mas o app local destrincha -->
+      <section id="tela-app-local" class="tela pilha" hidden>
+        <h2 id="app-local-titulo"></h2>
+        <p id="app-local-nota" class="secundario"></p>
+        <div class="caixa">
+          <ul id="app-local-lista" class="lista-plataformas"></ul>
+        </div>
+        <p id="app-local-estado" class="estado atencao" role="status" aria-live="polite" hidden></p>
+        <div class="linha">
+          <button id="btn-app-local" class="principal" type="button">
+            Destrinchar no app local
+          </button>
+        </div>
       </section>
 
       <!-- 3. pronto para destrinchar -->
