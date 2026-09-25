@@ -25,7 +25,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { dividirPath, localizarBinario } from "@/pipeline/lib/binario";
+import { dividirPath, localizarBinario, pythonDaFerramentaUv } from "@/pipeline/lib/binario";
 import { DATA_ROOT } from "@/pipeline/lib/paths";
 import { redact } from "@/pipeline/lib/llm/redact";
 import { PipelineError } from "@/pipeline/types";
@@ -175,6 +175,27 @@ sys.exit(0 if importlib.util.find_spec("mlx_whisper") else 1)
 `;
 
 let cacheMlx: boolean | null = null;
+let cachePythonMlx: string | null | undefined; // undefined = ainda não resolvido; null = nenhum achado
+
+/**
+ * Qual Python usar para o `mlx_whisper`: o de dentro do venv ISOLADO que
+ * `uv tool install mlx-whisper` cria tem prioridade — é lá, e só lá, que o
+ * módulo de fato está instalado (ver o comentário grande em `binario.ts`
+ * sobre por que o `python3` global nunca o enxerga). Cai para o `python3` do
+ * PATH só quando esse venv não existe — o caminho de quem instalou o módulo
+ * por fora, sem o instalador.
+ *
+ * Memoizado pela MESMA razão do `cacheMlx`: resolver isso não muda no meio
+ * de um processo do Bruto, e a sonda (`temMlx`) e a transcrição (`rodarMlx`)
+ * PRECISAM usar o mesmo Python — memoizar é o que garante isso sem passar o
+ * caminho manualmente entre as duas.
+ */
+function pythonParaMlx(): string | null {
+  if (cachePythonMlx !== undefined) return cachePythonMlx;
+  const daFerramenta = pythonDaFerramentaUv("mlx-whisper");
+  cachePythonMlx = daFerramenta ?? (noPath("python3") ? "python3" : null);
+  return cachePythonMlx;
+}
 
 /**
  * mlx-whisper é um módulo Python, não um binário — só dá para saber perguntando
@@ -183,12 +204,13 @@ let cacheMlx: boolean | null = null;
  */
 async function temMlx(): Promise<boolean> {
   if (cacheMlx !== null) return cacheMlx;
-  if (!noPath("python3")) {
+  const python = pythonParaMlx();
+  if (!python) {
     cacheMlx = false;
     return false;
   }
   try {
-    const r = await rodar("python3", ["-"], { timeoutMs: 30_000, stdin: SONDA_MLX });
+    const r = await rodar(python, ["-"], { timeoutMs: 30_000, stdin: SONDA_MLX });
     cacheMlx = r.code === 0;
   } catch {
     cacheMlx = false;
@@ -303,7 +325,13 @@ print(text)
 `;
 
 async function rodarMlx(wav: string, lang: string): Promise<Execucao> {
-  return rodar("python3", ["-", wav, MODELO, lang], {
+  // O MESMO Python que `temMlx()` usou para confirmar a disponibilidade —
+  // `pythonParaMlx()` memoiza, então isto nunca é um interpretador diferente
+  // (que teria o módulo instalado só num dos dois). Fallback para "python3"
+  // é só defensivo: na prática `detectarBackend()` já garantiu `temMlx()`
+  // true antes de qualquer chamada a esta função.
+  const python = pythonParaMlx() ?? "python3";
+  return rodar(python, ["-", wav, MODELO, lang], {
     timeoutMs: TIMEOUT_TRANSCRICAO_MS,
     stdin: SCRIPT_MLX,
   });

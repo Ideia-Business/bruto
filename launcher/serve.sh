@@ -7,8 +7,11 @@
 
 set -u
 # Atalhos (macOS e .desktop) não herdam o PATH do shell interativo — e é onde
-# vivem brew, os shims do `uv tool` (yt-dlp, whisper) e o Node do Homebrew no macOS.
-export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin:$PATH"
+# vivem brew, os shims do `uv tool` (yt-dlp, whisper) e o Node do Homebrew no
+# macOS. $HOME/.local/bin vem PRIMEIRO: se o sistema também tem uma versão
+# antiga de algo (ex.: yt-dlp de pacote da distro), a instalada pelo `uv tool`
+# tem que ganhar, nunca a de /usr/bin.
+export PATH="$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 # Raiz do projeto = diretório pai deste script. Funciona em qualquer clone,
 # de qualquer usuário, sem edição.
@@ -41,8 +44,13 @@ precisa_build() {
 if ! is_up; then
   if precisa_build; then
     echo "$(date) — build (código mudou desde o último build)…" >>"$LOG"
-    npm run build >>"$LOG" 2>&1
-    commit_atual > "$COMMIT_ARQUIVO" 2>/dev/null || true
+    if npm run build >>"$LOG" 2>&1; then
+      commit_atual > "$COMMIT_ARQUIVO" 2>/dev/null || true
+    else
+      echo "$(date) — build falhou" >>"$LOG"
+      echo "Build falhou — veja $LOG"
+      exit 1
+    fi
   fi
   echo "$(date) — iniciando servidor…" >>"$LOG"
   # Inicia o servidor destacado do launcher (sobrevive ao fechar o app).

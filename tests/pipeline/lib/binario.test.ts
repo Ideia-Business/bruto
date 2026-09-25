@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { candidatosDoNome, dividirPath, localizarBinario } from "@/pipeline/lib/binario";
+import { candidatosDoNome, dividirPath, localizarBinario, pythonDaFerramentaUv } from "@/pipeline/lib/binario";
 
 function dirTemp(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "bruto-teste-binario-"));
@@ -127,5 +127,80 @@ describe("localizarBinario — win32, simulado", () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+/** Cria `<base>/<ferramenta>/bin/python` (POSIX) ou `\Scripts\python.exe` (win32). */
+function criarVenvFalso(base: string, ferramenta: string, plataforma: "win32" | "posix"): string {
+  const relativo =
+    plataforma === "win32" ? [ferramenta, "Scripts", "python.exe"] : [ferramenta, "bin", "python"];
+  const caminho = path.join(base, ...relativo);
+  fs.mkdirSync(path.dirname(caminho), { recursive: true });
+  fs.writeFileSync(caminho, "conteudo-ficticio");
+  fs.chmodSync(caminho, 0o755);
+  return caminho;
+}
+
+describe("pythonDaFerramentaUv — Python isolado de `uv tool install`", () => {
+  test("POSIX: usa $HOME/.local/share/uv/tools/<ferramenta>/bin/python quando UV_TOOL_DIR não está setada", () => {
+    const home = dirTemp();
+    const esperado = criarVenvFalso(path.join(home, ".local", "share", "uv", "tools"), "mlx-whisper", "posix");
+    try {
+      const achado = pythonDaFerramentaUv("mlx-whisper", {
+        plataforma: "linux",
+        env: { HOME: home },
+      });
+      assert.equal(achado, esperado);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("win32: usa %APPDATA%\\uv\\data\\tools\\<ferramenta>\\Scripts\\python.exe quando UV_TOOL_DIR não está setada", () => {
+    const appdata = dirTemp();
+    const esperado = criarVenvFalso(path.join(appdata, "uv", "data", "tools"), "mlx-whisper", "win32");
+    try {
+      const achado = pythonDaFerramentaUv("mlx-whisper", {
+        plataforma: "win32",
+        env: { APPDATA: appdata },
+      });
+      assert.equal(achado, esperado);
+    } finally {
+      fs.rmSync(appdata, { recursive: true, force: true });
+    }
+  });
+
+  test("UV_TOOL_DIR, quando setada, tem prioridade sobre o default da plataforma", () => {
+    const viaEnvVar = dirTemp();
+    const viaDefault = dirTemp();
+    const esperado = criarVenvFalso(viaEnvVar, "mlx-whisper", "posix");
+    // Um venv também existe no caminho-default — se a precedência estivesse
+    // errada (default vencendo a env var), o teste acharia este aqui.
+    criarVenvFalso(path.join(viaDefault, ".local", "share", "uv", "tools"), "mlx-whisper", "posix");
+    try {
+      const achado = pythonDaFerramentaUv("mlx-whisper", {
+        plataforma: "linux",
+        env: { UV_TOOL_DIR: viaEnvVar, HOME: viaDefault },
+      });
+      assert.equal(achado, esperado);
+    } finally {
+      fs.rmSync(viaEnvVar, { recursive: true, force: true });
+      fs.rmSync(viaDefault, { recursive: true, force: true });
+    }
+  });
+
+  test("controle negativo: devolve null quando a ferramenta não está instalada por esse caminho", () => {
+    const home = dirTemp();
+    try {
+      const achado = pythonDaFerramentaUv("mlx-whisper", { plataforma: "linux", env: { HOME: home } });
+      assert.equal(achado, null);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("controle negativo: devolve null quando nem HOME (POSIX) nem APPDATA (win32) estão presentes", () => {
+    assert.equal(pythonDaFerramentaUv("mlx-whisper", { plataforma: "linux", env: {} }), null);
+    assert.equal(pythonDaFerramentaUv("mlx-whisper", { plataforma: "win32", env: {} }), null);
   });
 });

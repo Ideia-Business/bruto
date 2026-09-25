@@ -10,7 +10,10 @@
 # nada de `declare -A`, `${var,,}`, `mapfile`.
 
 set -euo pipefail
-export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin:$PATH"
+# $HOME/.local/bin PRIMEIRO: é onde `uv tool install` grava os shims
+# (yt-dlp, whisper). Se o sistema também tiver uma versão de pacote da
+# distro em /usr/bin, a nossa tem que ganhar — nunca a antiga.
+export PATH="$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 # Rede de segurança: qualquer falha não tratada explicitamente também avisa
 # como retomar, em vez de morrer em silêncio. Comandos usados como condição
@@ -199,6 +202,16 @@ else
   BRUTO_ALVO="$HOME/Bruto"
   MODO="alvo"
 fi
+
+# Normaliza para absoluto AQUI, antes do `cd "$BRUTO_ALVO"` mais abaixo — depois
+# do cd, um valor relativo (ex.: --dir Bruto) passaria a apontar para
+# $BRUTO_ALVO/Bruto (relativo ao NOVO cwd) em todo uso posterior da variável
+# (atalho, resumo final). $PWD ainda é o diretório de onde o instalador foi
+# chamado neste ponto.
+case "$BRUTO_ALVO" in
+  /*) : ;;
+  *) BRUTO_ALVO="$PWD/$BRUTO_ALVO" ;;
+esac
 
 if [ "$MODO" = "clone-atual" ]; then
   etapa "Usando o clone atual em $BRUTO_ALVO"
@@ -398,15 +411,30 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Playwright Chromium (exporta PDF/imagem do mapa mental). Linux usa
-# --with-deps, que chama sudo por baixo — avisamos antes.
+# Playwright Chromium — usado só para exportar PDF e a imagem do mapa mental
+# (src/pipeline/lib/browser.ts); o resto do Bruto funciona sem ele. Por isso
+# uma falha aqui é AVISO, nunca aborta a instalação inteira.
+#
+# --with-deps só em apt: o instalador de dependências do Playwright
+# (install-deps) só sabe lidar com a família Debian/Ubuntu — em
+# Fedora/Arch/openSUSE ele tenta rodar apt-get e falha. Nesses, instalamos só
+# o Chromium e avisamos que pode faltar biblioteca de sistema.
 # ---------------------------------------------------------------------------
-etapa "Playwright (Chromium)"
-if [ "$SO" = "Linux" ]; then
-  echo "    isso instala dependências de sistema do Chromium — pode pedir sua senha (sudo)"
-  if npx playwright install --with-deps chromium; then ok; else falha "npx playwright install --with-deps chromium falhou" "rode 'npx playwright install --with-deps chromium' manualmente para ver o erro completo"; fi
+etapa "Playwright (Chromium — exporta PDF/imagem do mapa mental)"
+if [ "$SO" = "Linux" ] && [ "$GERENCIADOR" = "apt" ]; then
+  echo "    também instala dependências de sistema do Chromium via apt — pode pedir sua senha (sudo)"
+  PLAYWRIGHT_ARGS=(playwright install --with-deps chromium)
 else
-  if npx playwright install chromium; then ok; else falha "npx playwright install chromium falhou" "rode 'npx playwright install chromium' manualmente para ver o erro completo"; fi
+  PLAYWRIGHT_ARGS=(playwright install chromium)
+fi
+if npx "${PLAYWRIGHT_ARGS[@]}"; then
+  ok
+else
+  echo "  ⚠️  npx ${PLAYWRIGHT_ARGS[*]} falhou — só afeta exportar PDF e imagem do mapa mental; o resto do Bruto funciona sem isso"
+  echo "      rode manualmente depois: npx ${PLAYWRIGHT_ARGS[*]}"
+  if [ "$SO" = "Linux" ] && [ "$GERENCIADOR" != "apt" ]; then
+    echo "      fora do Debian/Ubuntu pode faltar biblioteca de sistema do Chromium — veja https://playwright.dev/docs/browsers#install-system-dependencies"
+  fi
 fi
 
 # ---------------------------------------------------------------------------

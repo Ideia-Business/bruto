@@ -84,8 +84,19 @@ function Atualizar-Path {
 
 function Tem-Comando {
     param([string]$Nome)
-    $cmd = Get-Command $Nome -ErrorAction SilentlyContinue
-    return [bool]$cmd
+    # -All + filtro por CommandType: uma ferramenta instalada via npm global
+    # (é o caso típico de "claude"/"codex" CLI) pode ter só um shim .ps1 ao
+    # lado do .cmd/.exe — Get-Command sem filtro aceitaria o .ps1, que a
+    # política padrão (Restricted) bloqueia de rodar. .cmd/.exe aparecem como
+    # CommandType "Application"; .ps1 aparece como "ExternalScript" — só o
+    # primeiro conta como "tem o comando" de verdade.
+    $candidatos = Get-Command $Nome -All -ErrorAction SilentlyContinue
+    foreach ($candidato in $candidatos) {
+        if ($candidato.CommandType -eq 'Application') {
+            return $true
+        }
+    }
+    return $false
 }
 
 function Instalar-Winget {
@@ -304,10 +315,14 @@ function Instalar-Bruto {
     # -----------------------------------------------------------------------
 
     Etapa "Instalando dependências do projeto (npm)"
+    # npm.cmd explícito, não "npm": o Node instala npm, npm.cmd E npm.ps1 lado a
+    # lado, e o PowerShell resolve "npm" bare para npm.ps1 — que a política
+    # padrão (Restricted) bloqueia de rodar ("cannot be loaded because running
+    # scripts is disabled"). npm.cmd sempre existe e nunca esbarra nisso.
     if (Test-Path -LiteralPath (Join-Path $ProjectDir "package-lock.json")) {
-        npm ci
+        npm.cmd ci
     } else {
-        npm install
+        npm.cmd install
     }
     if ($LASTEXITCODE -ne 0) {
         Falha "Instalação de dependências npm falhou (código $LASTEXITCODE)" "Veja o erro acima, resolva e rode este instalador de novo."
@@ -319,7 +334,7 @@ function Instalar-Bruto {
     # -----------------------------------------------------------------------
 
     Etapa "Instalando o Chromium do Playwright"
-    npx playwright install chromium
+    npx.cmd playwright install chromium
     if ($LASTEXITCODE -ne 0) {
         Falha "npx playwright install chromium falhou (código $LASTEXITCODE)" "Veja o erro acima, resolva e rode este instalador de novo."
     }
@@ -330,14 +345,14 @@ function Instalar-Bruto {
     # -----------------------------------------------------------------------
 
     Etapa "Rodando as migrations do banco"
-    npm run db:migrate
+    npm.cmd run db:migrate
     if ($LASTEXITCODE -ne 0) {
         Falha "npm run db:migrate falhou (código $LASTEXITCODE)" "Veja o erro acima, resolva e rode este instalador de novo."
     }
     Sucesso "Migrations aplicadas"
 
     Etapa "Populando dados iniciais (seed)"
-    npm run db:seed
+    npm.cmd run db:seed
     if ($LASTEXITCODE -ne 0) {
         Falha "npm run db:seed falhou (código $LASTEXITCODE)" "Veja o erro acima, resolva e rode este instalador de novo."
     }
@@ -349,7 +364,7 @@ function Instalar-Bruto {
     # -----------------------------------------------------------------------
 
     Etapa "Compilando o Bruto (build)"
-    npm run build
+    npm.cmd run build
     if ($LASTEXITCODE -ne 0) {
         Falha "npm run build falhou (código $LASTEXITCODE)" "Veja o erro acima, resolva e rode este instalador de novo."
     }
@@ -365,7 +380,7 @@ function Instalar-Bruto {
     # -----------------------------------------------------------------------
 
     Etapa "Rodando o doctor (diagnóstico informativo — não reprova a instalação)"
-    npm run doctor
+    npm.cmd run doctor
     Sucesso "Doctor executado (veja acima se há avisos)"
 
     # -----------------------------------------------------------------------

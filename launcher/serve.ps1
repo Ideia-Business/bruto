@@ -77,7 +77,10 @@ if (-not (Test-BrutoUp)) {
 
     if ($precisaBuild) {
         "$(Get-Date) — build inicial…" | Out-File -FilePath $Log -Append -Encoding utf8
-        npm run build *>> $Log
+        # npm.cmd explícito: "npm" bare resolve para npm.ps1 no PowerShell (o
+        # Node instala os dois lado a lado), e a política padrão (Restricted)
+        # bloqueia scripts .ps1 — npm.cmd nunca esbarra nisso.
+        npm.cmd run build *>> $Log
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Build falhou — veja $Log"
             exit 1
@@ -89,8 +92,11 @@ if (-not (Test-BrutoUp)) {
 
     "$(Get-Date) — iniciando servidor…" | Out-File -FilePath $Log -Append -Encoding utf8
     # Sobe o servidor escondido (sobrevive ao fechar o atalho): cmd /c redirecionando
-    # stdout+stderr para o log, num Start-Process oculto.
-    $cmdArgs = "/c npm run start -- -p $Port >> `"$Log`" 2>&1"
+    # stdout+stderr para o log, num Start-Process oculto. npm.cmd explícito aqui
+    # também: cmd.exe já resolveria "npm" certo sozinho (seu PATHEXT não prioriza
+    # .ps1 como o do PowerShell), mas fica explícito por consistência com o resto
+    # do arquivo e para não depender desse detalhe do cmd.exe.
+    $cmdArgs = "/c npm.cmd run start -- -p $Port >> `"$Log`" 2>&1"
     Start-Process -FilePath "cmd.exe" -ArgumentList $cmdArgs -WorkingDirectory $AppDir -WindowStyle Hidden
 
     # Aguarda ficar pronto (até ~40s no primeiro boot).

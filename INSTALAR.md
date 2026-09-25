@@ -117,10 +117,10 @@ Quando terminar, vai dizer onde ficou instalado (normalmente `~/Bruto`) e como a
 
 O atalho **Bruto** é criado no seu menu de aplicativos. Procure por ele (cada distro tem um lugar diferente — Ubuntu: grid de pontinhos; Fedora: Activities). Duplo-clique para abrir.
 
-Ou, se preferir pelo terminal, copie este comando:
+Ou, se preferir pelo terminal, copie este comando (rodar o `.desktop` direto não funciona):
 
 ```bash
-~/.local/share/applications/bruto.desktop &
+bash ~/Bruto/launcher/serve.sh
 ```
 
 ---
@@ -131,9 +131,9 @@ Ou, se preferir pelo terminal, copie este comando:
 
 O Bruto precisa de um modelo de linguagem para gerar resumos. Você tem três opções:
 
-1. **Já usa Claude (Claude.com):** instale `claude` no seu computador. Vá [aqui](https://claude.ai/download) e siga as instruções. Depois, abra o terminal e digite `claude auth login`. Pronto — o Bruto detecta sozinho.
+1. **Já usa Claude (Claude.com):** instale o Claude Code no seu computador. Vá [aqui](https://claude.com/claude-code) e siga as instruções (o app de mesa em claude.ai/download não serve — ele não instala o `claude` no terminal). Depois, abra o terminal e digite `claude auth login`. Pronto — o Bruto detecta sozinho.
 
-2. **Já usa ChatGPT (ChatGPT.com):** instale `codex` no seu computador. Vá [aqui](https://www.codex.ai) e siga. Depois, no terminal: `codex login`. O Bruto usa.
+2. **Já usa ChatGPT (ChatGPT.com):** instale o Codex CLI no seu computador. Vá [aqui](https://developers.openai.com/codex) e siga. Depois, no terminal: `codex login`. O Bruto usa.
 
 3. **Prefere usar uma chave:** siga a seção "O modelo de linguagem" do [README.md](README.md). É mais caro, mas funciona com cinco provedores.
 

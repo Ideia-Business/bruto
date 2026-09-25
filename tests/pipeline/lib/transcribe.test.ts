@@ -3,11 +3,13 @@
  * do território desta suíte: nada de yt-dlp/ffmpeg/whisper de verdade).
  *
  * IMPORTANTE sobre ordem: `detectarBackend`/`temMlx` memoizam o resultado da
- * sonda Python em uma variável de módulo (`cacheMlx`), preenchida na PRIMEIRA
- * chamada. Por isso o teste que manipula `PATH` para simular "nada instalado"
- * roda ANTES de qualquer outro teste que chame essas funções — senão o cache
- * já estaria preenchido com o resultado do ambiente real da máquina que roda
- * o CI, e o teste não provaria nada.
+ * sonda Python em variáveis de módulo (`cacheMlx`, `cachePythonMlx`),
+ * preenchidas na PRIMEIRA chamada. Por isso o teste que manipula `PATH`
+ * (e, desde a resolução do Python isolado do `uv tool install`, também
+ * `UV_TOOL_DIR`) para simular "nada instalado" roda ANTES de qualquer outro
+ * teste que chame essas funções — senão o cache já estaria preenchido com o
+ * resultado do ambiente real da máquina que roda o CI, e o teste não
+ * provaria nada.
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
@@ -56,9 +58,22 @@ describe("detectarBackend — sem nenhum backend instalado", () => {
     // Um diretório de PATH vazio (que não existe no disco) garante que
     // `noPath()` não encontre `python3`, `whisper`, `whisper-cli` nem
     // `whisper-cpp` — reproduz uma máquina sem nenhum transcritor instalado.
+    //
+    // UV_TOOL_DIR aponta para o MESMO diretório inexistente: sem isso, a
+    // resolução do Python do `uv tool install mlx-whisper` (`pythonParaMlx`)
+    // consultaria o `$HOME` REAL de quem roda o teste — e numa máquina onde a
+    // ferramenta estiver instalada de verdade, este teste deixaria de provar
+    // "nada instalado" e passaria a medir o ambiente real, silenciosamente.
     const dirInexistente = path.join(os.tmpdir(), "bruto-teste-path-vazio-" + Date.now());
-    const resultado = await comPath(dirInexistente, () => detectarBackend());
-    assert.equal(resultado, null);
+    const uvToolDirOriginal = process.env.UV_TOOL_DIR;
+    process.env.UV_TOOL_DIR = dirInexistente;
+    try {
+      const resultado = await comPath(dirInexistente, () => detectarBackend());
+      assert.equal(resultado, null);
+    } finally {
+      if (uvToolDirOriginal === undefined) delete process.env.UV_TOOL_DIR;
+      else process.env.UV_TOOL_DIR = uvToolDirOriginal;
+    }
   });
 });
 

@@ -8,7 +8,7 @@
 # Idempotente: rodar de novo recria o .desktop com o caminho atual do clone.
 
 set -eu
-export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 # Raiz do projeto = diretório pai deste script (funciona em qualquer clone).
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -17,8 +17,15 @@ ICONE="$APP_DIR/public/icon-512.png"
 if [ ! -f "$ICONE" ]; then
   echo "→ Ícone ausente em public/icon-512.png — gerando a partir de launcher/icon.svg…"
   WORK="$(mktemp -d)"
-  trap 'rm -rf "$WORK"' EXIT
-  cat > "$WORK/_gen.mjs" <<NODE
+  # O .mjs PRECISA viver dentro de APP_DIR: `import 'playwright'` resolve
+  # node_modules a partir da localização do próprio arquivo importador, não
+  # do cwd do processo — um .mjs em /tmp nunca acha o node_modules do
+  # projeto, mesmo rodando `node` com cwd=APP_DIR (foi o bug: o gerador
+  # rodava de /tmp e abortava a instalação inteira num clone novo, sem
+  # public/icon-512.png ainda).
+  GEN_TMP="$APP_DIR/_gen_tmp_atalho.$$.mjs"
+  trap 'rm -rf "$WORK"; rm -f "$GEN_TMP"' EXIT
+  cat > "$GEN_TMP" <<NODE
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 const svg = fs.readFileSync('$APP_DIR/launcher/icon.svg', 'utf8');
@@ -28,9 +35,15 @@ await p.setContent('<!doctype html><html><body style="margin:0">' + svg + '</bod
 await p.locator('svg').screenshot({ path: '$WORK/icon-512.png', omitBackground: true });
 await b.close();
 NODE
-  (cd "$APP_DIR" && node "$WORK/_gen.mjs")
-  mkdir -p "$APP_DIR/public"
-  cp "$WORK/icon-512.png" "$ICONE"
+  # Falha aqui é AVISO, não motivo para abortar o atalho inteiro: um atalho
+  # sem ícone bonito (cai para o SVG) é melhor que instalação interrompida.
+  if (cd "$APP_DIR" && node "$GEN_TMP"); then
+    mkdir -p "$APP_DIR/public"
+    cp "$WORK/icon-512.png" "$ICONE"
+  else
+    echo "  ⚠️  não consegui gerar o ícone PNG (Chromium do Playwright ausente ou falhou) — usando o SVG como ícone"
+    ICONE="$APP_DIR/launcher/icon.svg"
+  fi
 fi
 
 DEST_DIR="$HOME/.local/share/applications"

@@ -15,7 +15,7 @@ GEN_TMP="$APP_DIR/_gen_tmp.$$.mjs"
 trap 'rm -rf "$WORK"; rm -f "$GEN_TMP"' EXIT
 
 cd "$APP_DIR"
-export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:$PATH"
+export PATH="$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:$PATH"
 
 echo "→ Gerando ícone…"
 cat > "$WORK/_gen.mjs" <<NODE
