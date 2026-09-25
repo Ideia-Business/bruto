@@ -43,7 +43,7 @@ export const jobs = sqliteTable(
     // 'metadata' | 'transcript' | 'summary' | 'mindmap' | 'category' | 'export'
     currentStep: text("current_step"),
     progressPct: integer("progress_pct").notNull().default(0),
-    // 'BOT_CHECK' | 'RATE_LIMIT' | 'YTDLP_OUTDATED' | 'NO_TRANSCRIPT' | 'LLM_QUOTA' | 'UNKNOWN'
+    // 'BOT_CHECK' | 'RATE_LIMIT' | 'LOGIN_REQUIRED' | 'YTDLP_OUTDATED' | 'NO_TRANSCRIPT' | 'LLM_QUOTA' | 'UNKNOWN'
     errorCode: text("error_code"),
     errorMessage: text("error_message"),
     forceWhisper: integer("force_whisper", { mode: "boolean" }).default(false),
