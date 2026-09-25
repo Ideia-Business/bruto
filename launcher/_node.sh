@@ -33,6 +33,13 @@ bruto_escolher_node() {
   [ -n "$escolhido" ] || return 1
 
   dir_links="$HOME/.local/share/bruto/nodebin"
+  # Numa segunda chamada, `command -v node` devolve o NOSSO link; ligar o link
+  # a ele mesmo quebraria o node ("too many levels of symbolic links") com
+  # Node de nvm/fnm/Volta (Grok, rodada 6, 25/09). Sempre o binário real.
+  while [ -L "$escolhido" ] && [ "$(dirname "$escolhido")" = "$dir_links" ]; do
+    escolhido="$(readlink "$escolhido")"
+  done
+  [ "$(dirname "$escolhido")" = "$dir_links" ] && return 1
   mkdir -p "$dir_links"
   ln -sf "$escolhido" "$dir_links/node"
   local b
