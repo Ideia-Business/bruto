@@ -26,10 +26,10 @@ interface RunResult {
 }
 
 /**
- * Helper único de spawn do yt-dlp: captura stdout/stderr, mata o processo
- * em timeout e lança PipelineError tipado em exit != 0.
+ * Uma execução do yt-dlp: captura stdout/stderr, mata o processo em timeout
+ * e lança PipelineError tipado em exit != 0.
  */
-function runYtdlp(args: string[], timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<RunResult> {
+function runYtdlpUmaVez(args: string[], timeoutMs: number): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     const child = spawn("yt-dlp", args, { shell: false });
 
@@ -72,9 +72,51 @@ function runYtdlp(args: string[], timeoutMs: number = DEFAULT_TIMEOUT_MS): Promi
   });
 }
 
+/**
+ * Esperas entre tentativas quando a plataforma responde com o muro de login.
+ *
+ * POR QUE: o Instagram recusa acesso anônimo de forma INTERMITENTE. Medido em
+ * 25/09/2026 com o mesmo Reel: a 1ª chamada caiu no muro, as 7 seguintes
+ * (espaçadas de ~3 s) passaram. Desistir na primeira transformava um soluço
+ * em "erro inesperado" na fila.
+ */
+export const ESPERAS_LOGIN_MS: readonly number[] = [4_000, 12_000];
+
+/**
+ * Repete `tentar` enquanto o erro for `LOGIN_REQUIRED`, com as esperas dadas.
+ * Qualquer outro erro sobe na hora — em especial o 429 de legenda do YouTube,
+ * que a etapa de transcrição já trata caindo para o Whisper.
+ */
+export async function comRetentativaDeLogin<T>(
+  tentar: () => Promise<T>,
+  esperasMs: readonly number[] = ESPERAS_LOGIN_MS,
+  dormir: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<T> {
+  for (let i = 0; ; i++) {
+    try {
+      return await tentar();
+    } catch (err) {
+      const podeTentarDeNovo =
+        err instanceof PipelineError && err.code === "LOGIN_REQUIRED" && i < esperasMs.length;
+      if (!podeTentarDeNovo) throw err;
+      await dormir(esperasMs[i]);
+    }
+  }
+}
+
+/** Helper único de spawn do yt-dlp, com retentativa no muro de login. */
+function runYtdlp(args: string[], timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<RunResult> {
+  return comRetentativaDeLogin(() => runYtdlpUmaVez(args, timeoutMs));
+}
+
 /** Classifica o stderr do yt-dlp em um ErrorCode acionável na UI. */
 export function detectYtdlpError(stderr: string): ErrorCode {
   if (/sign in to confirm/i.test(stderr)) return "BOT_CHECK";
+  // Muro de login do Instagram: vem com a palavra "rate-limit", mas não é 429 —
+  // é a plataforma exigindo sessão. Checado ANTES do RATE_LIMIT por isso.
+  if (/redirected to the login page|accessing posts anonymously|login required|--cookies-from-browser/i.test(stderr)) {
+    return "LOGIN_REQUIRED";
+  }
   if (/HTTP Error 429|too many requests/i.test(stderr)) return "RATE_LIMIT";
   if (/unable to extract|unsupported url|extractor.*failed/i.test(stderr)) return "YTDLP_OUTDATED";
   return "UNKNOWN";

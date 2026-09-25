@@ -14,6 +14,7 @@ export type JobStep =
 export type ErrorCode =
   | "BOT_CHECK"
   | "RATE_LIMIT"
+  | "LOGIN_REQUIRED"
   | "YTDLP_OUTDATED"
   | "NO_TRANSCRIPT"
   | "LLM_QUOTA"

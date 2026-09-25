@@ -49,7 +49,9 @@ export const STEP_LABEL: Record<string, string> = {
 export const ERROR_HINT: Record<string, string> = {
   BOT_CHECK:
     "O YouTube pediu verificação anti-robô. Aguarde alguns minutos e tente novamente.",
-  RATE_LIMIT: "Muitas requisições ao YouTube. Tente novamente em alguns minutos.",
+  RATE_LIMIT: "Muitas requisições à plataforma. Tente novamente em alguns minutos.",
+  LOGIN_REQUIRED:
+    "A plataforma recusou o acesso sem login — comum no Instagram depois de vários vídeos seguidos. O Bruto já tentou de novo sozinho; espere alguns minutos e reprocesse.",
   YTDLP_OUTDATED:
     "O extrator do YouTube está desatualizado. Rode: brew upgrade yt-dlp",
   NO_TRANSCRIPT:
