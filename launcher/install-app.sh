@@ -15,7 +15,10 @@ GEN_TMP="$APP_DIR/_gen_tmp.$$.mjs"
 trap 'rm -rf "$WORK"; rm -f "$GEN_TMP"' EXIT
 
 cd "$APP_DIR"
-export PATH="/opt/homebrew/opt/node/bin:/usr/local/opt/node/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+# shellcheck source=_node.sh
+. "$APP_DIR/launcher/_node.sh"
+bruto_escolher_node || { echo "✗ Node.js 20+ não encontrado — rode o instalador de novo." >&2; exit 1; }
 
 echo "→ Gerando ícone…"
 cat > "$WORK/_gen.mjs" <<NODE

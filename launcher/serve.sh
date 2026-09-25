@@ -11,26 +11,23 @@ set -u
 # macOS. $HOME/.local/bin vem PRIMEIRO: se o sistema também tem uma versão
 # antiga de algo (ex.: yt-dlp de pacote da distro), a instalada pelo `uv tool`
 # tem que ganhar, nunca a de /usr/bin.
-if [ "$(uname -s)" = "Darwin" ]; then
-  # macOS: ~/.local/bin primeiro, para os shims do uv (yt-dlp atualizado)
-  # vencerem as cópias antigas do Homebrew. Só a pasta do Node do brew vai à
-  # frente dele, para um Node velho em ~/.local/bin não vencer o do brew.
-  # (Pôr /opt/homebrew/bin inteiro na frente trazia de volta o yt-dlp antigo —
-  # achado do Codex e do Grok, 25/09.)
-  NODE_BREW=""
-  for d in /opt/homebrew/opt/node/bin /usr/local/opt/node/bin; do
-    if [ -x "$d/node" ]; then NODE_BREW="$d:"; break; fi
-  done
-  export PATH="${NODE_BREW}$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
-else
-  # Linux: ~/.local/bin PRIMEIRO — o Node 22 que o instalador baixa mora lá e
-  # tem de vencer o Node 18 da distro em /usr/bin.
-  export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
-fi
+# ~/.local/bin primeiro: os shims do `uv tool` (yt-dlp, whisper) vencem as
+# cópias antigas do Homebrew ou da distro. O Node não entra nessa disputa: é
+# escolhido pela versão em launcher/_node.sh.
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 # Raiz do projeto = diretório pai deste script. Funciona em qualquer clone,
 # de qualquer usuário, sem edição.
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=_node.sh
+. "$APP_DIR/launcher/_node.sh"
+if ! bruto_escolher_node; then
+  MSG="O Bruto não abriu: falta o Node.js 20 ou mais novo. Rode o instalador de novo."
+  echo "$MSG"
+  if command -v notify-send >/dev/null 2>&1; then notify-send "Bruto" "$MSG" 2>/dev/null || true
+  elif command -v osascript >/dev/null 2>&1; then osascript -e "display notification \"$MSG\" with title \"Bruto\"" 2>/dev/null || true; fi
+  exit 1
+fi
 PORT="${BRUTO_PORT:-3000}"
 URL="http://localhost:${PORT}"
 LOG="${TMPDIR:-/tmp}/bruto-server.log"

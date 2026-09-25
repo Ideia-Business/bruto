@@ -13,22 +13,10 @@ set -euo pipefail
 # $HOME/.local/bin PRIMEIRO: é onde `uv tool install` grava os shims
 # (yt-dlp, whisper). Se o sistema também tiver uma versão de pacote da
 # distro em /usr/bin, a nossa tem que ganhar — nunca a antiga.
-if [ "$(uname -s)" = "Darwin" ]; then
-  # macOS: ~/.local/bin primeiro, para os shims do uv (yt-dlp atualizado)
-  # vencerem as cópias antigas do Homebrew. Só a pasta do Node do brew vai à
-  # frente dele, para um Node velho em ~/.local/bin não vencer o do brew.
-  # (Pôr /opt/homebrew/bin inteiro na frente trazia de volta o yt-dlp antigo —
-  # achado do Codex e do Grok, 25/09.)
-  NODE_BREW=""
-  for d in /opt/homebrew/opt/node/bin /usr/local/opt/node/bin; do
-    if [ -x "$d/node" ]; then NODE_BREW="$d:"; break; fi
-  done
-  export PATH="${NODE_BREW}$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
-else
-  # Linux: ~/.local/bin PRIMEIRO — o Node 22 que o instalador baixa mora lá e
-  # tem de vencer o Node 18 da distro em /usr/bin.
-  export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
-fi
+# ~/.local/bin primeiro: os shims do `uv tool` (yt-dlp, whisper) vencem as
+# cópias antigas do Homebrew ou da distro. O Node não entra nessa disputa: é
+# escolhido pela versão em launcher/_node.sh.
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 # Rede de segurança: qualquer falha não tratada explicitamente também avisa
 # como retomar, em vez de morrer em silêncio. Comandos usados como condição
@@ -296,14 +284,12 @@ instalar_node_usuario() {
 }
 
 versao_node_ok() {
-  command -v node >/dev/null 2>&1 || return 1
-  local v major
-  v="$(node -v 2>/dev/null | sed 's/^v//')"
-  major="${v%%.*}"
-  case "$major" in
-    ''|*[!0-9]*) return 1 ;;
-  esac
-  [ "$major" -ge 20 ]
+  # Escolha pela versão (launcher/_node.sh): um Node velho em ~/.local/bin ou
+  # em qualquer pasta à frente no PATH não engana mais a checagem, e depois de
+  # um `brew install node` a escolha é refeita do zero.
+  # shellcheck source=../launcher/_node.sh
+  . "$BRUTO_ALVO/launcher/_node.sh"
+  bruto_escolher_node
 }
 
 if [ "$SO" = "Darwin" ]; then
