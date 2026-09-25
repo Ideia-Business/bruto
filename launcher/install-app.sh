@@ -11,7 +11,8 @@ set -eu
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="$HOME/Applications/Bruto.app"
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+GEN_TMP="$APP_DIR/_gen_tmp.$$.mjs"
+trap 'rm -rf "$WORK"; rm -f "$GEN_TMP"' EXIT
 
 cd "$APP_DIR"
 export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:$PATH"
@@ -27,9 +28,12 @@ await p.setContent('<!doctype html><html><body style="margin:0">'+svg+'</body></
 await p.locator('svg').screenshot({ path: '$WORK/icon-1024.png', omitBackground: true });
 await b.close();
 NODE
-cp "$WORK/_gen.mjs" "$APP_DIR/_gen_tmp.mjs"
-node "$APP_DIR/_gen_tmp.mjs"
-rm -f "$APP_DIR/_gen_tmp.mjs"
+cp "$WORK/_gen.mjs" "$GEN_TMP"
+if ! node "$GEN_TMP"; then
+  echo "✗ Falha ao gerar o ícone com o Chromium do Playwright." >&2
+  echo "  Rode 'npx playwright install chromium' e tente de novo." >&2
+  exit 1
+fi
 
 echo "→ Montando ícones (PWA + macOS)…"
 SRC="$WORK/icon-1024.png"

@@ -55,6 +55,24 @@ Tudo local. Nenhum dado seu passa por servidor nosso — não existe servidor no
 
 ## Instalação
 
+### Modo fácil (recomendado)
+
+Escolha seu sistema e copie o comando:
+
+**macOS e Linux:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/Ideia-Business/bruto/main/install/instalar.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/Ideia-Business/bruto/main/install/instalar.ps1 | iex
+```
+
+Mais detalhes, pré-requisitos e como resolver erros: [INSTALAR.md](INSTALAR.md) — um passo a passo para quem nunca abriu terminal.
+
+### Instalação manual (para quem desenvolve)
+
 ```bash
 git clone https://github.com/Ideia-Business/bruto.git
 cd bruto
@@ -154,13 +172,29 @@ O resumo usa **exatamente o mesmo prompt** do app local: o build importa de `src
 
 Passo a passo de instalação e teste, com a tabela de erros comuns: [extension/TESTANDO.md](extension/TESTANDO.md). O que a extensão faz com dado — e o que não faz: [extension/PRIVACIDADE.md](extension/PRIVACIDADE.md).
 
-### App clicável no macOS
+### Atalho no computador
 
+O instalador cria o atalho automaticamente em todos os sistemas — procure por **Bruto** no seu menu de aplicativos ou na Área de Trabalho. Duplo-clique para abrir.
+
+Se precisar recriar o atalho manualmente:
+
+**macOS:**
 ```bash
 bash launcher/install-app.sh
 ```
+Cria **Bruto** em `~/Applications`.
 
-Cria **Bruto** em `~/Applications`. Duplo-clique sobe o servidor e abre numa janela dedicada.
+**Linux:**
+```bash
+bash launcher/atalho-linux.sh
+```
+Cria o atalho em `~/.local/share/applications` e na Área de Trabalho.
+
+**Windows:**
+```powershell
+powershell -ExecutionPolicy Bypass -File launcher\atalho-windows.ps1
+```
+Cria `Bruto.lnk` na Área de Trabalho e no Menu Iniciar.
 
 ## Stack
 
