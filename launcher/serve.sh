@@ -12,9 +12,16 @@ set -u
 # antiga de algo (ex.: yt-dlp de pacote da distro), a instalada pelo `uv tool`
 # tem que ganhar, nunca a de /usr/bin.
 if [ "$(uname -s)" = "Darwin" ]; then
-  # macOS: o Homebrew manda (é de lá que vem o Node); ~/.local/bin só para os
-  # shims do uv. Um Node velho em ~/.local/bin não pode vencer o do brew.
-  export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+  # macOS: ~/.local/bin primeiro, para os shims do uv (yt-dlp atualizado)
+  # vencerem as cópias antigas do Homebrew. Só a pasta do Node do brew vai à
+  # frente dele, para um Node velho em ~/.local/bin não vencer o do brew.
+  # (Pôr /opt/homebrew/bin inteiro na frente trazia de volta o yt-dlp antigo —
+  # achado do Codex e do Grok, 25/09.)
+  NODE_BREW=""
+  for d in /opt/homebrew/opt/node/bin /usr/local/opt/node/bin; do
+    if [ -x "$d/node" ]; then NODE_BREW="$d:"; break; fi
+  done
+  export PATH="${NODE_BREW}$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 else
   # Linux: ~/.local/bin PRIMEIRO — o Node 22 que o instalador baixa mora lá e
   # tem de vencer o Node 18 da distro em /usr/bin.
