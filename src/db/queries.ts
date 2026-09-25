@@ -108,6 +108,8 @@ export interface BrutoDetail {
     transcriptTs: string | null;
     transcriptTranslated: string | null;
     studyMd: string | null;
+    transcriptOrganizedMd: string | null;
+    transcriptLlmMd: string | null;
   };
 }
 
@@ -149,6 +151,8 @@ export function getBrutoDetail(id: string): BrutoDetail | null {
       transcriptTs: readIfExists(byKind("transcript_ts")),
       transcriptTranslated: readIfExists(byKind("transcript_translated")),
       studyMd: readIfExists(byKind("study_md")),
+      transcriptOrganizedMd: readIfExists(byKind("transcript_organized_md")),
+      transcriptLlmMd: readIfExists(byKind("transcript_llm_md")),
     },
   };
 }

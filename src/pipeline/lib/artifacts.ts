@@ -13,6 +13,8 @@ export type ArtifactKind =
   | "mindmap_svg"
   | "mindmap_png"
   | "study_md"
+  | "transcript_organized_md"
+  | "transcript_llm_md"
   | "docx"
   | "pdf"
   | "info_json";

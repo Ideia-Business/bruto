@@ -30,7 +30,15 @@ export type ProviderId =
 
 export interface LlmRequest {
   /** Só para diagnóstico e log — nunca muda o comportamento. */
-  task: "summary" | "mindmap" | "category" | "translate" | "study" | "references";
+  task:
+    | "summary"
+    | "mindmap"
+    | "category"
+    | "translate"
+    | "study"
+    | "references"
+    | "transcript_organized"
+    | "transcript_llm";
   prompt: string;
   /** Texto longo que acompanha o prompt (transcrição, contexto). */
   input?: string;

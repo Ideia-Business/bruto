@@ -34,6 +34,8 @@ export function artifactPaths(youtubeId: string) {
     transcript: path.join(dir, "transcript.txt"),
     transcriptTimestamps: path.join(dir, "transcript.timestamps.txt"),
     summary: path.join(dir, "summary.md"),
+    transcriptOrganized: path.join(dir, "transcript-organizada.md"),
+    transcriptLlm: path.join(dir, "transcript-para-ia.md"),
     mindmap: path.join(dir, "mindmap.md"),
     mindmapSvg: path.join(dir, "mindmap.svg"),
     mindmapPng: path.join(dir, "mindmap.png"),

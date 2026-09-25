@@ -37,6 +37,7 @@ import { Markdown } from "./markdown";
 import { FilaoPicker } from "./filao-picker";
 import { CopyButton } from "./copy-button";
 import { TranscriptView } from "./transcript-view";
+import { TranscriptAiTools } from "./transcript-ai-tools";
 import { JobProgressBar, useJobProgress } from "./job-progress";
 import { fetchApp } from "@/lib/fetch-app";
 import {
@@ -90,6 +91,8 @@ interface DetailData {
     transcriptTs: string | null;
     transcriptTranslated: string | null;
     studyMd: string | null;
+    transcriptOrganizedMd: string | null;
+    transcriptLlmMd: string | null;
   };
   defaultTab?: string;
 }
@@ -454,13 +457,20 @@ export function BrutoDetail({
               )}
             </TabsContent>
 
-            <TabsContent value="transcript" className="pt-4">
+            <TabsContent value="transcript" className="space-y-6 pt-4">
               {data.content.transcript || data.content.transcriptTs ? (
-                <TranscriptView
-                  plain={data.content.transcript}
-                  timestamped={data.content.transcriptTs}
-                  translated={data.content.transcriptTranslated}
-                />
+                <>
+                  <TranscriptView
+                    plain={data.content.transcript}
+                    timestamped={data.content.transcriptTs}
+                    translated={data.content.transcriptTranslated}
+                  />
+                  <TranscriptAiTools
+                    videoId={data.bruto.id}
+                    transcriptOrganizedMd={data.content.transcriptOrganizedMd}
+                    transcriptLlmMd={data.content.transcriptLlmMd}
+                  />
+                </>
               ) : (
                 <Empty>Transcrição não disponível.</Empty>
               )}
