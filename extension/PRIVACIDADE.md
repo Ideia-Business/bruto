@@ -89,6 +89,14 @@ pode redirecionar um Short para a rota `/watch` do mesmo vídeo, que é onde o p
 transcrição existe. Ela **não baixa mídia** — nem vídeo, nem áudio. Nenhum dado seu é enviado
 ao YouTube além da navegação normal que você já estava fazendo.
 
+### 2b. Instagram e TikTok — encaminhamento ao app local
+
+Quando você clica em destrinchar um Reel ou vídeo em Instagram ou TikTok, a extensão envia
+**apenas a URL da aba ativa** ao app do Bruto na sua própria máquina, em `127.0.0.1:3000`.
+Este pedido **não sai do seu computador**: `127.0.0.1` é sua própria máquina. Nenhum servidor nosso
+é envolvido, e nenhum dado é armazenado conosco. Se o app não está aberto, a extensão avisa e
+não envia nada.
+
 ### 3. O Lapid.ai — só quando você clica em "Lapidar"
 
 Este é o único envio que precisa da sua atenção, e por isso está descrito por extenso.

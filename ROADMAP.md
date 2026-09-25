@@ -102,7 +102,7 @@ Há uma dívida de modelagem a pagar quando ela vier: hoje `brutos.id` é o iden
 
 | O quê | Por quê |
 |---|---|
-| A extensão só faz YouTube | Instagram e TikTok não expõem transcrição na página. Quem dá conta deles é o app local, que transcreve o áudio |
+| A extensão destrincha sozinha só no YouTube | Instagram e TikTok não expõem transcrição na página. Em ambas, a extensão encaminha ao app local (que precisa estar aberto) para transcrever o áudio |
 | A extensão precisa que o vídeo tenha o botão "Mostrar transcrição" | É de lá que ela lê. Sem transcrição publicada, não há o que capturar |
 | O endpoint `/api/timedtext` do YouTube está fechado | Desde ~09/2026 devolve resposta vazia com status de sucesso para requisição feita de dentro do navegador. Não afeta o app local, que usa `yt-dlp` |
 | Não está na Chrome Web Store | Exige conta de desenvolvedor, política de privacidade e revisão. Por ora, carrega-se sem compactação |
