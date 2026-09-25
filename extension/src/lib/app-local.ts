@@ -260,6 +260,93 @@ async function lerJsonComTeto(r: Response, tetoBytes: number): Promise<unknown> 
   }
 }
 
+/** Teto de bytes da resposta de `/api/videos` — corpo de erro/enfileiramento é pequeno. */
+const TETO_ENVIO_BYTES = 64 * 1024;
+
+/** Quanto esperar o app aceitar o link antes de desistir. */
+const TIMEOUT_ENVIO_MS = 10_000;
+
+/** ID de vídeo aceito na URL que a extensão monta (`/video/<id>`) — nunca colado cru. */
+const ID_DE_VIDEO_VALIDO = /^[A-Za-z0-9_-]{1,64}$/;
+
+export type ResultadoEnvio =
+  | { resultado: "enfileirado" }
+  | { resultado: "duplicado"; videoId: string }
+  /** Ninguém atendeu em 127.0.0.1:3000 (ou não atendeu a tempo): o app não está de pé. */
+  | { resultado: "semApp" }
+  | { resultado: "recusado"; motivo: string };
+
+/**
+ * Lê o corpo de `/api/videos` com o mesmo teto de bytes das outras rotas, mas
+ * nunca lança: um corpo ilegível aqui vira `null` para quem chama decidir a
+ * mensagem — a rota de envio já tem status HTTP como sinal principal.
+ */
+async function lerCorpoDeEnvio(r: Response): Promise<Record<string, unknown> | null> {
+  try {
+    const json = await lerJsonComTeto(r, TETO_ENVIO_BYTES);
+    return ehObjeto(json) ? json : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Manda um link (Instagram/TikTok/…) para o app local destrinchar.
+ *
+ * O PRÓPRIO POST É A SONDA. Não se consulta `/api/llm/saude` antes: aquela rota
+ * dispara subprocessos (`claude auth status`, `codex login status`) e pode levar
+ * mais que o teto de 1,5 s da sonda — e aí a extensão declararia "app fechado"
+ * com o app de pé (achado do revisor Codex, 25/09). Se ninguém atender na
+ * porta, a recusa de conexão volta na hora e vira `semApp`.
+ *
+ * Mesma doutrina do topo do arquivo: a resposta é ENTRADA NÃO CONFIÁVEL. O
+ * `videoId` do caso 409 só vira `duplicado` se bater no formato esperado —
+ * senão a extensão abriria uma aba para uma URL que o app nunca prometeu.
+ * Nenhuma mensagem de erro reproduz o corpo cru da resposta.
+ */
+export async function enviarLinkAoApp(url: string): Promise<ResultadoEnvio> {
+  let r: Response;
+  let encerrarRelogio: () => void;
+  try {
+    ({ resposta: r, encerrarRelogio } = await buscar(
+      "/api/videos",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", ...CABECALHO_CLIENTE },
+        body: JSON.stringify({ url }),
+      },
+      TIMEOUT_ENVIO_MS,
+    ));
+  } catch {
+    return { resultado: "semApp" };
+  }
+
+  try {
+    if (r.status === 202) {
+      return { resultado: "enfileirado" };
+    }
+    if (r.status === 409) {
+      const corpo = await lerCorpoDeEnvio(r);
+      const videoId = typeof corpo?.videoId === "string" ? corpo.videoId : null;
+      if (videoId !== null && ID_DE_VIDEO_VALIDO.test(videoId)) {
+        return { resultado: "duplicado", videoId };
+      }
+      return {
+        resultado: "recusado",
+        motivo: "Esse vídeo já foi processado, mas o app não disse qual.",
+      };
+    }
+    if (r.status === 400) {
+      const corpo = await lerCorpoDeEnvio(r);
+      const erro = typeof corpo?.error === "string" ? corpo.error.slice(0, 300) : "";
+      return { resultado: "recusado", motivo: erro || "O app recusou esse link." };
+    }
+    return { resultado: "recusado", motivo: `O app do Bruto falhou (${r.status}).` };
+  } finally {
+    encerrarRelogio();
+  }
+}
+
 export async function verSaudeDoApp(timeoutMs: number = TIMEOUT_SAUDE_MS): Promise<SaudeDoApp | null> {
   try {
     const { resposta: r, encerrarRelogio } = await buscar(

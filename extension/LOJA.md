@@ -76,10 +76,10 @@ dono, pelo caminho de fazer o produto cumprir o texto — não o contrário.
 
 | Entrega | Aplicativo local | Extensão |
 |---|---|---|
-| Aula: objetivos, conceitos do zero, glossário, teste de fixação | sim | **sim** — desde 13/09, usa o mesmo `studyPrompt` |
+| Aula: objetivos, conceitos do zero, glossário, teste de fixação | sim | **sim** (YouTube); **sim via app local** (Instagram, TikTok) |
 | Transcrição para quem usa | sim | **não** — a fala é lida e mandada ao provedor, e nunca aparece na tela nem no arquivo |
 | Mapa mental | sim (`src/pipeline/prompts/mindmap.ts`) | **não** — não existe mapa na extensão |
-| Instagram e TikTok | sim | não — e os textos daqui já dizem isso corretamente |
+| Instagram e TikTok | sim | **sim, encaminha ao app local** — se app não está aberto, avisa |
 
 As duas linhas com **não** saíram da descrição curta e do manifesto: um texto de loja não promete
 o que a surface não faz, ainda que o projeto faça noutro lugar. As duas continuam sendo do
@@ -121,8 +121,15 @@ glossário dos termos que o autor assumiu que você já conhecia, e um teste par
 entendeu mesmo.
 
 COMO FUNCIONA
-Abra um vídeo do YouTube, clique no ícone do Bruto e pronto. Ele lê a transcrição que o próprio
-YouTube publica na página — nunca baixa vídeo nem áudio — e monta a aula em português.
+
+NO YOUTUBE
+Abra um vídeo, clique no ícone do Bruto e pronto. Ele lê a transcrição que o próprio YouTube
+publica na página — nunca baixa vídeo nem áudio — e monta a aula em português.
+
+EM INSTAGRAM E TIKTOK
+Quando você clica no ícone em um Reel ou vídeo, a extensão encaminha o link ao app do Bruto (que
+precisa estar rodando na sua máquina). O app transcreve o áudio e monta a aula. Se o app não estiver
+aberto, a extensão avisa.
 
 DOIS MODOS, E A TELA DE OPÇÕES DIZ EM QUAL VOCÊ ESTÁ
 

@@ -14,13 +14,27 @@
 import { extrairVideoIdDaUrl } from "../lib/captura";
 import type { BrutoCapturado, CapturaError } from "../lib/captura";
 import { runLLM, LlmError, verModo } from "../lib/llm";
-import { AppLocalError, type FalhaDoApp } from "../lib/app-local";
+import {
+  AppLocalError,
+  APP_BASE,
+  enviarLinkAoApp,
+  type FalhaDoApp,
+  type ResultadoEnvio,
+} from "../lib/app-local";
 import { guardarAula, listarBancada, esquecerAula, limparBancada } from "../lib/bancada";
 import type { AulaGuardada } from "../lib/bancada";
 import { guardarFaisca, listarFaiscas, esquecerFaisca } from "../lib/caderno";
 import { levarParaLapid } from "../lib/ponte";
 import { renderMarkdown } from "../lib/markdown";
 import { studyPrompt } from "../../../src/pipeline/prompts/study";
+import {
+  detectarPlataforma,
+  NAO_SUPORTADO,
+  PLATAFORMAS,
+  PLATAFORMA_POR_ID,
+  reconhecerLink,
+  type PlataformaId,
+} from "../../../src/lib/plataformas";
 
 type CodigoCaptura = CapturaError["codigo"];
 type CodigoLlm = LlmError["codigo"];
@@ -44,6 +58,7 @@ function el<T extends HTMLElement>(id: string): T {
 const telas = {
   semConfig: el<HTMLElement>("tela-sem-config"),
   naoYoutube: el<HTMLElement>("tela-nao-youtube"),
+  appLocal: el<HTMLElement>("tela-app-local"),
   pronto: el<HTMLElement>("tela-pronto"),
   rodando: el<HTMLElement>("tela-rodando"),
   aula: el<HTMLElement>("tela-aula"),
@@ -77,6 +92,13 @@ const cadernoAviso = el<HTMLParagraphElement>("caderno-aviso");
 const capturaFaisca = el<HTMLFormElement>("captura-faisca");
 const faiscaTexto = el<HTMLTextAreaElement>("faisca-texto");
 const faiscaAviso = el<HTMLSpanElement>("faisca-aviso");
+const naoYoutubeLista = el<HTMLUListElement>("nao-youtube-lista");
+const naoYoutubeNaoSuportado = el<HTMLSpanElement>("nao-youtube-nao-suportado");
+const appLocalTitulo = el<HTMLHeadingElement>("app-local-titulo");
+const appLocalNota = el<HTMLParagraphElement>("app-local-nota");
+const appLocalLista = el<HTMLUListElement>("app-local-lista");
+const appLocalEstado = el<HTMLParagraphElement>("app-local-estado");
+const btnAppLocal = el<HTMLButtonElement>("btn-app-local");
 
 // --- estado -----------------------------------------------------------
 
@@ -85,6 +107,15 @@ let urlDaAba: string | null = null;
 let controle: AbortController | null = null;
 /** Trava de reentrada do "Destrinchar" — cada clique extra é uma chamada paga. */
 let emAndamento = false;
+/** Trava de reentrada do envio ao app local — mesmo motivo do `emAndamento` acima. */
+let enviandoAoApp = false;
+/**
+ * Para onde "Voltar" (da Bancada/Caderno) leva. Não dá para inferir só de
+ * `abaId !== null`: a tela de Instagram/TikTok também guarda `abaId`, e
+ * `abaId === null ? naoYoutube : pronto` mandaria essas abas de volta para a
+ * tela de destrinchar do YouTube, que não é a delas.
+ */
+let telaInicial: NomeTela = "naoYoutube";
 let aulaMd = "";
 /** Título da aula em exibição — vem do bruto capturado OU da bancada. */
 let tituloAtual = "aula";
@@ -110,13 +141,117 @@ function ehVideoYoutube(url: string | undefined): boolean {
 function nomeArquivo(titulo: string): string {
   const base = titulo
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .replace(/[^a-zA-Z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase()
     .slice(0, 60);
   return `bruto-${base || "aula"}.md`;
 }
+
+// --- compatibilidade de plataformas ------------------------------------
+
+/**
+ * A MESMA lista para as duas telas que precisam dela (`tela-nao-youtube` e
+ * `tela-app-local`) — gerada uma vez a partir de `PLATAFORMAS`, a fonte
+ * única. Duplicar isto em HTML era o defeito que `src/lib/plataformas.ts`
+ * existe para acabar.
+ */
+function montarListaDePlataformas(): DocumentFragment {
+  const fragmento = document.createDocumentFragment();
+  for (const p of PLATAFORMAS) {
+    const li = document.createElement("li");
+
+    const nome = document.createElement("span");
+    nome.className = "nome";
+    nome.textContent = p.label;
+
+    const onde: string[] = [];
+    if (p.naExtensao) onde.push("extensão");
+    if (p.noAppLocal) onde.push("app local");
+
+    const local = document.createElement("span");
+    local.className = "onde";
+    local.textContent = onde.length > 0 ? onde.join(" · ") : "não suportado";
+
+    li.append(nome, local);
+    fragmento.append(li);
+  }
+  return fragmento;
+}
+
+// A lista é estática (não depende de estado da aba) — monta uma vez, no
+// carregamento do popup, e as duas telas compartilham o resultado.
+naoYoutubeLista.replaceChildren(montarListaDePlataformas());
+naoYoutubeNaoSuportado.textContent = NAO_SUPORTADO.join(" · ");
+appLocalLista.replaceChildren(montarListaDePlataformas());
+
+function tituloAppLocal(plataforma: "instagram" | "tiktok"): string {
+  return plataforma === "instagram"
+    ? "Isto é um Reel do Instagram"
+    : "Isto é um vídeo do TikTok";
+}
+
+/**
+ * Monta a tela de Instagram/TikTok. O botão nasce habilitado: não há sonda
+ * prévia, porque a rota de saúde dispara subprocessos e pode demorar mais que
+ * qualquer teto razoável — a tela diria "app fechado" com o app de pé. Quem
+ * prova que o app está de pé é o próprio envio (`enviarLinkAoApp`), e falhar
+ * ali custa uma recusa de conexão imediata, não um clique perdido.
+ */
+function prepararTelaAppLocal(plataforma: "instagram" | "tiktok"): void {
+  const p = PLATAFORMA_POR_ID[plataforma];
+  appLocalTitulo.textContent = tituloAppLocal(plataforma);
+  appLocalNota.textContent = p.nota;
+  appLocalEstado.hidden = true;
+  btnAppLocal.disabled = false;
+  telaInicial = "appLocal";
+  mostrar("appLocal");
+}
+
+function mostrarResultadoDoEnvio(resultado: ResultadoEnvio): void {
+  if (resultado.resultado === "semApp") {
+    appLocalEstado.hidden = false;
+    appLocalEstado.className = "estado atencao";
+    appLocalEstado.textContent =
+      "O app do Bruto não está aberto. Abra-o (npm run app) e clique de novo.";
+    return;
+  }
+  if (resultado.resultado === "recusado") {
+    appLocalEstado.hidden = false;
+    appLocalEstado.className = "estado ruim";
+    appLocalEstado.textContent = resultado.motivo;
+    return;
+  }
+  const destino =
+    resultado.resultado === "enfileirado"
+      ? `${APP_BASE}/processing`
+      : `${APP_BASE}/video/${resultado.videoId}`;
+  void chrome.tabs.create({ url: destino });
+}
+
+async function enviarParaAppLocal(): Promise<void> {
+  if (urlDaAba === null || enviandoAoApp) return;
+  enviandoAoApp = true;
+  btnAppLocal.disabled = true;
+  appLocalEstado.hidden = true;
+
+  try {
+    const resultado = await enviarLinkAoApp(urlDaAba);
+    mostrarResultadoDoEnvio(resultado);
+  } catch {
+    appLocalEstado.hidden = false;
+    appLocalEstado.className = "estado ruim";
+    appLocalEstado.textContent = "Algo travou ao enviar para o app.";
+  } finally {
+    enviandoAoApp = false;
+    btnAppLocal.disabled = false;
+  }
+}
+
+btnAppLocal.addEventListener("click", () => {
+  void enviarParaAppLocal();
+});
 
 // --- captura ----------------------------------------------------------
 
@@ -424,9 +559,12 @@ function passo(texto: string): void {
 async function levarParaRotaComTranscricao(tabId: number, url: string): Promise<void> {
   const id = extrairVideoIdDaUrl(url);
   if (id === null) return;
-  if (!new URL(url).pathname.startsWith("/shorts/")) return;
+  const { hostname, pathname } = new URL(url);
+  // Só a rota /watch tem o painel "Mostrar transcrição". Shorts, embed, live
+  // e youtu.be são o mesmo vídeo por outra porta: levamos à porta certa.
+  if (hostname.replace(/^(www|m|music)\./, "") === "youtube.com" && pathname.startsWith("/watch")) return;
 
-  passo("Shorts não tem transcrição — abrindo o mesmo vídeo pela rota normal…");
+  passo("Essa rota não tem o painel de transcrição — abrindo o mesmo vídeo pela rota normal…");
   await chrome.tabs.update(tabId, { url: `https://www.youtube.com/watch?v=${id}` });
 
   // Espera a navegação terminar. Sem isso, injetamos o content script na página
@@ -596,7 +734,7 @@ el<HTMLButtonElement>("btn-caderno").addEventListener("click", () => {
 });
 
 el<HTMLButtonElement>("btn-voltar-caderno").addEventListener("click", () => {
-  mostrar(abaId === null ? "naoYoutube" : "pronto");
+  mostrar(telaInicial);
 });
 
 el<HTMLButtonElement>("btn-bancada").addEventListener("click", () => {
@@ -604,9 +742,9 @@ el<HTMLButtonElement>("btn-bancada").addEventListener("click", () => {
 });
 
 el<HTMLButtonElement>("btn-voltar").addEventListener("click", () => {
-  // Volta para onde dava para trabalhar: a tela de destrinchar se a aba tem
-  // vídeo, senão o aviso de que não tem.
-  mostrar(abaId === null ? "naoYoutube" : "pronto");
+  // Volta para onde dava para trabalhar: destrinchar (YouTube), app local
+  // (Instagram/TikTok) ou o aviso de que a aba não tem vídeo reconhecido.
+  mostrar(telaInicial);
 });
 
 el<HTMLButtonElement>("btn-limpar-bancada").addEventListener("click", () => {
@@ -641,6 +779,29 @@ el<HTMLButtonElement>("btn-baixar").addEventListener("click", () => {
 // --- entrada ----------------------------------------------------------
 
 async function iniciar(): Promise<void> {
+  const [aba] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!aba || typeof aba.id !== "number" || aba.url === undefined) {
+    mostrar("naoYoutube");
+    return;
+  }
+
+  // Caso 1: Instagram/TikTok — a extensão não lê, mas sabe dizer isso e
+  // oferece o app local. Vem ANTES da checagem de chave: aqui quem trabalha é
+  // o app local, e pedir chave para uma aba que a extensão nem vai destrinchar
+  // seria cobrar por um serviço que não é dela. `detectarPlataforma` também
+  // reconhece o YouTube (home, canal — sem ID de vídeo); esses caem no caso 3.
+  // `reconhecerLink` exige um VÍDEO (reel, post, /video/…): a home do Instagram
+  // ou um perfil do TikTok têm o host certo e nenhum vídeo — e o app recusaria
+  // com 400. Esses caem no caso 3 (achado do Grok 4.7, revisão de 25/09).
+  const plataforma: PlataformaId | null =
+    reconhecerLink(aba.url) !== null ? detectarPlataforma(aba.url) : null;
+  if (plataforma === "instagram" || plataforma === "tiktok") {
+    abaId = aba.id;
+    urlDaAba = aba.url;
+    prepararTelaAppLocal(plataforma);
+    return;
+  }
+
   // A chave só é exigida no modo `chave`. Com o app local de pé e um provedor de
   // plano, não há chave nenhuma para pedir — mandar alguém configurar uma seria
   // empurrá-lo a pagar por token justamente por cima do plano que ele assina.
@@ -650,17 +811,20 @@ async function iniciar(): Promise<void> {
     return;
   }
 
-  const [aba] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!aba || typeof aba.id !== "number" || !ehVideoYoutube(aba.url)) {
-    mostrar("naoYoutube");
+  // Caso 2: vídeo do YouTube — fluxo de sempre, intacto.
+  if (ehVideoYoutube(aba.url)) {
+    abaId = aba.id;
+    urlDaAba = aba.url;
+    telaInicial = "pronto";
+    prontoTitulo.textContent = aba.title ?? "Vídeo do YouTube";
+    prontoDado.textContent = "Clique e o Bruto pega a fala e monta a aula.";
+    mostrar("pronto");
     return;
   }
 
-  abaId = aba.id;
-  urlDaAba = aba.url ?? null;
-  prontoTitulo.textContent = aba.title ?? "Vídeo do YouTube";
-  prontoDado.textContent = "Clique e o Bruto pega a fala e monta a aula.";
-  mostrar("pronto");
+  // Caso 3: YouTube sem vídeo (home, canal) ou host que o Bruto não conhece.
+  telaInicial = "naoYoutube";
+  mostrar("naoYoutube");
 }
 
 void iniciar().catch(() => {

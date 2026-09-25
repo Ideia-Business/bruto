@@ -106,6 +106,26 @@ A Aula tem seções fixas, e é isso que a listagem da Loja promete — **confir
 
 Feche o popup e abra de novo: clique em **Bancada**, no topo. A aula tem de estar lá.
 
+## 6. Teste Instagram e TikTok (se o app está aberto)
+
+Se você tem o app do Bruto (`npm run app`) rodando:
+
+1. Abra um Reel no Instagram ou um vídeo no TikTok.
+2. Clique no ícone do **Bruto**.
+3. Clique em **Destrinchar no app local**.
+
+O esperado: abre uma aba nova do app local na fila (`/processing`) — ou direto no vídeo, se ele
+já tinha sido destrinchado — e o app baixa o áudio, transcreve e monta a aula. Se o link não é
+de um vídeo (home do Instagram, perfil do TikTok), o popup mostra "Aqui não tem vídeo".
+
+## 7. Teste Instagram e TikTok (se o app está FECHADO)
+
+1. Abra um Reel ou vídeo.
+2. Clique no ícone do **Bruto**.
+3. Clique em **Destrinchar no app local**.
+
+O esperado: o popup avisa *"O app do Bruto não está aberto. Abra-o e tente de novo."* (ou mensagem similar). Nada é encaminhado.
+
 ---
 
 ## Se der errado

@@ -29,6 +29,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+import { reconhecerLink } from "../../../src/lib/plataformas";
+
 export interface BrutoCapturado {
   videoId: string;
   titulo: string;
@@ -79,24 +81,12 @@ const ESPERA_PAINEL_MS = 20_000;
  * havia duas cópias, e a do popup, mais restrita, recusava Shorts.
  */
 export function extrairVideoIdDaUrl(href: string): string | null {
-  let url: URL;
-  try {
-    url = new URL(href);
-  } catch {
-    return null;
-  }
-
-  const host = url.hostname.replace(/^(www|m|music)\./, "");
-  if (host === "youtu.be") return validarVideoId(url.pathname.slice(1));
-  if (host !== "youtube.com") return null;
-
-  const daQuery = url.searchParams.get("v");
-  if (daQuery !== null) return validarVideoId(daQuery);
-
-  const shorts = /^\/shorts\/([^/]+)/.exec(url.pathname);
-  if (shorts !== null) return validarVideoId(shorts[1]);
-
-  return null;
+  // A regra é a da fonte única (`src/lib/plataformas.ts`): watch, youtu.be,
+  // shorts, embed e live. Manter uma cópia aqui era o que fazia a extensão
+  // recusar rotas que o app e o README aceitam.
+  const ref = reconhecerLink(href);
+  if (ref === null || ref.plataforma !== "youtube") return null;
+  return validarVideoId(ref.id);
 }
 
 function validarVideoId(bruto: string): string | null {

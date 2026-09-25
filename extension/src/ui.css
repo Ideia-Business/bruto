@@ -529,3 +529,33 @@ a {
   color: var(--acento);
   border-color: var(--acento);
 }
+
+/* --- Compatibilidade de plataformas ------------------------------------ */
+/* Lista simples, uma plataforma por linha: nome à esquerda, chip pequeno com
+   onde ela funciona à direita. Mesma gramática dos chips já existentes
+   (.link-topo, .esquecer): borda de 1px, sem cor de fundo. */
+.lista-plataformas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lista-plataformas li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lista-plataformas .nome {
+  font-weight: 600;
+  font-size: 12px;
+}
+.lista-plataformas .onde {
+  margin-left: auto;
+  flex: none;
+  font-size: 11px;
+  color: var(--texto2);
+  border: 1px solid var(--borda-fraca);
+  padding: 1px 6px;
+}

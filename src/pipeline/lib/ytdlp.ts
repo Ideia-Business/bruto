@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { PipelineError, type ErrorCode, type VideoMetadata } from "@/pipeline/types";
+import { detectarPlataforma } from "@/lib/plataformas";
 
 /** Limite de caracteres do stderr embutido em mensagens de erro. */
 const STDERR_TRUNCATE = 500;
@@ -100,8 +101,15 @@ interface RawDumpJson {
   webpage_url_domain?: string;
 }
 
-/** Deriva a plataforma a partir dos campos do yt-dlp. */
+/**
+ * Deriva a plataforma a partir dos campos do yt-dlp. Tenta primeiro a fonte
+ * única pelo `webpage_url` (mesma detecção que o app e a extensão usam); cai
+ * na heurística de substring sobre o hint do extractor só quando a URL não
+ * bate com nenhum host conhecido (ex.: mirrors, domínios alternativos).
+ */
 function detectPlatform(raw: RawDumpJson): VideoMetadata["platform"] {
+  const porUrl = raw.webpage_url ? detectarPlataforma(raw.webpage_url) : null;
+  if (porUrl) return porUrl;
   const hint = `${raw.extractor ?? ""} ${raw.extractor_key ?? ""} ${raw.webpage_url_domain ?? ""} ${raw.webpage_url ?? ""}`.toLowerCase();
   if (hint.includes("instagram")) return "instagram";
   if (hint.includes("tiktok")) return "tiktok";

@@ -14,7 +14,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Compatibilidade } from "./compatibilidade";
 import { fetchApp } from "@/lib/fetch-app";
+import { reconhecerLink } from "@/lib/plataformas";
 
 /**
  * Dialog para colar uma URL do YouTube e disparar o processamento.
@@ -33,9 +35,16 @@ export function UrlInputDialog({
   const [whisper, setWhisper] = useState(false);
   const [translate, setTranslate] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [erroLink, setErroLink] = useState<string | null>(null);
 
   async function submit() {
-    if (!url.trim()) return;
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    if (!reconhecerLink(trimmed)) {
+      setErroLink("Esse link não é de uma plataforma suportada. Veja a lista abaixo.");
+      return;
+    }
+    setErroLink(null);
     setLoading(true);
     try {
       const res = await fetchApp("/api/videos", {
@@ -73,18 +82,26 @@ export function UrlInputDialog({
         <DialogHeader>
           <DialogTitle>Novo vídeo</DialogTitle>
           <DialogDescription>
-            Cole um link do YouTube, Instagram (reel) ou TikTok. Geramos resumo,
+            Cole um link de uma das plataformas suportadas. Geramos resumo,
             transcrição e mapa mental.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <Input
-            autoFocus
-            placeholder="YouTube, Instagram ou TikTok…"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !loading && submit()}
-          />
+          <div className="space-y-1.5">
+            <Input
+              autoFocus
+              placeholder="YouTube, Instagram ou TikTok…"
+              value={url}
+              onChange={(e) => {
+                setUrl(e.target.value);
+                if (erroLink) setErroLink(null);
+              }}
+              onKeyDown={(e) => e.key === "Enter" && !loading && submit()}
+              aria-invalid={erroLink ? true : undefined}
+            />
+            {erroLink && <p className="text-xs text-destructive">{erroLink}</p>}
+            <Compatibilidade compacta />
+          </div>
           <div className="flex flex-col gap-2 text-sm">
             <label className="flex items-center gap-2 text-muted-foreground">
               <input

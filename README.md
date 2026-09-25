@@ -26,6 +26,16 @@ Roda na sua máquina, **pelo plano de IA que você já assina** — Claude ou Ch
 > **Não resume. Ensina.**
 > As dezenas de extensões que resumem vídeo devolvem cinco bullets e um paywall. O Bruto entrega uma **aula**: o que você deveria saber ao final, cada conceito explicado desde o começo, um glossário dos termos que o autor assumiu que você conhecia, e um teste para descobrir se entendeu mesmo.
 
+## O que entra — plataformas e tipos
+
+| Plataforma | Tipos | Como transcreve | Funciona em |
+|---|---|---|---|
+| **YouTube** | vídeo, Shorts, live gravada, embed | lê legenda do YouTube; áudio com Whisper se sem legenda | app local + extensão |
+| **Instagram** | Reel, post com vídeo, IGTV | áudio com Whisper (quase nunca há legenda) | app local (extensão encaminha) |
+| **TikTok** | vídeo, link curto (vm/vt) | áudio com Whisper (quase nunca há legenda) | app local (extensão encaminha) |
+
+**Não entra:** playlists, canais, live ao vivo, vídeo privado/que exige login, arquivo local.
+
 ---
 
 ## Por que ele existe
@@ -121,7 +131,7 @@ npm run process -- "https://www.youtube.com/watch?v=<id>" [--whisper] [--traduzi
 
 ## Extensão de navegador
 
-Transforma em aula o vídeo que você **já está assistindo**, sem sair da aba. Ela lê a legenda da página e chama o modelo — não baixa mídia nenhuma.
+Transforma em aula o vídeo que você **já está assistindo**, sem sair da aba. No YouTube, lê a legenda da página. Em Instagram e TikTok, encaminha ao app local (que precisa estar aberto). Não baixa mídia nenhuma.
 
 Funciona de **dois modos**, e a tela de opções diz em qual você está:
 

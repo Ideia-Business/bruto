@@ -7,6 +7,7 @@ import { HeroBanner } from "./hero-banner";
 import { CategoryRow } from "./category-row";
 import { ProcessingCard } from "./processing-card";
 import { UrlInputDialog } from "./url-input-dialog";
+import { Compatibilidade } from "./compatibilidade";
 import type { CatalogResponse, Job } from "@/lib/api-types";
 import { fetchApp } from "@/lib/fetch-app";
 
@@ -59,9 +60,6 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
           <p className="text-2xl">🎬</p>
           <div>
             <h2 className="text-lg font-semibold">Seu catálogo está vazio</h2>
-            <p className="text-sm text-muted-foreground">
-              Cole um link do YouTube, Instagram ou TikTok e destrinche o primeiro.
-            </p>
           </div>
           <UrlInputDialog
             onQueued={onQueued}
@@ -72,6 +70,9 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
               </Button>
             }
           />
+          <div className="w-full max-w-3xl px-4">
+            <Compatibilidade />
+          </div>
         </div>
       )}
 
@@ -93,6 +94,8 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
       {data.history.length > 0 && (
         <CategoryRow title="Histórico" brutos={data.history} />
       )}
+
+      {hasContent && <Compatibilidade />}
     </div>
   );
 }

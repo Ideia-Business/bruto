@@ -1,5 +1,7 @@
 /** Helpers de formatação e rótulos PT-BR compartilhados pela UI. */
 
+import { PLATAFORMAS } from "@/lib/plataformas";
+
 export function formatDuration(sec: number | null | undefined): string {
   if (!sec || sec <= 0) return "";
   const h = Math.floor(sec / 3600);
@@ -19,12 +21,10 @@ export function formatUploadDate(yyyymmdd: string | null | undefined): string {
   return `${d} ${meses[m - 1] ?? "?"} ${y}`;
 }
 
-/** Rótulo da plataforma de origem (badge). */
-export const PLATFORM_LABEL: Record<string, string> = {
-  youtube: "YouTube",
-  instagram: "Instagram",
-  tiktok: "TikTok",
-};
+/** Rótulo da plataforma de origem (badge). Deriva de `PLATAFORMAS` — a fonte única. */
+export const PLATFORM_LABEL: Record<string, string> = Object.fromEntries(
+  PLATAFORMAS.map((p) => [p.id, p.label]),
+);
 
 /** Rótulo amigável da fonte da transcrição (badge de qualidade). */
 export const TRANSCRIPT_SOURCE_LABEL: Record<string, string> = {
