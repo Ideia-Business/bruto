@@ -20,7 +20,14 @@
  * completo — removê-las arriscaria descartar o que sustenta a autenticação.
  */
 
-import { spawn } from "node:child_process";
+// `cross-spawn`, não `node:child_process`, porque no Windows o `claude`
+// instalado por npm é um shim `.cmd` — `spawn` puro dá ENOENT, e desde o Node
+// 20.12 (CVE-2024-27980) abrir um `.cmd` exige passar por `cmd.exe`.
+// `cross-spawn` resolve o shim e faz o escape correto de cada argumento para
+// `cmd.exe` sem envolver `shell: true`: o prompt (`req.prompt`) pode carregar
+// texto de transcrição de vídeo de terceiro — não confiável — então o escape
+// tem que ser por posição de argv, nunca por concatenação de shell.
+import spawn from "cross-spawn";
 import { ENV_SENSIVEIS, redact } from "../redact";
 import type { LlmCapability, LlmProvider, LlmRequest, LlmResult } from "../types";
 
@@ -68,6 +75,18 @@ function executar(args: string[], input: string | undefined, timeoutMs: number):
       stdio: ["pipe", "pipe", "pipe"],
     });
 
+    // O tipo de `cross-spawn` devolve `ChildProcess` genérico (streams
+    // nuláveis), diferente do `child_process.spawn` nativo, que infere
+    // `ChildProcessWithoutNullStreams` a partir do `stdio` literal. Em tempo
+    // de execução os três streams sempre existem aqui, porque pedimos "pipe"
+    // nos três — mas em vez de calar o compilador com `!`, tratamos a
+    // ausência como o erro que ela seria (mesmo padrão de `transcribe.ts`).
+    const { stdout: saida, stderr: erro, stdin: entrada } = child;
+    if (!saida || !erro || !entrada) {
+      reject(new Error("não foi possível abrir os fluxos do `claude`"));
+      return;
+    }
+
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -78,10 +97,10 @@ function executar(args: string[], input: string | undefined, timeoutMs: number):
       child.kill("SIGKILL");
     }, timeoutMs);
 
-    child.stdout.on("data", (d: Buffer) => {
+    saida.on("data", (d: Buffer) => {
       stdout += d.toString("utf8");
     });
-    child.stderr.on("data", (d: Buffer) => {
+    erro.on("data", (d: Buffer) => {
       stderr += d.toString("utf8");
     });
 
@@ -100,8 +119,8 @@ function executar(args: string[], input: string | undefined, timeoutMs: number):
     });
 
     // Fecha o stdin imediatamente — evita o aviso "no stdin data received in 3s".
-    if (input != null) child.stdin.write(input);
-    child.stdin.end();
+    if (input != null) entrada.write(input);
+    entrada.end();
   });
 }
 

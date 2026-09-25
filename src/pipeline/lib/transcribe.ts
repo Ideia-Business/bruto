@@ -25,6 +25,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { dividirPath, localizarBinario } from "@/pipeline/lib/binario";
 import { DATA_ROOT } from "@/pipeline/lib/paths";
 import { redact } from "@/pipeline/lib/llm/redact";
 import { PipelineError } from "@/pipeline/types";
@@ -57,6 +58,22 @@ export function ambienteMinimo(): NodeJS.ProcessEnv {
   // NODE_ENV entra porque o tipo do Node o exige e porque não é segredo —
   // ferramentas de linha de comando costumam consultá-lo.
   const permitidas = ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "SHELL", "USER", "NODE_ENV"];
+  // No Windows não existem HOME/TMPDIR/USER/SHELL — quem os substitui são
+  // estas outras, e um Python instalado no Windows falha sem SYSTEMROOT (ele
+  // usa a variável para localizar DLLs do sistema). PATHEXT é o que permite
+  // ao subprocesso resolver um nome nu (`python3`) para o `.exe`/`.cmd` certo.
+  if (process.platform === "win32") {
+    permitidas.push(
+      "USERPROFILE",
+      "TEMP",
+      "TMP",
+      "USERNAME",
+      "APPDATA",
+      "LOCALAPPDATA",
+      "SYSTEMROOT",
+      "PATHEXT",
+    );
+  }
   const env: Record<string, string> = {};
   for (const nome of permitidas) {
     const v = process.env[nome];
@@ -142,19 +159,14 @@ function rodar(
 /**
  * Procura um executável no PATH sem gastar um processo. Mais barato e mais
  * previsível que chamar `which` — e não depende de shell.
+ *
+ * No win32, testa também cada extensão de PATHEXT (ver `binario.ts`): sem
+ * isso, `ffmpeg`/`whisper` nunca eram encontrados no Windows, porque o que
+ * está no disco é `ffmpeg.exe`/`whisper.exe`, nunca o nome nu.
  */
 function noPath(bin: string): boolean {
-  const dirs = (process.env.PATH || "").split(path.delimiter).filter(Boolean);
-  for (const d of dirs) {
-    const p = path.join(d, bin);
-    try {
-      fs.accessSync(p, fs.constants.X_OK);
-      return true;
-    } catch {
-      // segue para o próximo diretório
-    }
-  }
-  return false;
+  const dirs = dividirPath(process.env.PATH || "");
+  return localizarBinario(bin, { diretorios: dirs }) !== null;
 }
 
 /** Script que pergunta ao Python se o módulo `mlx_whisper` está instalado. */
@@ -230,7 +242,10 @@ export async function transcricaoDisponivel(): Promise<boolean> {
 /** Extrai wav mono 16 kHz — o formato que todos os backends esperam. */
 async function extrairAudioWav(origem: string, destino: string): Promise<void> {
   if (!noPath("ffmpeg")) {
-    throw new PipelineError("NO_TRANSCRIPT", "ffmpeg ausente — instale com: brew install ffmpeg");
+    throw new PipelineError(
+      "NO_TRANSCRIPT",
+      "ffmpeg ausente — rode o instalador de novo (install/instalar.sh no macOS/Linux, install\\instalar.ps1 no Windows)",
+    );
   }
   const r = await rodar(
     "ffmpeg",
@@ -457,9 +472,10 @@ function sha256Arquivo(p: string, tempero: string): string | null {
  * manda rodar comando de ferramenta interna que essa pessoa não tem.
  */
 export const SEM_BACKEND =
-  "Vídeo sem legenda e nenhum transcritor instalado. Instale um: " +
-  "`uv tool install mlx-whisper` (Apple Silicon), `pip install -U openai-whisper`, " +
-  "ou `brew install whisper-cpp` com um modelo ggml.";
+  "Vídeo sem legenda e nenhum transcritor instalado. `pip install -U openai-whisper` " +
+  "funciona em qualquer sistema; em Apple Silicon `uv tool install mlx-whisper` é mais " +
+  "rápido. Ou rode o instalador de novo (install/instalar.sh no macOS/Linux, " +
+  "install\\instalar.ps1 no Windows).";
 
 /** Diagnóstico para o `npm run doctor`. */
 export async function transcricaoDoctor(): Promise<{ ok: boolean; linhas: string[] }> {
