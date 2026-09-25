@@ -118,7 +118,7 @@ try {
             # com ou sem git (igual ao precisa_build do serve.sh; Grok, rodada 8).
             $precisaBuild = $true
         } elseif ($commitAtual) {
-            $commitDoBuild = (Get-Content -LiteralPath $commitMarkerPath -Raw).Trim()
+            $commitDoBuild = [System.IO.File]::ReadAllText($commitMarkerPath).Trim()  # ReadAllText devolve "" em arquivo vazio; Get-Content -Raw devolve $null no 5.1 (Grok, rodada 10)
             if ($commitDoBuild -ne $commitAtual) {
                 $precisaBuild = $true
             }
