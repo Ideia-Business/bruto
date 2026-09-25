@@ -114,7 +114,9 @@ export function detectYtdlpError(stderr: string): ErrorCode {
   if (/sign in to confirm/i.test(stderr)) return "BOT_CHECK";
   // Muro de login do Instagram: vem com a palavra "rate-limit", mas não é 429 —
   // é a plataforma exigindo sessão. Checado ANTES do RATE_LIMIT por isso.
-  if (/redirected to the login page|accessing posts anonymously|login required|--cookies-from-browser/i.test(stderr)) {
+  // Só as duas frases do muro: "--cookies" aparece também em vídeo privado,
+  // que é bloqueio permanente e não pode ser repetido (achado do Grok 4.7).
+  if (/redirected to the login page|accessing posts anonymously/i.test(stderr)) {
     return "LOGIN_REQUIRED";
   }
   if (/HTTP Error 429|too many requests/i.test(stderr)) return "RATE_LIMIT";

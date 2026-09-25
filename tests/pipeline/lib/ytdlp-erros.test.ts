@@ -14,6 +14,12 @@ describe("detectYtdlpError", () => {
   test("muro de login do Instagram vira LOGIN_REQUIRED, não RATE_LIMIT nem UNKNOWN", () => {
     assert.equal(detectYtdlpError(STDERR_INSTAGRAM), "LOGIN_REQUIRED");
   });
+  test("vídeo privado sugere --cookies mas não é muro passageiro", () => {
+    assert.equal(
+      detectYtdlpError("ERROR: [youtube] abc: Private video. Use --cookies-from-browser or --cookies for the authentication."),
+      "UNKNOWN",
+    );
+  });
   test("429 continua RATE_LIMIT", () => {
     assert.equal(detectYtdlpError("ERROR: HTTP Error 429: Too Many Requests"), "RATE_LIMIT");
   });
