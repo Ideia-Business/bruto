@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { Thumb } from "./thumb";
+import { Badge } from "@/components/ui/badge";
 import { formatDuration, TRANSCRIPT_SOURCE_LABEL } from "@/lib/format";
+import { rotuloDaPlataforma } from "@/lib/plataformas";
 import type { BrutoCard as BrutoCardData } from "@/lib/api-types";
 
 /** Card de vídeo clean: thumbnail nítida (sem overlay) + texto ABAIXO dela. */
@@ -20,11 +22,16 @@ export function BrutoCard({ video }: { video: BrutoCardData }) {
             {duration}
           </span>
         )}
-        {video.transcriptSource === "whisper" && (
-          <span className="absolute left-1.5 top-1.5 rounded border border-border bg-background/90 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-            {TRANSCRIPT_SOURCE_LABEL.whisper}
-          </span>
-        )}
+        <div className="absolute left-1.5 top-1.5 flex items-center gap-1">
+          <Badge variant="outline" className="bg-background/90 text-[10px]">
+            {rotuloDaPlataforma(video.platform)}
+          </Badge>
+          {video.transcriptSource === "whisper" && (
+            <span className="rounded border border-border bg-background/90 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              {TRANSCRIPT_SOURCE_LABEL.whisper}
+            </span>
+          )}
+        </div>
       </div>
       <div className="space-y-1 p-3">
         <p className="line-clamp-2 text-[0.95rem] font-semibold leading-snug text-foreground">
