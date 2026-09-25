@@ -113,14 +113,13 @@ try {
         if (-not (Test-Path -LiteralPath $buildIdPath)) {
             # Sem build nenhum ainda.
             $precisaBuild = $true
+        } elseif (-not (Test-Path -LiteralPath $commitMarkerPath)) {
+            # Existe build mas sem marcador de commit — trata como desatualizado,
+            # com ou sem git (igual ao precisa_build do serve.sh; Grok, rodada 8).
+            $precisaBuild = $true
         } elseif ($commitAtual) {
-            if (Test-Path -LiteralPath $commitMarkerPath) {
-                $commitDoBuild = (Get-Content -LiteralPath $commitMarkerPath -Raw).Trim()
-                if ($commitDoBuild -ne $commitAtual) {
-                    $precisaBuild = $true
-                }
-            } else {
-                # Existe build mas sem marcador de commit — trata como desatualizado.
+            $commitDoBuild = (Get-Content -LiteralPath $commitMarkerPath -Raw).Trim()
+            if ($commitDoBuild -ne $commitAtual) {
                 $precisaBuild = $true
             }
         }

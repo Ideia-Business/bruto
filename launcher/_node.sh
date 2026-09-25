@@ -10,7 +10,8 @@
 #
 # A última escolha fica gravada em ~/.local/share/bruto/nodebin: o atalho não
 # herda o PATH do nvm/fnm/Volta, e é por esse link que ele reencontra um Node
-# que só existia lá (Grok, passada final, 25/09).
+# que só existia lá (Grok, passada final, 25/09). Vem por ÚLTIMO: o Node vivo
+# do PATH, quando há, vence o link antigo (Grok, rodada 8).
 #
 # Uso: . launcher/_node.sh && bruto_escolher_node   (retorna 1 se não houver)
 
@@ -28,8 +29,8 @@ bruto_escolher_node() {
     /usr/local/bin/node \
     "$HOME/.local/bin/node" \
     /usr/bin/node \
-    "$HOME/.local/share/bruto/nodebin/node" \
-    "$(command -v node 2>/dev/null)"; do
+    "$(command -v node 2>/dev/null)" \
+    "$HOME/.local/share/bruto/nodebin/node"; do
     [ -n "$candidato" ] && [ -x "$candidato" ] || continue
     major="$(bruto_node_major "$candidato")"
     case "$major" in ''|*[!0-9]*) continue ;; esac

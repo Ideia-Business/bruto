@@ -228,7 +228,10 @@ function Instalar-Bruto {
     # (Bruto\Bruto\...) em todo Join-Path posterior, porque seria resolvido
     # contra o NOVO diretório atual. Mesma ordem que o instalar.sh usa com
     # $PWD antes do `cd "$BRUTO_ALVO"`.
-    $ProjectDir = [System.IO.Path]::GetFullPath($ProjectDir)
+    # Resolve pela pasta ATUAL DO POWERSHELL. [IO.Path]::GetFullPath usa a pasta
+    # do processo .NET, que um Push/Pop-Location anterior pode ter deixado
+    # dentro do clone (Grok, rodada 8).
+    $ProjectDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ProjectDir)
 
     Set-Location -LiteralPath $ProjectDir
 
