@@ -39,10 +39,12 @@ bruto_escolher_node() {
   for b in npm npx; do
     if [ -x "$(dirname "$escolhido")/$b" ]; then ln -sf "$(dirname "$escolhido")/$b" "$dir_links/$b"; fi
   done
-  case ":$PATH:" in
-    *":$dir_links:"*) ;;
-    *) PATH="$dir_links:$PATH" ;;
-  esac
+  # Sempre NA FRENTE, mesmo que já esteja no PATH: alguém pode ter anteposto
+  # ~/.local/bin depois da última escolha (Grok, rodada 5, 25/09).
+  local p=":$PATH:"
+  p="${p//:$dir_links:/:}"
+  p="${p#:}"; p="${p%:}"
+  PATH="$dir_links${p:+:$p}"
   export PATH
   hash -r 2>/dev/null || true
 }

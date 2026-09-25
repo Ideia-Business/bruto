@@ -332,6 +332,8 @@ else
   fi
 fi
 export PATH="$HOME/.local/bin:$PATH"
+# ~/.local/bin acabou de ir para a frente: o Node escolhido volta a ela.
+bruto_escolher_node || true
 if command -v uv >/dev/null 2>&1; then
   if ! uv tool update-shell >/dev/null 2>&1; then
     echo "    ⚠️  não consegui garantir ~/.local/bin no seu shell permanente — rode 'uv tool update-shell' você mesmo, ou adicione ~/.local/bin ao PATH manualmente"
