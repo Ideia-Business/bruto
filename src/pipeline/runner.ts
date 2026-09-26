@@ -3,6 +3,7 @@ import { redact } from "@/pipeline/lib/llm/redact";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { jobs } from "@/db/schema";
+import { isBrutoDone } from "@/db/queries";
 import { emitProgress } from "./bus";
 import { runMetadata } from "./steps/01-metadata";
 import { runTranscript } from "./steps/02-transcript";
@@ -12,7 +13,7 @@ import { runMindmap } from "./steps/04-mindmap";
 import { runCategory } from "./steps/05-category";
 import { runExport } from "./steps/06-export";
 import fs from "node:fs";
-import { artifactPaths } from "./lib/paths";
+import { artifactPaths, parseMediaUrl } from "./lib/paths";
 import {
   PipelineError,
   type ErrorCode,
@@ -112,6 +113,33 @@ async function drain(): Promise<void> {
   }
 }
 
+export interface DepsDuplicataTardia {
+  isBrutoDone: (id: string) => boolean;
+  parseMediaUrl: (url: string) => { id: string } | null;
+}
+
+/**
+ * Link curto (vm./vt.tiktok.com) não expõe ID na URL — o dedupe de
+ * `POST /api/videos` (que roda ANTES do enqueue) não tem o que comparar e
+ * deixa passar. Só depois do yt-dlp rodar (etapa metadata) o ID real aparece,
+ * e só então dá para saber que é o mesmo vídeo de um job já `done`. Sem isso,
+ * cada link curto repetido baixava áudio, transcrevia e resumia tudo de novo
+ * à toa.
+ *
+ * Isolado ao caso em que a URL original não tinha ID extraível: um job de
+ * reprocessamento intencional (`/api/videos/[id]/retry`) sempre reenfileira a
+ * URL canônica (já com o ID real), então nunca cai aqui — `parseMediaUrl`
+ * devolve o ID de cara e a função retorna `false`.
+ */
+export function ehDuplicataTardia(
+  jobUrl: string,
+  metaId: string,
+  deps: DepsDuplicataTardia = { isBrutoDone, parseMediaUrl },
+): boolean {
+  const idJaEraConhecidoNoEnqueue = deps.parseMediaUrl(jobUrl)?.id !== "";
+  return !idJaEraConhecidoNoEnqueue && deps.isBrutoDone(metaId);
+}
+
 /** Executa o pipeline completo de um job. Erros viram estado `error` tipado. */
 export async function processJob(jobId: string): Promise<void> {
   const job = db.select().from(jobs).where(eq(jobs.id, jobId)).get();
@@ -123,6 +151,19 @@ export async function processJob(jobId: string): Promise<void> {
     // 1) metadata
     update(jobId, { currentStep: "metadata", progressPct: 5 });
     const meta: VideoMetadata = await runMetadata(job.url);
+
+    if (ehDuplicataTardia(job.url, meta.id)) {
+      update(jobId, {
+        videoId: meta.id,
+        status: "done",
+        currentStep: null,
+        progressPct: 100,
+        finishedAt: new Date(),
+        errorCode: null,
+        errorMessage: null,
+      });
+      return;
+    }
     update(jobId, { videoId: meta.id });
 
     // 2) transcript
