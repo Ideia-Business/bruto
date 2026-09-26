@@ -1,4 +1,4 @@
-# Bruto — launcher local (Windows).
+﻿# Bruto — launcher local (Windows).
 # Garante o servidor de produção rodando em http://127.0.0.1:${BRUTO_PORT:-3000} e
 # abre o app numa janela de aplicativo (Chrome/Edge, sem barra de navegação).
 # Chamado pelo atalho "Bruto.lnk"; também pode ser rodado direto no PowerShell.
@@ -23,7 +23,12 @@ try {
 # os shims do `uv tool` (yt-dlp, whisper: %USERPROFILE%\.local\bin) mesmo já
 # instalados — o processo do Explorer pode ser mais antigo que a instalação.
 # Espelha o export do serve.sh, que faz a mesma coisa com $HOME/.local/bin.
-$env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
+# E relê o PATH da máquina e do usuário no registro: o Explorer aberto desde o
+# login não vê o Node e o ffmpeg que o winget acabou de instalar, e o atalho
+# herdaria esse PATH velho (Grok, passada final 3, 25/09).
+$pathMaquina = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
+$pathUsuario = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+$env:Path = "$env:USERPROFILE\.local\bin;$pathMaquina;$pathUsuario;$env:Path"
 
 function Aviso-Visivel {
     # Popup modal — a única forma confiável de uma falha aparecer quando este

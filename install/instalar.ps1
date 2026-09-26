@@ -1,4 +1,4 @@
-# Bruto — instalador Windows.
+﻿# Bruto — instalador Windows.
 # Espelha install/instalar.sh (macOS/Linux); a especificação-fonte é install/CONTRATO.md
 # — quem mudar um lado, muda o outro.
 #
@@ -136,6 +136,8 @@ function Instalar-Bruto {
         [switch]$Sim,
         [string]$Dir
     )
+
+    $atalhoFalhou = $false
 
     # -----------------------------------------------------------------------
     # 0. winget é obrigatório para todas as dependências nativas no Windows.
@@ -426,6 +428,7 @@ function Instalar-Bruto {
         $atalhoScript = Join-Path $ProjectDir "launcher\atalho-windows.ps1"
         powershell.exe -NoProfile -ExecutionPolicy Bypass -File $atalhoScript -ProjectDir $ProjectDir
         if ($LASTEXITCODE -ne 0) {
+            $atalhoFalhou = $true
             Write-Host "✗ Não consegui criar os atalhos automaticamente — rode depois: powershell -ExecutionPolicy Bypass -File `"$atalhoScript`"" -ForegroundColor Yellow
         } else {
             Sucesso "Atalhos criados"
@@ -458,7 +461,7 @@ function Instalar-Bruto {
     Write-Host ""
     Write-Host "============================================"
     Write-Host " Bruto instalado em: $ProjectDir"
-    if ($SemAtalho) {
+    if ($SemAtalho -or $atalhoFalhou) {
         Write-Host " Abrir: powershell -NoProfile -ExecutionPolicy Bypass -File `"$ProjectDir\launcher\serve.ps1`""
     } else {
         Write-Host " Abrir: atalho 'Bruto' na Área de Trabalho ou no Menu Iniciar."

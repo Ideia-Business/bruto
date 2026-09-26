@@ -157,7 +157,7 @@ Apague a pasta do Bruto. Depois, o atalho e os dados (opcional):
 
 | Sistema | Pasta | Atalho / Menu |
 |---------|-------|---|
-| macOS | `~/Bruto` | Aplicações: `Bruto.app` |
+| macOS | `~/Bruto` | `~/Applications/Bruto.app` (aparece no Launchpad) |
 | Windows | `%USERPROFILE%\Bruto` | Área de Trabalho: `Bruto.lnk` <br/> Menu Iniciar: procure `Bruto` |
 | Linux | `~/Bruto` | Área de Trabalho: `Bruto` <br/> Menu de apps |
 

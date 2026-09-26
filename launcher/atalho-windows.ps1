@@ -1,4 +1,4 @@
-# Bruto — cria os atalhos do Windows (Área de Trabalho + Menu Iniciar).
+﻿# Bruto — cria os atalhos do Windows (Área de Trabalho + Menu Iniciar).
 # Compatível com Windows PowerShell 5.1 (sem recursos exclusivos do PowerShell 7:
 # sem `??`, `?.`, ternário, `&&`/`||`).
 #
