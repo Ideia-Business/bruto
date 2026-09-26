@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Plus, GraduationCap } from "lucide-react";
+import { Plus, GraduationCap, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchCommand } from "./search-command";
 import { UrlInputDialog } from "./url-input-dialog";
@@ -40,6 +40,11 @@ export function SiteHeader() {
         </nav>
         <div className="ml-auto flex items-center gap-3">
           <SearchCommand />
+          <Button variant="ghost" size="icon" asChild aria-label="Configurações">
+            <Link href="/configuracoes">
+              <Settings className="size-4" />
+            </Link>
+          </Button>
           <UrlInputDialog
             trigger={
               <Button size="sm" className="gap-1.5">

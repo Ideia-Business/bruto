@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Progress } from "@/components/ui/progress";
 import { STEP_LABEL, textoDoErro } from "@/lib/format";
+import { exportarVideoAutomaticamente } from "@/lib/exportar-artefatos";
 import type { JobProgressEvent } from "@/lib/api-types";
 
 /**
@@ -25,6 +26,7 @@ export function useJobProgress(
         if (data.status === "done") {
           es.close();
           handlers?.onDone?.(data.videoId);
+          void exportarVideoAutomaticamente(data.videoId);
         } else if (data.status === "error") {
           es.close();
           handlers?.onError?.();
