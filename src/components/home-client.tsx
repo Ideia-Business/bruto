@@ -68,26 +68,32 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
     <div className="space-y-8">
       {data.hero && <HeroBanner video={data.hero} />}
 
-      {!hasContent && (
-        <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border py-20 text-center">
-          <p className="text-2xl">🎬</p>
-          <div>
-            <h2 className="text-lg font-semibold">Seu catálogo está vazio</h2>
-          </div>
-          <UrlInputDialog
-            onQueued={onQueued}
-            trigger={
-              <Button className="gap-1.5">
-                <Plus className="size-4" />
-                Adicionar vídeo
-              </Button>
-            }
-          />
-          <div className="w-full max-w-3xl px-4">
-            <Compatibilidade />
-          </div>
+      {/* `hidden`, nunca desmontar: um lote com link inválido deixa o diálogo
+          aberto pedindo correção, e o primeiro link válido já enfileirado
+          vira `hasContent`. Desmontar aqui (o `{!hasContent && ...}` de
+          antes) apagava o resumo e o texto no meio da correção, com o
+          diálogo ainda aberto (achado do Codex, revisão final). */}
+      <div
+        hidden={hasContent}
+        className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border py-20 text-center"
+      >
+        <p className="text-2xl">🎬</p>
+        <div>
+          <h2 className="text-lg font-semibold">Seu catálogo está vazio</h2>
         </div>
-      )}
+        <UrlInputDialog
+          onQueued={onQueued}
+          trigger={
+            <Button className="gap-1.5">
+              <Plus className="size-4" />
+              Adicionar vídeo
+            </Button>
+          }
+        />
+        <div className="w-full max-w-3xl px-4">
+          <Compatibilidade />
+        </div>
+      </div>
 
       {activeJobs.length > 0 && (
         <section className="space-y-2">
