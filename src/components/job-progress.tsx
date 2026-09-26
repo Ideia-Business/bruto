@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Progress } from "@/components/ui/progress";
-import { STEP_LABEL, ERROR_HINT } from "@/lib/format";
+import { STEP_LABEL, textoDoErro } from "@/lib/format";
 import type { JobProgressEvent } from "@/lib/api-types";
 
 /**
@@ -52,7 +52,7 @@ export function JobProgressBar({ progress }: { progress: JobProgressEvent | null
           <div className="h-full rounded-full bg-destructive" style={{ width: "100%" }} />
         </div>
         <p className="text-xs text-destructive">
-          {ERROR_HINT[progress.errorCode ?? "UNKNOWN"] ?? progress.errorMessage}
+          {textoDoErro(progress.errorCode, progress.errorMessage)}
         </p>
       </div>
     );

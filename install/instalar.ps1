@@ -287,7 +287,8 @@ function Instalar-Bruto {
     # -----------------------------------------------------------------------
 
     Etapa "Instalando o yt-dlp"
-    uv tool install yt-dlp
+    # --upgrade: rodar o instalador de novo é atualizar, e o yt-dlp é o que mais envelhece.
+    uv tool install --upgrade yt-dlp
     if ($LASTEXITCODE -ne 0) {
         Falha "uv tool install yt-dlp falhou (código $LASTEXITCODE)" "Veja o erro acima, resolva e rode este instalador de novo."
     }

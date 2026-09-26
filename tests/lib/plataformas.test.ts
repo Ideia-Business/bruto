@@ -191,3 +191,20 @@ describe("achados da revisão cross-vendor de 25/09", () => {
     assert.deepEqual(reconhecerLink("https://www.youtube.com/live/dQw4w9WgXcQ"), { plataforma: "youtube", id: "dQw4w9WgXcQ" });
   });
 });
+
+import { textoDoErro, ERROR_HINT } from "@/lib/format";
+
+describe("textoDoErro — a mensagem real vence a dica genérica só em NO_TRANSCRIPT", () => {
+  test("NO_TRANSCRIPT com mensagem mostra a mensagem", () => {
+    assert.equal(textoDoErro("NO_TRANSCRIPT", "mlx-whisper falhou: sem memória"), "mlx-whisper falhou: sem memória");
+  });
+  test("NO_TRANSCRIPT sem mensagem cai na dica", () => {
+    assert.equal(textoDoErro("NO_TRANSCRIPT", null), ERROR_HINT.NO_TRANSCRIPT);
+  });
+  test("outros códigos continuam com a dica, não com o stderr cru", () => {
+    assert.equal(textoDoErro("LOGIN_REQUIRED", "ERROR: [Instagram] …"), ERROR_HINT.LOGIN_REQUIRED);
+  });
+  test("código desconhecido sem dica mostra a mensagem", () => {
+    assert.equal(textoDoErro("NOVO_CODIGO", "algo"), "algo");
+  });
+});

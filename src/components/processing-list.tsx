@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { JobProgressBar, useJobProgress } from "./job-progress";
-import { ERROR_HINT } from "@/lib/format";
+import { textoDoErro } from "@/lib/format";
 import type { Job } from "@/lib/api-types";
 
 /** Linha de um job na página /processing — status ao vivo via SSE. */
@@ -40,7 +40,7 @@ function JobRow({ job, onFinished }: { job: Job; onFinished: () => void }) {
       {isActive ? (
         <JobProgressBar progress={progress} />
       ) : status === "error" ? (
-        <p className="text-xs text-destructive">{ERROR_HINT[job.errorCode ?? "UNKNOWN"]}</p>
+        <p className="text-xs text-destructive">{textoDoErro(job.errorCode, job.errorMessage)}</p>
       ) : (
         <p className="text-xs text-muted-foreground">Concluído</p>
       )}

@@ -345,7 +345,8 @@ fi
 # quebra Instagram/YouTube).
 # ---------------------------------------------------------------------------
 etapa "yt-dlp"
-if uv tool install yt-dlp; then ok; else falha "uv tool install yt-dlp falhou" "rode 'uv tool install yt-dlp' manualmente e tente de novo"; fi
+# --upgrade: rodar o instalador de novo é atualizar, e o yt-dlp é o que mais envelhece.
+if uv tool install --upgrade yt-dlp; then ok; else falha "uv tool install yt-dlp falhou" "rode 'uv tool install --upgrade yt-dlp' manualmente e tente de novo"; fi
 
 # ---------------------------------------------------------------------------
 # ffmpeg

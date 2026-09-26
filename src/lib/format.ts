@@ -45,6 +45,18 @@ export const STEP_LABEL: Record<string, string> = {
   export: "Exportando arquivos",
 };
 
+/**
+ * O texto de erro que a tela mostra. Para `NO_TRANSCRIPT` a mensagem do job
+ * vence a dica genérica: o mesmo código cobre "não há transcritor" e "o
+ * transcritor rodou e falhou", e só a mensagem distingue um do outro (Grok,
+ * 25/09). Ela já sai redigida da transcrição (`redact`).
+ */
+export function textoDoErro(codigo: string | null | undefined, mensagem: string | null | undefined): string {
+  const c = codigo ?? "UNKNOWN";
+  if (c === "NO_TRANSCRIPT" && mensagem) return mensagem;
+  return ERROR_HINT[c] ?? mensagem ?? ERROR_HINT.UNKNOWN;
+}
+
 /** Rótulo PT-BR + orientação de cada código de erro. */
 export const ERROR_HINT: Record<string, string> = {
   BOT_CHECK:
@@ -53,7 +65,7 @@ export const ERROR_HINT: Record<string, string> = {
   LOGIN_REQUIRED:
     "A plataforma recusou o acesso sem login — comum no Instagram depois de vários vídeos seguidos. O Bruto já tentou de novo sozinho; espere alguns minutos e reprocesse.",
   YTDLP_OUTDATED:
-    "O extrator de vídeo está desatualizado. Rode: uv tool upgrade yt-dlp (ou rode o instalador do Bruto de novo).",
+    "O extrator de vídeo está desatualizado. Rode: uv tool upgrade yt-dlp",
   NO_TRANSCRIPT:
     "Vídeo sem legenda e sem transcritor instalado. Rode o instalador do Bruto de novo, sem --sem-whisper (Mac com Apple Silicon: uv tool install mlx-whisper; outros: uv tool install openai-whisper).",
   LLM_QUOTA: "O provedor de IA respondeu limite de uso. Tente novamente mais tarde.",
