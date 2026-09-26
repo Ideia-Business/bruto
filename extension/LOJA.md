@@ -146,7 +146,7 @@ DOIS MODOS, E A TELA DE OPÇÕES DIZ EM QUAL VOCÊ ESTÁ
 Em nenhum dos dois há mensalidade nossa, limite ou cadastro — a extensão não tem conta e não sabe quem você é. E a tela de opções diz, em letras, em qual modo você está e por quê: quem instalou isto para não pagar por token precisa ver quando está pagando por token.
 
 BANCADA
-As aulas que você destrincha ficam guardadas neste navegador. Fechar o popup não perde nada.
+As aulas que a extensão monta ficam guardadas neste navegador. Fechar o popup não perde nada. As de Instagram e TikTok ficam no catálogo do aplicativo local.
 
 CADERNO DE IDEIAS
 Ao fim de cada aula, uma pergunta: isso te deu alguma ideia? O que você escrever fica no Caderno. É a única coisa aqui que nasce de você — uma aula se refaz em trinta segundos, uma ideia que passou não volta.
@@ -160,7 +160,7 @@ Projeto independente, sem afiliação com YouTube, Instagram, TikTok, Anthropic,
 **Propósito único** (aba Privacy — o revisor lê primeiro)
 
 ```
-Transformar o vídeo que a pessoa está assistindo numa aula em português: objetivos, conceitos explicados do zero, glossário e teste de fixação. No YouTube a extensão lê a transcrição publicada na própria página e gera a aula com a IA escolhida pela pessoa; em Instagram e TikTok ela encaminha o link ao aplicativo do Bruto que a pessoa roda na própria máquina. As aulas e as anotações ficam guardadas neste navegador.
+Transformar o vídeo que a pessoa está assistindo numa aula em português: objetivos, conceitos explicados do zero, glossário e teste de fixação. No YouTube a extensão lê a transcrição publicada na própria página e gera a aula com a IA escolhida pela pessoa; em Instagram e TikTok ela encaminha o link ao aplicativo do Bruto que a pessoa roda na própria máquina. As aulas geradas pela extensão e as anotações ficam guardadas neste navegador; as de Instagram e TikTok ficam no catálogo do aplicativo local.
 ```
 
 **Justificativa de cada permissão** (o console pergunta uma a uma)
