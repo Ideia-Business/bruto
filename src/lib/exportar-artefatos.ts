@@ -6,6 +6,26 @@
  *
  * Falhar aqui NUNCA é falha do processamento — o vídeo já está salvo em
  * `~/.bruto/library/<id>/` de qualquer forma. O pior caso é um aviso.
+ *
+ * debt: [conhecido, decisão consciente — 8ª revisão cross-vendor, item 2,
+ * Grok] toda a coordenação de escrita aqui (o lock `emAndamento`, a checagem
+ * de revisão, o read-modify-write do mapa de exportados no `localStorage`)
+ * vale DENTRO DE UMA ABA — é a garantia que o item 1 da mesma rodada fecha.
+ * ENTRE abas do MESMO navegador, nada disso se aplica: `revisaoPorVideo` é
+ * só em memória (não sobrevive nem é visível fora da aba que a criou), e
+ * duas abas escrevendo a mesma chave do `localStorage` ao mesmo tempo não
+ * têm nenhuma serialização (`navigator.locks` daria isso). Cenário possível
+ * com duas abas exportando ou regenerando artefato do MESMO vídeo ao mesmo
+ * tempo: cópia sem o artefato mais novo, ou uma reexportação supérflua.
+ * Decisão consciente de NÃO implementar `navigator.locks` agora: esta é uma
+ * ferramenta pessoal de uso solo (ADR 0002), e duas abas do mesmo app
+ * mexendo no MESMO vídeo ao mesmo tempo é um cenário bem mais raro que os
+ * já fechados nas rodadas anteriores — o custo de implementar e testar
+ * coordenação entre abas não parece pagar pro perfil de uso atual. Se um dia
+ * isso mudar (uso em múltiplas janelas/abas de propósito), o caminho é
+ * persistir `revisaoPorVideo` no lugar do mapa de exportados (mesma chave de
+ * `localStorage`, mesma pasta) e envolver os read-modify-write em
+ * `navigator.locks.request(...)`.
  */
 import { toast } from "sonner";
 import { fetchApp } from "@/lib/fetch-app";
@@ -108,9 +128,28 @@ async function obterExportadosDaPasta(pastaId: string | null): Promise<Record<st
   }
 }
 
-async function marcarExportadoNaPasta(videoId: string, jobId: string, pastaId: string | null): Promise<void> {
+/**
+ * A checagem de revisão (`revisaoAtual(videoId) !== revisaoCapturada`) é o
+ * ÚLTIMO passo síncrono antes do `setItem` — nada mais é `await`ado entre
+ * ela e a escrita. Item 1 da 8ª revisão (Grok): checar a revisão ANTES de
+ * chamar esta função (num ponto anterior aos `await` de
+ * `marcarSeAPastaNaoMudou`) deixava uma janela — `reexportarAposArtefatoNovo`
+ * podia apagar a marca EXATAMENTE nessa janela, e esta função reescrevia por
+ * cima com o `jobId` velho, desfazendo a invalidação que acabou de
+ * acontecer. `reexportarAposArtefatoNovo` incrementa a revisão
+ * SINCRONAMENTE, antes de qualquer `await` — então qualquer chamada que
+ * exista até este exato ponto síncrono já influenciou `revisaoAtual`, e
+ * nenhuma chamada pode "entrar no meio" de um trecho síncrono do JS.
+ */
+async function marcarExportadoSeRevisaoBater(
+  videoId: string,
+  jobId: string,
+  pastaId: string | null,
+  revisaoCapturada: number,
+): Promise<void> {
   try {
     const atual = await obterExportadosDaPasta(pastaId);
+    if (revisaoAtual(videoId) !== revisaoCapturada) return;
     atual[videoId] = jobId;
     localStorage.setItem(chaveExportados(pastaId), JSON.stringify(atual));
   } catch {
@@ -134,10 +173,11 @@ async function marcarSeAPastaNaoMudou(
   pastaCapturada: string | null,
   escritos: number,
   total: number,
+  revisaoCapturada: number,
 ): Promise<void> {
   if (!deveMarcarExportado(escritos, total)) return;
   if ((await obterPastaId()) !== pastaCapturada) return;
-  await marcarExportadoNaPasta(videoId, jobId, pastaCapturada);
+  await marcarExportadoSeRevisaoBater(videoId, jobId, pastaCapturada, revisaoCapturada);
 }
 
 /**
@@ -358,9 +398,12 @@ export async function exportarVideoAutomaticamente(
         });
       });
     }
-    if (!revisaoMudou) {
-      await marcarSeAPastaNaoMudou(videoId, jobId, pastaId, escritos, total);
-    }
+    // Chamada incondicional: a checagem de revisão que decide de verdade se
+    // marca ou não agora mora DENTRO de `marcarSeAPastaNaoMudou` (no último
+    // passo síncrono antes do `setItem`, ver `marcarExportadoSeRevisaoBater`)
+    // — mais confiável que o `revisaoMudou` calculado alguns `await`s atrás,
+    // só usado aqui em cima pra escolher qual toast mostrar.
+    await marcarSeAPastaNaoMudou(videoId, jobId, pastaId, escritos, total, revisaoCapturada);
   } catch {
     avisarUmaVez(videoId, jobId, "falha", () => {
       toast.warning("Não deu para salvar cópia na pasta escolhida.", {
@@ -372,12 +415,8 @@ export async function exportarVideoAutomaticamente(
     // significa que o laço foi interrompido (ou nem começou), então
     // `escritos === total` só valeria se a falha tivesse acontecido DEPOIS
     // do laço terminar por completo. É a mesma regra do caminho normal,
-    // aplicada por consistência — não uma regra nova para o catch. A
-    // checagem de revisão também vale aqui, pelo mesmo motivo do caminho
-    // normal.
-    if (revisaoAtual(videoId) === revisaoCapturada) {
-      await marcarSeAPastaNaoMudou(videoId, jobId, pastaId, escritos, total);
-    }
+    // aplicada por consistência — não uma regra nova para o catch.
+    await marcarSeAPastaNaoMudou(videoId, jobId, pastaId, escritos, total, revisaoCapturada);
   } finally {
     emAndamento.delete(videoId);
   }
