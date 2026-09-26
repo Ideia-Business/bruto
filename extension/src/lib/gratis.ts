@@ -18,8 +18,16 @@ const CHAVE_STORAGE_INSTALACAO = "bruto.instalacao";
 /** Cabeçalho exigido pelo servidor nas duas rotas — força preflight (ver CONTRATO.md). */
 const CABECALHO_CLIENTE = { "X-Bruto-Cliente": "extensao" } as const;
 
-/** O contrato recusa transcrição acima disso (400) — corta ANTES de mandar. */
-const LIMITE_TRANSCRICAO = 120_000;
+/** O contrato recusa `transcricao` acima disso — caracteres, não bytes. */
+export const LIMITE_TRANSCRICAO_CARACTERES = 120_000;
+
+/**
+ * O contrato recusa o CORPO inteiro (200 KB). O corte por caracteres sozinho
+ * não basta: texto em CJK (até 3 bytes por caractere em UTF-8) ou cheio de
+ * emoji pode ter 120.000 caracteres e passar de 200 KB de corpo — achado do
+ * Codex, 26/09/2026. O alvo aqui fica com folga sobre o teto do contrato.
+ */
+export const ALVO_BYTES_CORPO = 190_000;
 
 /** Corpo de `/api/aula` cabe em folga; `/api/cota` é minúsculo. */
 const TETO_BYTES_AULA = 512 * 1024;
@@ -214,19 +222,92 @@ export interface AulaGratis {
   aula: string;
   restantes: number;
   limite: number;
-  /** `true` quando a transcrição foi cortada em 120.000 caracteres antes de enviar. */
+  /** `true` quando a transcrição foi cortada (por caracteres e/ou por bytes) antes de enviar. */
   cortada: boolean;
+}
+
+const codificador = new TextEncoder();
+
+/** Bytes do CORPO inteiro já serializado — é isso que o teto de 200 KB mede, não caracteres. */
+export function bytesDoCorpo(
+  instalacao: string,
+  titulo: string,
+  canal: string | null,
+  transcricao: string,
+): number {
+  return codificador.encode(JSON.stringify({ instalacao, titulo, canal, transcricao })).length;
+}
+
+/**
+ * Corta `texto` em `ate` code units, mas nunca no meio de um par surrogate —
+ * emoji e outros caracteres fora do plano básico usam DOIS code units em
+ * UTF-16, e cortar entre os dois produz meia-letra (um code unit órfão) na
+ * entrada do servidor.
+ */
+function cortarNaFronteira(texto: string, ate: number): string {
+  if (ate >= texto.length) return texto;
+  if (ate <= 0) return "";
+  const ultimoCodigo = texto.charCodeAt(ate - 1);
+  // 0xD800–0xDBFF é a metade ALTA de um par surrogate — se o corte cai bem
+  // depois dela, a metade baixa (0xDC00–0xDFFF) ficaria de fora sozinha.
+  if (ultimoCodigo >= 0xd800 && ultimoCodigo <= 0xdbff) return texto.slice(0, ate - 1);
+  return texto.slice(0, ate);
+}
+
+/**
+ * Corta a transcrição para caber no que o servidor aceita — em DUAS frentes,
+ * porque nenhuma sozinha basta:
+ *
+ *  1. o limite de CARACTERES do campo (o contrato recusa `transcricao` acima
+ *     de 120.000 caracteres, com 400);
+ *  2. os BYTES do corpo inteiro já serializado (o contrato recusa o corpo
+ *     acima de 200 KB, com 413 — e caractere não é byte fora do ASCII).
+ *
+ * O corte por bytes roda SEMPRE, mesmo quando o texto já cabe no limite de
+ * caracteres: um texto em CJK ou cheio de emoji pode passar de 190 KB bem
+ * antes de chegar a 120.000 caracteres. Busca binária pelo maior prefixo que
+ * cabe — o universo é pequeno (≤120.000 code units), então repetir
+ * `JSON.stringify` umas 17 vezes não pesa perto do que a chamada de rede real
+ * vai custar.
+ */
+export function cortarTranscricao(
+  instalacao: string,
+  titulo: string,
+  canal: string | null,
+  transcricaoOriginal: string,
+): { transcricao: string; cortada: boolean } {
+  const porCaracteres =
+    transcricaoOriginal.length > LIMITE_TRANSCRICAO_CARACTERES
+      ? cortarNaFronteira(transcricaoOriginal, LIMITE_TRANSCRICAO_CARACTERES)
+      : transcricaoOriginal;
+  const cortadaPorCaracteres = porCaracteres.length < transcricaoOriginal.length;
+
+  if (bytesDoCorpo(instalacao, titulo, canal, porCaracteres) <= ALVO_BYTES_CORPO) {
+    return { transcricao: porCaracteres, cortada: cortadaPorCaracteres };
+  }
+
+  // `baixo` é sempre viável (código vazio cabe de sobra); `alto` começa no
+  // tamanho que acabou de FALHAR o teste acima.
+  let baixo = 0;
+  let alto = porCaracteres.length;
+  while (baixo < alto) {
+    const meio = Math.ceil((baixo + alto) / 2);
+    const candidato = cortarNaFronteira(porCaracteres, meio);
+    if (bytesDoCorpo(instalacao, titulo, canal, candidato) <= ALVO_BYTES_CORPO) baixo = meio;
+    else alto = meio - 1;
+  }
+
+  return { transcricao: cortarNaFronteira(porCaracteres, baixo), cortada: true };
 }
 
 /**
  * Pede a aula ao servidor grátis. Corta a transcrição no teto do contrato — o
- * servidor recusaria (400) acima disso, e cortar aqui poupa a viagem e avisa
- * quem chamou, em vez de simplesmente falhar.
+ * servidor recusaria (400/413) acima disso, e cortar aqui poupa a viagem e
+ * avisa quem chamou, em vez de simplesmente falhar.
  */
 export async function pedirAulaGratis(p: PedidoAulaGratis): Promise<AulaGratis> {
   const instalacao = await idDaInstalacao();
-  const cortada = p.transcricao.length > LIMITE_TRANSCRICAO;
-  const transcricao = cortada ? p.transcricao.slice(0, LIMITE_TRANSCRICAO) : p.transcricao;
+  const { transcricao, cortada } = cortarTranscricao(instalacao, p.titulo, p.canal, p.transcricao);
 
   const corpo = JSON.stringify({
     instalacao,

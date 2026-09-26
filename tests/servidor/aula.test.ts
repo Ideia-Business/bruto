@@ -30,6 +30,22 @@ class ContadorFake implements Contador {
   }
 }
 
+/**
+ * Mesmo contrato, mas `incr` LANÇA quando a chave bate no predicado — simula
+ * o Redis caindo no meio da reserva de uma requisição (achado P2 da revisão
+ * cross-vendor de 25/09/2026: `verificarLimite` tem de desfazer o que já
+ * aplicou e relançar, e o handler tem de responder 503, nunca 429).
+ */
+class ContadorComFalha extends ContadorFake {
+  constructor(private readonly falhaEm: (chave: string) => boolean) {
+    super();
+  }
+  async incr(chave: string): Promise<number> {
+    if (this.falhaEm(chave)) throw new Error("Redis indisponível (simulado no teste)");
+    return super.incr(chave);
+  }
+}
+
 // --- o duplo do Ollama --------------------------------------------------------
 
 /** Resposta de sucesso no formato `chat/completions` que `ollama.ts` espera. */
@@ -44,6 +60,30 @@ function fetchOllamaOk(): typeof fetch {
 /** O Ollama respondendo erro — é o caminho que precisa devolver a unidade. */
 function fetchOllamaFalha(): typeof fetch {
   return (async () => new Response("erro upstream", { status: 500 })) as typeof fetch;
+}
+
+/**
+ * O Ollama responde os CABEÇALHOS e trava no meio do CORPO — nunca fecha o
+ * stream. Achado P2 (25/09/2026): o timeout de `chamarOllama` precisa cortar
+ * esta leitura sozinho; se não cortasse, `tratarAula` nunca chegaria a
+ * `devolverUnidade`, e a cota da pessoa ficaria presa por um travamento do
+ * Ollama, não por uso dela.
+ */
+function fetchOllamaTravaNoCorpo(): typeof fetch {
+  return (async (_url: unknown, init?: RequestInit) => {
+    const sinal = init?.signal;
+    const corpo = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const abortar = () => controller.error(new DOMException("aborted", "AbortError"));
+        if (sinal?.aborted) {
+          abortar();
+          return;
+        }
+        sinal?.addEventListener("abort", abortar, { once: true });
+      },
+    });
+    return new Response(corpo, { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
 }
 
 const LIMITES_PADRAO_TESTE: Limites = { diario: 3, rede: 100, geral: 100 };
@@ -232,6 +272,44 @@ describe("POST /api/aula — limite e devolução de unidade", () => {
       if (k.includes(`instalacao:${UUID_A}:`)) total += v;
     }
     assert.equal(total, 0, "incr + decr da tentativa que falhou deve fechar em zero");
+  });
+
+  test("quando o Ollama trava no meio do corpo (timeout), a unidade também é devolvida — 502, não pendura", async () => {
+    const deps = depsBase({ fetchImpl: fetchOllamaTravaNoCorpo(), timeoutMsOllama: 30 });
+
+    const inicio = Date.now();
+    const resp = await tratarAula(pedido({ corpo: corpoValido() }), deps);
+    const duracaoMs = Date.now() - inicio;
+
+    assert.equal(resp.status, 502);
+    assert.ok(duracaoMs < 5_000, `deveria cortar pelo timeout, não pendurar (levou ${duracaoMs}ms)`);
+
+    const contadorFake = deps.contador as ContadorFake;
+    let total = 0;
+    for (const [k, v] of contadorFake.mapa) {
+      if (k.includes(`instalacao:${UUID_A}:`)) total += v;
+    }
+    assert.equal(total, 0, "o travamento do Ollama não pode deixar a unidade presa");
+  });
+});
+
+describe("POST /api/aula — 503 quando o Contador (Redis) falha no meio da reserva", () => {
+  test("incr da rede lança depois do incr da instalação: 503, nunca 429 — o pedido não foi recusado por limite", async () => {
+    const contador = new ContadorComFalha((chave) => chave.includes(":rede:"));
+    const deps = depsBase({ contador });
+
+    const resp = await tratarAula(pedido({ corpo: corpoValido() }), deps);
+    assert.equal(resp.status, 503);
+    const json = await resp.json();
+    assert.equal(typeof json.erro, "string");
+    assert.equal(json.motivo, undefined, "503 de infraestrutura não carrega o formato do 429 (sem 'motivo')");
+
+    // A unidade da instalação, incrementada antes da falha, foi desfeita.
+    let total = 0;
+    for (const [k, v] of contador.mapa) {
+      if (k.includes(`instalacao:${UUID_A}:`)) total += v;
+    }
+    assert.equal(total, 0);
   });
 });
 

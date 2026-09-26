@@ -263,6 +263,68 @@ describe("verificarLimite — teto geral", () => {
   });
 });
 
+// --- reserva compensada: o Contador (Redis) falha no MEIO da sequência ------
+
+/**
+ * Mesmo contrato de `ContadorFake`, mas `incr` LANÇA quando a chave bate no
+ * predicado — simula o Redis caindo entre dois incrementos da mesma
+ * requisição (ex.: `incr` da instalação passou, `incr` da rede não).
+ */
+class ContadorComFalha extends ContadorFake {
+  constructor(private readonly falhaEm: (chave: string) => boolean) {
+    super();
+  }
+  async incr(chave: string): Promise<number> {
+    if (this.falhaEm(chave)) throw new Error("Redis indisponível (simulado no teste)");
+    return super.incr(chave);
+  }
+}
+
+describe("verificarLimite — o Contador lança no meio da reserva", () => {
+  test("incr da rede lança depois do incr da instalação ter passado: a instalação é desfeita e o erro relança", async () => {
+    const contador = new ContadorComFalha((chave) => chave.includes(":rede:"));
+    const limites = { diario: 3, rede: 100, geral: 100 };
+
+    await assert.rejects(() =>
+      verificarLimite(contador, { instalacao: UUID_A, ipHash: "hash-fixo", limites }),
+    );
+
+    const dia = chaveDoDia();
+    assert.equal(
+      contador.mapa.get(`bruto:gratis:instalacao:${UUID_A}:${dia}`),
+      0,
+      "a unidade da instalação, já incrementada, tem de voltar a 0 — não pode ficar presa por uma falha do Redis",
+    );
+  });
+
+  test("incr geral lança depois de instalação e rede terem passado: as duas são desfeitas", async () => {
+    const contador = new ContadorComFalha((chave) => chave.includes(":geral:"));
+    const limites = { diario: 3, rede: 100, geral: 100 };
+
+    await assert.rejects(() =>
+      verificarLimite(contador, { instalacao: UUID_A, ipHash: "hash-fixo", limites }),
+    );
+
+    const dia = chaveDoDia();
+    assert.equal(contador.mapa.get(`bruto:gratis:instalacao:${UUID_A}:${dia}`), 0);
+    assert.equal(contador.mapa.get(`bruto:gratis:rede:hash-fixo:${dia}`), 0);
+  });
+
+  test("depois da falha desfeita, um novo pedido (com o Redis saudável) passa normalmente", async () => {
+    const contador = new ContadorComFalha((chave) => chave.includes(":rede:"));
+    const limites = { diario: 3, rede: 100, geral: 100 };
+    const params = { instalacao: UUID_A, ipHash: "hash-fixo", limites };
+
+    await assert.rejects(() => verificarLimite(contador, params));
+
+    // "Redis saudável de novo" — o mesmo duplo, sem o predicado de falha.
+    const contadorRecuperado = new ContadorFake();
+    contadorRecuperado.mapa = contador.mapa; // mesmo estado (já em 0)
+    const r = await verificarLimite(contadorRecuperado, params);
+    assert.equal(r.ok, true);
+  });
+});
+
 describe("devolverUnidade", () => {
   test("depois de devolvida, a mesma instalação pode pedir de novo dentro do limite", async () => {
     const contador = new ContadorFake();
@@ -281,6 +343,36 @@ describe("devolverUnidade", () => {
 
     const r2 = await verificarLimite(contador, { ...params, limites });
     assert.equal(r2.ok, true, "depois da devolução, um novo pedido deve passar");
+  });
+
+  test("se o decr de UMA chave falhar, as outras duas ainda são devolvidas (mesma reserva compensada)", async () => {
+    class ContadorComFalhaAoDecrementar extends ContadorFake {
+      constructor(private readonly falhaEm: (chave: string) => boolean) {
+        super();
+      }
+      async decr(chave: string): Promise<void> {
+        if (this.falhaEm(chave)) throw new Error("Redis indisponível ao decrementar (simulado)");
+        return super.decr(chave);
+      }
+    }
+
+    const contador = new ContadorComFalhaAoDecrementar((chave) => chave.includes(":instalacao:"));
+    const limites = { diario: 1, rede: 1, geral: 1 };
+    const params = { instalacao: UUID_A, ipHash: "hash-fixo" };
+
+    const r1 = await verificarLimite(contador, { ...params, limites });
+    assert.equal(r1.ok, true);
+    if (!r1.ok) return;
+
+    // Não deve lançar, mesmo com o decr da instalação falhando por dentro.
+    await devolverUnidade(contador, r1.chaves);
+
+    assert.equal(
+      contador.mapa.get(r1.chaves.rede),
+      0,
+      "rede tem de ter sido devolvida mesmo com a falha no decr da instalação",
+    );
+    assert.equal(contador.mapa.get(r1.chaves.geral), 0, "geral também tem de ter sido devolvida");
   });
 });
 

@@ -22,6 +22,7 @@ import {
   LIMITES_PADRAO,
   type Limites,
   type Contador,
+  type ResultadoLimite,
 } from "../lib/limites";
 import { chamarOllama, MODELO_PADRAO } from "../lib/ollama";
 import { lerCorpoComTeto } from "../lib/corpo";
@@ -41,6 +42,8 @@ export interface DependenciasAula {
   modelo: string;
   limites: Limites;
   fetchImpl?: typeof fetch;
+  /** Prazo do `chamarOllama` — só usado por teste; em produção é o padrão do contrato (170 s). */
+  timeoutMsOllama?: number;
 }
 
 function clienteEhExtensao(req: Request): boolean {
@@ -123,9 +126,17 @@ export async function tratarAula(req: Request, deps: DependenciasAula): Promise<
   const { instalacao, titulo, canal, transcricao } = validado.dados;
 
   // 4) limite — incrementa ANTES de chamar o Ollama (evita corrida); se
-  // estourar, `verificarLimite` já desfez os incrementos parciais.
+  // estourar, `verificarLimite` já desfez os incrementos parciais. Se o
+  // CONTADOR (Redis) falhar no meio da reserva, `verificarLimite` também já
+  // desfez o que tinha aplicado e relança — aqui isso vira 503, nunca 429:
+  // o pedido não foi recusado por limite, foi a infraestrutura que quebrou.
   const ipHash = hashIp(ipDoPedido(req), deps.sal);
-  const decisao = await verificarLimite(contador, { instalacao, ipHash, limites: deps.limites });
+  let decisao: ResultadoLimite;
+  try {
+    decisao = await verificarLimite(contador, { instalacao, ipHash, limites: deps.limites });
+  } catch {
+    return erroJson(503, "Não foi possível verificar o limite agora.", origem);
+  }
 
   if (!decisao.ok) {
     return erroJson(429, "Limite de aulas grátis atingido.", origem, {
@@ -143,6 +154,7 @@ export async function tratarAula(req: Request, deps: DependenciasAula): Promise<
     apiKey: deps.chaveOllama,
     modelo: deps.modelo,
     fetchImpl: deps.fetchImpl,
+    timeoutMs: deps.timeoutMsOllama,
   });
 
   if (!resultado.ok) {

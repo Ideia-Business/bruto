@@ -109,50 +109,67 @@ export async function chamarOllama(params: ChamarOllamaParams): Promise<Resultad
   const relogio = new AbortController();
   const corte = setTimeout(() => relogio.abort(), timeoutMs);
 
-  let resposta: Response;
+  // O relógio cobre a chamada INTEIRA — inclusive a leitura do corpo — e só
+  // é encerrado no `finally`. Achado P2 da revisão cross-vendor de 25/09: a
+  // versão anterior dava `clearTimeout` assim que os cabeçalhos chegavam
+  // (`fetch` resolve nesse ponto, antes do corpo terminar de ser lido). Se o
+  // Ollama travasse DEPOIS de responder os cabeçalhos, a leitura do corpo
+  // ficava sem prazo nenhum: a função só morreria pelo teto da própria
+  // plataforma (bem acima dos 170 s do contrato), e como `chamarOllama` nunca
+  // retornava, o handler nunca chegava a `devolverUnidade` — a cota da pessoa
+  // ficava presa. O `AbortSignal` que o `fetch` recebeu também governa a
+  // leitura do `body`: abortar aqui aborta os dois.
   try {
-    resposta = await fetchImpl(ENDPOINT_OLLAMA, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${params.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: modelo,
-        max_tokens: MAX_TOKENS,
-        messages: [
-          { role: "system", content: studyPrompt(params.meta) },
-          { role: "user", content: params.transcricao },
-        ],
-      }),
-      signal: relogio.signal,
-    });
-  } catch (err) {
+    let resposta: Response;
+    try {
+      resposta = await fetchImpl(ENDPOINT_OLLAMA, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${params.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelo,
+          max_tokens: MAX_TOKENS,
+          messages: [
+            { role: "system", content: studyPrompt(params.meta) },
+            { role: "user", content: params.transcricao },
+          ],
+        }),
+        signal: relogio.signal,
+      });
+    } catch (err) {
+      // AbortError de timeout tem uma causa distinta de um erro de rede comum,
+      // mas nenhuma das duas mensagens carrega nada do que foi enviado.
+      const foiAbort = err instanceof Error && err.name === "AbortError";
+      return { ok: false, motivo: foiAbort ? "timeout" : "rede" };
+    }
+
+    if (!resposta.ok) {
+      return { ok: false, motivo: "http" };
+    }
+
+    const bruto = await lerCorpoComTeto(resposta, TETO_RESPOSTA_BYTES);
+    if (bruto === null) {
+      // `lerCorpoComTeto` devolve `null` tanto para corpo grande/malformado
+      // quanto para uma leitura interrompida pelo abort — o relógio já ter
+      // disparado é o que distingue "travou e estourou o prazo" do resto.
+      return { ok: false, motivo: relogio.signal.aborted ? "timeout" : "resposta_invalida" };
+    }
+
+    let json: unknown;
+    try {
+      json = JSON.parse(bruto);
+    } catch {
+      return { ok: false, motivo: "resposta_invalida" };
+    }
+
+    const texto = extrairTexto(json);
+    if (texto === null) return { ok: false, motivo: "resposta_invalida" };
+
+    const aula = texto.length > TETO_AULA_BYTES ? texto.slice(0, TETO_AULA_BYTES) : texto;
+    return { ok: true, aula };
+  } finally {
     clearTimeout(corte);
-    // AbortError de timeout tem uma causa distinta de um erro de rede comum,
-    // mas nenhuma das duas mensagens carrega nada do que foi enviado.
-    const foiAbort = err instanceof Error && err.name === "AbortError";
-    return { ok: false, motivo: foiAbort ? "timeout" : "rede" };
   }
-  clearTimeout(corte);
-
-  if (!resposta.ok) {
-    return { ok: false, motivo: "http" };
-  }
-
-  const bruto = await lerCorpoComTeto(resposta, TETO_RESPOSTA_BYTES);
-  if (bruto === null) return { ok: false, motivo: "resposta_invalida" };
-
-  let json: unknown;
-  try {
-    json = JSON.parse(bruto);
-  } catch {
-    return { ok: false, motivo: "resposta_invalida" };
-  }
-
-  const texto = extrairTexto(json);
-  if (texto === null) return { ok: false, motivo: "resposta_invalida" };
-
-  const aula = texto.length > TETO_AULA_BYTES ? texto.slice(0, TETO_AULA_BYTES) : texto;
-  return { ok: true, aula };
 }

@@ -144,15 +144,43 @@ export type ResultadoLimite =
   | { ok: false; motivo: "instalacao" | "rede" | "geral"; restantes: number; limite: number };
 
 /**
+ * Desfaz, em ordem INVERSA, só as chaves que de fato chegaram a ser
+ * incrementadas — nunca decrementa o que nunca subiu. Cada `decr` é
+ * best-effort (`catch` mudo): uma falha ao desfazer não pode mascarar a causa
+ * original nem impedir o desfazimento das demais chaves da lista.
+ */
+async function desfazerIncrementos(contador: Contador, aplicados: readonly string[]): Promise<void> {
+  for (let i = aplicados.length - 1; i >= 0; i--) {
+    await contador.decr(aplicados[i]).catch(() => {});
+  }
+}
+
+/**
  * A decisão central do modo grátis. Incrementa as três chaves NESTA ORDEM
  * (instalação → rede → geral) — a mais específica primeiro, porque é o motivo
  * mais informativo para a pessoa (o `429` do contrato tem um único `motivo`).
  * Ao primeiro teto estourado, desfaz os incrementos já feitos (nenhuma unidade
  * fica gasta por um pedido recusado) e devolve o motivo.
  *
- * Quem chama, se o Ollama falhar depois, chama `devolverUnidade` com as
- * `chaves` de um resultado `ok: true` — mesma simetria, unidade sempre
- * devolvida quando a aula não sai.
+ * RESERVA COMPENSADA: se o `Contador` (Redis) LANÇAR no meio da sequência —
+ * por exemplo, `incr` da instalação foi bem-sucedido e o `incr` da rede falhou
+ * por indisponibilidade — a exceção não pode deixar a unidade da instalação
+ * presa sem aula (três falhas destas esgotariam o dia inteiro da pessoa por
+ * um problema nosso, não dela). Por isso todo `incr` bem-sucedido é anotado
+ * em `aplicados`, e o `catch` desfaz exatamente esses antes de RELANÇAR — quem
+ * chama (`servidor/api/aula.ts`) distingue esse caso do 429 normal porque aqui
+ * a função lança em vez de devolver `ok: false`, e responde 503 (falha de
+ * infraestrutura), nunca 429 (limite — que pressupõe o contador functioning).
+ *
+ * Alternativa cogitada e descartada: atomicidade real via `EVAL` de Lua no
+ * Redis (`servidor/lib/redis-contador.ts`). A reserva compensada foi
+ * preferida por ficar inteira aqui, na lógica PURA — testável com um
+ * `Contador` fake que lança, sem precisar de um interpretador Lua no duplo de
+ * teste nem de depender do suporte a `EVAL` da API REST do Upstash.
+ *
+ * Quem chama, se o Ollama falhar depois de um `ok: true`, chama
+ * `devolverUnidade` com as `chaves` — mesma simetria, unidade sempre devolvida
+ * quando a aula não sai.
  */
 export async function verificarLimite(
   contador: Contador,
@@ -167,40 +195,52 @@ export async function verificarLimite(
     geral: chaveGeral(dia),
   };
 
-  const valorInstalacao = await contador.incr(chaves.instalacao, TTL_SEGUNDOS);
-  if (valorInstalacao > limites.diario) {
-    await contador.decr(chaves.instalacao);
-    return { ok: false, motivo: "instalacao", restantes: 0, limite: limites.diario };
-  }
+  const aplicados: string[] = [];
 
-  const valorRede = await contador.incr(chaves.rede, TTL_SEGUNDOS);
-  if (valorRede > limites.rede) {
-    await contador.decr(chaves.rede);
-    await contador.decr(chaves.instalacao);
-    return { ok: false, motivo: "rede", restantes: 0, limite: limites.diario };
-  }
+  try {
+    const valorInstalacao = await contador.incr(chaves.instalacao, TTL_SEGUNDOS);
+    aplicados.push(chaves.instalacao);
+    if (valorInstalacao > limites.diario) {
+      await desfazerIncrementos(contador, aplicados);
+      return { ok: false, motivo: "instalacao", restantes: 0, limite: limites.diario };
+    }
 
-  const valorGeral = await contador.incr(chaves.geral, TTL_SEGUNDOS);
-  if (valorGeral > limites.geral) {
-    await contador.decr(chaves.geral);
-    await contador.decr(chaves.rede);
-    await contador.decr(chaves.instalacao);
-    return { ok: false, motivo: "geral", restantes: 0, limite: limites.diario };
-  }
+    const valorRede = await contador.incr(chaves.rede, TTL_SEGUNDOS);
+    aplicados.push(chaves.rede);
+    if (valorRede > limites.rede) {
+      await desfazerIncrementos(contador, aplicados);
+      return { ok: false, motivo: "rede", restantes: 0, limite: limites.diario };
+    }
 
-  return {
-    ok: true,
-    restantes: Math.max(0, limites.diario - valorInstalacao),
-    limite: limites.diario,
-    chaves,
-  };
+    const valorGeral = await contador.incr(chaves.geral, TTL_SEGUNDOS);
+    aplicados.push(chaves.geral);
+    if (valorGeral > limites.geral) {
+      await desfazerIncrementos(contador, aplicados);
+      return { ok: false, motivo: "geral", restantes: 0, limite: limites.diario };
+    }
+
+    return {
+      ok: true,
+      restantes: Math.max(0, limites.diario - valorInstalacao),
+      limite: limites.diario,
+      chaves,
+    };
+  } catch (err) {
+    // O Contador quebrou no meio da reserva — não é teto estourado. Desfaz o
+    // que já tiver aplicado e relança: `tratarAula` decide 503, não 429.
+    await desfazerIncrementos(contador, aplicados);
+    throw err;
+  }
 }
 
-/** Devolve as três unidades — usado quando o Ollama falha depois do limite ter passado. */
+/**
+ * Devolve as três unidades — usado quando o Ollama falha depois do limite ter
+ * passado. Cada `decr` é independente (mesmo `catch` mudo de
+ * `desfazerIncrementos`): a falha ao devolver UMA chave não pode impedir a
+ * devolução das outras duas.
+ */
 export async function devolverUnidade(contador: Contador, chaves: ChavesDoPedido): Promise<void> {
-  await contador.decr(chaves.instalacao);
-  await contador.decr(chaves.rede);
-  await contador.decr(chaves.geral);
+  await desfazerIncrementos(contador, [chaves.instalacao, chaves.rede, chaves.geral]);
 }
 
 /** O que `GET /api/cota` usa: só lê, nunca incrementa. */

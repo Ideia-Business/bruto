@@ -16,6 +16,9 @@ const eslintConfig = defineConfig([
     // Build da extensão: código gerado, não fonte.
     "extension/dist/**",
 
+    // Pacote do servidor do modo grátis: gerado por scripts/build-servidor.mjs.
+    "servidor/.payload/**",
+
     // Worktrees por assunto (`.wt/<assunto>`, criados por `worktree-lane.sh`).
     // São CÓPIAS inteiras deste mesmo repositório dentro dele. O git já as
     // ignora (`.git/info/exclude`), mas o eslint tem lista própria: sem esta
