@@ -2,7 +2,7 @@
 
 Documento honesto de estado. O que está marcado como pronto foi **exercido de verdade** — com vídeo real, chave real e o resultado conferido —, não apenas compilado.
 
-Última revisão: 11/09/2026.
+Última revisão: 26/09/2026.
 
 ---
 
@@ -13,6 +13,12 @@ Documento honesto de estado. O que está marcado como pronto foi **exercido de v
 Cole um link de YouTube, Instagram ou TikTok e receba resumo, transcrição, mapa mental e a Aula. Exporta `.docx` e `.pdf`. Catálogo em SQLite; arquivos em `~/.bruto/library/`.
 
 **Verificado em 10/09/2026** com um reel do Instagram: metadados → áudio → Whisper → resumo → mapa mental → 9 artefatos. Whisper errou palavras na transcrição e o resumo as corrigiu pelo contexto.
+
+### Modo grátis — servidor público da Ideia Business
+
+Quem instala a extensão sem chave nem app local recebe 3 aulas grátis por dia. O servidor `bruto-gratis` vive na Vercel (time ideia-business), recebe transcrição e metadados do vídeo, monta a aula com o Ollama Cloud (assinatura anual do dono) e não guarda nem transcrição nem aula — tudo some em 36 h. Limite por rede (IP) é 6 por dia; limite geral é 150. Redeploy e reinstalação gera novo UUID da instalação.
+
+**Publicado em 26/09/2026 (PR #13), revisado por Codex + Grok 4.7, em produção.** Dívida aceita documentada em `servidor/lib/redis-contador.ts` (`// debt: resposta do EVAL perdida no meio de falha rara de rede consome 1 aula sem gerar`): o trade-off entre resolver (timeout complexo, retry não-trivial) e deixar aberto (risco <1 aula perdida em ano) foi decidido como "deixar" por custo desproporcional ao benefício. Teste da reserva compensada (falha no meio da sequência de incrementos desfaz o que já foi contado) em `tests/servidor/limites.test.ts`. Extensão mostra quantas aulas restam hoje e, no limite, oferece as duas saídas: chave ou app local.
 
 ### Transcrição local, sem script externo
 
@@ -84,17 +90,9 @@ os textos da listagem com as respostas do questionário de privacidade
 antes de gastar uma revisão da Loja — arquivo faltando, versão divergente, texto acima do
 limite, ícone declarado e ausente, código remoto. O CI roda a mesma conferência a cada push.
 
-Falta o que exige conta e cartão: conta de desenvolvedor (US$ 5, taxa única), uma captura de
-tela e o envio. O passo a passo está no `LOJA.md`.
+**Atualizado em 26/09/2026 (modo grátis publicado):** a descrição da loja reflete os três modos (grátis, plano, chave) e explica que quem instala recebe 3 aulas por dia gratuitamente — não precisa de chave nem cadastro para começar a testar. Imagem promocional obrigatória 440×280 gerada da marca em 25/09 e está em `extension/pacote/capturas/`. Pacote regenerado com todos os ícones presentes.
 
-
-### Fase 3b — Conta e Cota da Casa (adiado por decisão)
-
-Quem não quiser configurar chave própria ganharia uma cota pequena da casa. Exige Postgres, autenticação e contagem de uso.
-
-**Adiado de propósito**, não esquecido: é a única parte do projeto com custo recorrente — servidor mais a IA que a casa paga por quem não tem chave. Construir antes de existir gente pedindo é pagar infraestrutura para um público hipotético. O Caderno de Ideias, que era a peça útil desta fase, foi entregue sem servidor nenhum.
-
-Há uma dívida de modelagem a pagar quando ela vier: hoje `brutos.id` é o identificador do vídeo na plataforma, usado como chave primária. Com duas pessoas, o mesmo vídeo colide e uma sobrescreve o resumo da outra. A cura é separar o **vídeo canônico** (global, sem dono) da **entrada de biblioteca** (por pessoa).
+Falta o que exige conta e cartão: conta de desenvolvedor (US$ 5, taxa única), captura da aula (só o dono, com sua chave) e o envio. O passo a passo está no `LOJA.md`.
 
 ---
 
@@ -102,7 +100,7 @@ Há uma dívida de modelagem a pagar quando ela vier: hoje `brutos.id` é o iden
 
 | O quê | Por quê |
 |---|---|
-| A extensão destrincha sozinha só no YouTube | Instagram e TikTok não expõem transcrição na página. Em ambas, a extensão encaminha ao app local (que precisa estar aberto) para transcrever o áudio |
+| A extensão destrincha sozinha só no YouTube | Instagram e TikTok não expõem transcrição na página. Em ambas, a extensão encaminha ao app local (que precisa estar aberto) para transcrever o áudio. Sem app e sem chave, a extensão oferece o modo grátis (servidor público) como terceira opção |
 | A extensão precisa que o vídeo tenha o botão "Mostrar transcrição" | É de lá que ela lê. Sem transcrição publicada, não há o que capturar |
 | O endpoint `/api/timedtext` do YouTube está fechado | Desde ~09/2026 devolve resposta vazia com status de sucesso para requisição feita de dentro do navegador. Não afeta o app local, que usa `yt-dlp` |
 | Não está na Chrome Web Store | Exige conta de desenvolvedor, política de privacidade e revisão. Por ora, carrega-se sem compactação |
