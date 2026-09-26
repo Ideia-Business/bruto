@@ -28,7 +28,23 @@ const MIME: Record<string, string> = {
 };
 
 function sanitize(name: string): string {
-  return name.replace(/[/\\?%*:|"<>]/g, "-").slice(0, 120);
+  return name.replace(/[/\\?%*:|"<>]/g, "-");
+}
+
+/**
+ * Corta o nome pelo teto preservando a extensão. A versão antiga cortava a
+ * STRING FINAL já com sufixo (`.docx` etc.) em 120 chars — com título longo
+ * (111+ chars, comum em vídeo do TikTok ou depois de um PATCH de título), o
+ * corte caía ANTES da extensão, que desaparecia inteira; docx/pdf/md do
+ * mesmo vídeo colapsavam no mesmo nome truncado, e o loop de exportação
+ * automática sobrescrevia um com o outro em silêncio — o toast ainda assim
+ * anunciava sucesso pleno.
+ */
+export function comLimiteDeNome(nome: string, limite = 120): string {
+  const ext = path.extname(nome);
+  const base = ext ? nome.slice(0, nome.length - ext.length) : nome;
+  const disponivel = Math.max(limite - ext.length, 1);
+  return `${base.slice(0, disponivel)}${ext}`;
 }
 
 /** GET /api/artifacts/[id] → download do arquivo com nome amigável. */
@@ -41,7 +57,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const video = getBrutoById(art.videoId);
   const title = sanitize(video?.title ?? art.videoId);
   const labelFn = DOWNLOAD_LABEL[art.kind];
-  const filename = sanitize(labelFn ? labelFn(title) : path.basename(art.filePath));
+  const filename = comLimiteDeNome(sanitize(labelFn ? labelFn(title) : path.basename(art.filePath)));
   const ext = path.extname(art.filePath).toLowerCase();
 
   const data = fs.readFileSync(art.filePath);

@@ -44,6 +44,18 @@ export function nomeArquivoDoCabecalho(header: string | null, fallback: string):
   return semAspas?.[1] ? sanitizarNomeArquivo(decodeURIComponent(semAspas[1].trim())) : fallback;
 }
 
+/**
+ * Uma falha DEPOIS de já ter escrito pelo menos um arquivo de verdade marca
+ * "já tentado" (é uma cópia parcial, não repete a cada reload). Uma falha
+ * ANTES de escrever nada — rede caiu no GET dos dados do vídeo, 500
+ * transitório, pasta sumiu bem no início — NÃO marca: sem isso, um erro
+ * passageiro bloqueava o vídeo pra sempre, e nem reabrir a pasta nem
+ * reconceder permissão recuperava (não há retry se o id já está marcado).
+ */
+export function deveMarcarAposFalha(escritos: number): boolean {
+  return escritos > 0;
+}
+
 /** Decide a mensagem de conclusão a partir do que realmente foi escrito — nunca "sucesso" quando faltou artefato. */
 export function resultadoDaCopia(
   escritos: number,
@@ -107,6 +119,10 @@ export async function exportarVideoAutomaticamente(videoId: string | null | unde
   }
 
   emAndamento.add(videoId);
+  // Fora do try para o catch poder ver quanto já foi escrito de verdade — é o
+  // que decide se uma falha marca "já tentado" (parou o retry pra sempre) ou
+  // fica livre pro catch-up tentar de novo na próxima carga de página.
+  let escritos = 0;
   try {
     const res = await fetchApp(`/api/videos/${videoId}`);
     if (!res.ok) throw new Error("Não foi possível ler os dados do vídeo.");
@@ -120,7 +136,6 @@ export async function exportarVideoAutomaticamente(videoId: string | null | unde
     const pastaVideo = await pastaCategoria.getDirectoryHandle(pastaVideoNome, { create: true });
 
     const total = detalhe.artifacts.length;
-    let escritos = 0;
     for (const artefato of detalhe.artifacts) {
       const artRes = await fetchApp(`/api/artifacts/${artefato.id}`);
       if (!artRes.ok) continue; // um artefato faltando não derruba o resto do pacote
@@ -137,7 +152,10 @@ export async function exportarVideoAutomaticamente(videoId: string | null | unde
     }
 
     const resultado = resultadoDaCopia(escritos, total);
-    const destino = `${categoriaNome}/${tituloNome}`;
+    // A pasta REAL no disco é `pastaVideoNome` (com o sufixo do id, item 1 da
+    // rodada anterior) — mostrar `tituloNome` sozinho aqui anunciava um
+    // caminho que não existe.
+    const destino = `${categoriaNome}/${pastaVideoNome}`;
     if (resultado.tipo === "sucesso") {
       toast.success(`${resultado.titulo} ${destino}`, {
         description: "Cópia na pasta escolhida — o original continua na biblioteca do Bruto.",
@@ -153,7 +171,7 @@ export async function exportarVideoAutomaticamente(videoId: string | null | unde
       description:
         "O vídeo está salvo normalmente na biblioteca. Se a pasta sumiu ou mudou de lugar, reabra Configurações.",
     });
-    marcarExportado(videoId); // falha definitiva desta tentativa — não martela a cada reload
+    if (deveMarcarAposFalha(escritos)) marcarExportado(videoId);
   } finally {
     emAndamento.delete(videoId);
   }

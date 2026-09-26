@@ -23,6 +23,7 @@ import {
   suportaPastaLocal,
 } from "@/lib/pasta-exportacao";
 import {
+  deveMarcarAposFalha,
   idsPendentesDeExportacao,
   nomeArquivoDoCabecalho,
   resultadoDaCopia,
@@ -133,6 +134,17 @@ describe("resultadoDaCopia — item 5, nunca anuncia sucesso pleno com artefato 
     const r = resultadoDaCopia(3, 5);
     assert.equal(r.tipo, "parcial");
     assert.match(r.titulo, /3 de 5/);
+  });
+});
+
+describe("deveMarcarAposFalha — item 3, erro transitório não bloqueia retry pra sempre", () => {
+  test("nada escrito antes da exceção (ex.: rede caiu no GET do vídeo) → NÃO marca, tenta de novo depois", () => {
+    assert.equal(deveMarcarAposFalha(0), false);
+  });
+
+  test("cópia parcial que quebrou no meio (já escreveu pelo menos 1 arquivo) → marca, não martela a cada reload", () => {
+    assert.equal(deveMarcarAposFalha(1), true);
+    assert.equal(deveMarcarAposFalha(4), true);
   });
 });
 

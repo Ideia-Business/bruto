@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { FolderOpen, FolderCheck, FolderX, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { sincronizarExportacoesPendentes } from "@/lib/exportar-artefatos";
 import {
   autoExportarAtivado,
   definirAutoExportar,
@@ -65,6 +66,10 @@ export function ConfiguracoesClient() {
       if (!handle) return; // cancelado no seletor do sistema
       setEstado({ tipo: "ok", nome: handle.name });
       toast.success(`Pasta "${handle.name}" escolhida.`);
+      // Se já existem vídeos concluídos sem marca de exportado (a pessoa
+      // ligou a pasta depois de já ter usado o app), tenta pegar a fila
+      // pendente agora — sem esperar a próxima navegação ou o timer.
+      void sincronizarExportacoesPendentes();
     } catch {
       toast.error("Não foi possível acessar essa pasta.");
     } finally {
@@ -84,6 +89,7 @@ export function ConfiguracoesClient() {
       if (permissao === "granted") {
         setEstado({ tipo: "ok", nome: handle.name });
         toast.success("Permissão concedida de novo.");
+        void sincronizarExportacoesPendentes();
       } else {
         toast.error("Permissão negada — a exportação automática continua pausada.");
       }
@@ -104,6 +110,9 @@ export function ConfiguracoesClient() {
   function alternarAutoExportar(ativo: boolean) {
     setAutoExportarState(ativo);
     definirAutoExportar(ativo);
+    // Ligou agora: se já houver vídeo done parado (de antes de existir a
+    // pasta), tenta exportar na hora — não espera a pessoa navegar.
+    if (ativo) void sincronizarExportacoesPendentes();
   }
 
   if (!suportado) {
