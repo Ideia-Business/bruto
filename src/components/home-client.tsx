@@ -20,11 +20,19 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
   const [data, setData] = useState<CatalogResponse>(initial);
   const [activeJobs, setActiveJobs] = useState<Job[]>(initial.activeJobs);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Debounce reduz QUANTAS vezes buscamos, mas não impede uma busca antiga
+  // de responder DEPOIS de uma mais nova (duas em voo ao mesmo tempo — o
+  // `clearTimeout` só cancela o disparo, nunca um fetch já em andamento).
+  // Geração: só a resposta da busca mais recente é aplicada (achado de
+  // Codex e Grok, 4ª rodada do multi-link).
+  const geracaoRef = useRef(0);
 
   const refetch = useCallback(async () => {
+    const minhaGeracao = ++geracaoRef.current;
     try {
       const res = await fetchApp("/api/videos");
       const fresh = (await res.json()) as CatalogResponse;
+      if (minhaGeracao !== geracaoRef.current) return; // superada por outra busca
       setData(fresh);
       setActiveJobs(fresh.activeJobs);
     } catch {
