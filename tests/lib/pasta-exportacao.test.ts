@@ -16,6 +16,7 @@ import {
   autoExportarAtivado,
   definirAutoExportar,
   nomeDaPastaDoVideo,
+  obterPastaAtual,
   obterPastaId,
   obterPastaSalva,
   pedirPermissao,
@@ -24,11 +25,11 @@ import {
   suportaPastaLocal,
 } from "@/lib/pasta-exportacao";
 import {
+  avisarUmaVez,
   deveMarcarExportado,
   idsPendentesDeExportacao,
   nomeArquivoDoCabecalho,
   esquecerExportacaoDoVideo,
-  obterExportados,
   pastaAindaExisteNoDisco,
   reexportarAposArtefatoNovo,
   resultadoDaCopia,
@@ -317,8 +318,8 @@ describe("ambiente sem File System Access API (Node/CI, Safari/Firefox)", () => 
     assert.equal(await obterPastaId(), null);
   });
 
-  test("obterExportados() nunca lança sem localStorage/IndexedDB — volta objeto vazio", async () => {
-    assert.deepEqual(await obterExportados(), {});
+  test("obterPastaAtual() nunca lança — volta null quando não há suporte", async () => {
+    assert.equal(await obterPastaAtual(), null);
   });
 
   // Item 2 (5ª revisão, Grok): endpoints sob demanda (aula, transcrição
@@ -358,5 +359,42 @@ describe("permissaoAtual / pedirPermissao — com duplo de FileSystemDirectoryHa
     const handle = duplo("lança");
     assert.equal(await permissaoAtual(handle), "denied");
     assert.equal(await pedirPermissao(handle), "denied");
+  });
+});
+
+describe("avisarUmaVez — item 3 (6ª revisão), falha persistente não repete o mesmo toast a cada 60s", () => {
+  test("primeira vez pra uma chave (videoId+jobId) sempre mostra", () => {
+    let chamadas = 0;
+    avisarUmaVez("v1", "j1", "falha", () => chamadas++);
+    assert.equal(chamadas, 1);
+  });
+
+  test("mesma chave e mesmo tipo de aviso de novo → NÃO mostra (é a falha persistente repetindo, não uma nova)", () => {
+    let chamadas = 0;
+    avisarUmaVez("v2", "j1", "falha", () => chamadas++);
+    avisarUmaVez("v2", "j1", "falha", () => chamadas++);
+    avisarUmaVez("v2", "j1", "falha", () => chamadas++);
+    assert.equal(chamadas, 1);
+  });
+
+  test("mesmo vídeo, jobId DIFERENTE (retry) → mostra de novo, é uma falha nova", () => {
+    let chamadas = 0;
+    avisarUmaVez("v3", "job-antigo", "falha", () => chamadas++);
+    avisarUmaVez("v3", "job-novo-do-retry", "falha", () => chamadas++);
+    assert.equal(chamadas, 2);
+  });
+
+  test("mesmo vídeo+job, tipo de aviso DIFERENTE (parcial depois de falha) → mostra de novo", () => {
+    let chamadas = 0;
+    avisarUmaVez("v4", "j1", "falha", () => chamadas++);
+    avisarUmaVez("v4", "j1", "parcial", () => chamadas++);
+    assert.equal(chamadas, 2);
+  });
+
+  test("vídeos diferentes nunca compartilham a mesma dedup — cada um avisa a sua vez", () => {
+    let chamadas = 0;
+    avisarUmaVez("v5", "j1", "falha", () => chamadas++);
+    avisarUmaVez("v6", "j1", "falha", () => chamadas++);
+    assert.equal(chamadas, 2);
   });
 });

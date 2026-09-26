@@ -12,9 +12,14 @@
 const DB_NAME = "bruto-exportacao";
 const DB_VERSION = 1;
 const STORE = "config";
-const CHAVE_PASTA = "pastaHandle";
-const CHAVE_PASTA_ID = "pastaId";
+const CHAVE_PASTA_ATUAL = "pastaAtual";
 const CHAVE_LOCALSTORAGE_AUTO = "bruto:exportar-automaticamente";
+
+/** Handle e identidade opaca da pasta ATUALMENTE escolhida — sempre lidos e gravados JUNTOS, nunca em duas chamadas separadas (ver `obterPastaAtual`). */
+export interface PastaAtual {
+  handle: FileSystemDirectoryHandle;
+  pastaId: string;
+}
 
 function abrirDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -77,36 +82,45 @@ export function suportaPastaLocal(): boolean {
   );
 }
 
-/** Handle salvo de uma sessão anterior, ou `null` se nunca escolhido / erro ao ler. */
-export async function obterPastaSalva(): Promise<FileSystemDirectoryHandle | null> {
+/**
+ * Handle + identidade opaca da pasta ATUAL, numa ÚNICA leitura do IndexedDB
+ * — nunca em duas chamadas separadas. Duas leituras (uma pro handle, outra
+ * pro pastaId) reabrem uma janela de corrida: trocar de pasta no intervalo
+ * ENTRE as duas leituras faz quem chama usar o handle de uma pasta com o
+ * pastaId de outra — a mesma classe de bug já fechada uma vez (item 1 da 5ª
+ * revisão) reabrindo numa escala menor (item 2 da 6ª). `null` = nenhuma
+ * pasta escolhida ainda, ou navegador sem suporte.
+ */
+export async function obterPastaAtual(): Promise<PastaAtual | null> {
   if (!suportaPastaLocal()) return null;
   try {
-    return (await idbGet<FileSystemDirectoryHandle>(CHAVE_PASTA)) ?? null;
+    return (await idbGet<PastaAtual>(CHAVE_PASTA_ATUAL)) ?? null;
   } catch {
     return null;
   }
 }
 
-export async function esquecerPastaEscolhida(): Promise<void> {
-  await idbDelete(CHAVE_PASTA);
-  await idbDelete(CHAVE_PASTA_ID);
+/** Só o handle, pra quem não precisa do pastaId junto (ex.: a tela de configurações, que só mostra/reconcede permissão). */
+export async function obterPastaSalva(): Promise<FileSystemDirectoryHandle | null> {
+  return (await obterPastaAtual())?.handle ?? null;
 }
 
 /**
- * Identidade opaca da pasta ATUALMENTE escolhida — gerada de novo a cada
- * `escolherPasta()` bem-sucedida. Escopa as marcas de "já exportado"
+ * Só o pastaId. Escopa as marcas de "já exportado"
  * (`src/lib/exportar-artefatos.ts`) por pasta: sem isto, trocar de A para uma
  * pasta B vazia mantinha as marcas de A, e o catch-up pulava todo vídeo já
- * marcado — B nunca recebia cópia nenhuma. `null` = nenhuma pasta escolhida
- * ainda (ou navegador sem suporte).
+ * marcado — B nunca recebia cópia nenhuma.
+ *
+ * Quem vai USAR o pastaId pra decidir uma escrita (a exportação em si) deve
+ * chamar `obterPastaAtual()` e pegar os dois campos da MESMA leitura — nunca
+ * este atalho seguido de `obterPastaSalva()`, ou vice-versa.
  */
 export async function obterPastaId(): Promise<string | null> {
-  if (!suportaPastaLocal()) return null;
-  try {
-    return (await idbGet<string>(CHAVE_PASTA_ID)) ?? null;
-  } catch {
-    return null;
-  }
+  return (await obterPastaAtual())?.pastaId ?? null;
+}
+
+export async function esquecerPastaEscolhida(): Promise<void> {
+  await idbDelete(CHAVE_PASTA_ATUAL);
 }
 
 /**
@@ -121,9 +135,9 @@ export async function escolherPasta(): Promise<FileSystemDirectoryHandle | null>
     // pelo botão "Trocar" — gera uma identidade nova. As marcas de exportado
     // da pasta anterior ficam órfãs (não apagadas, só fora de escopo): o
     // catch-up parte de zero para a pasta atual, sem precisar comparar
-    // identidade de pasta (que a API nem expõe de forma confiável).
-    await idbSet(CHAVE_PASTA, handle);
-    await idbSet(CHAVE_PASTA_ID, crypto.randomUUID());
+    // identidade de pasta (que a API nem expõe de forma confiável). Handle e
+    // pastaId gravados NUMA SÓ chamada — a mesma razão do `obterPastaAtual`.
+    await idbSet(CHAVE_PASTA_ATUAL, { handle, pastaId: crypto.randomUUID() });
     return handle;
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") return null;

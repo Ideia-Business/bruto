@@ -12,8 +12,8 @@ import { fetchApp } from "@/lib/fetch-app";
 import {
   autoExportarAtivado,
   nomeDaPastaDoVideo,
+  obterPastaAtual,
   obterPastaId,
-  obterPastaSalva,
   permissaoAtual,
   sanitizarNomeArquivo,
 } from "@/lib/pasta-exportacao";
@@ -108,11 +108,6 @@ async function obterExportadosDaPasta(pastaId: string | null): Promise<Record<st
   }
 }
 
-/** Mesmo mapa, mas sempre da pasta ATUAL — para quem não está no meio de uma exportação (o catch-up, a tela de configurações). */
-export async function obterExportados(): Promise<Record<string, string>> {
-  return obterExportadosDaPasta(await obterPastaId());
-}
-
 async function marcarExportadoNaPasta(videoId: string, jobId: string, pastaId: string | null): Promise<void> {
   try {
     const atual = await obterExportadosDaPasta(pastaId);
@@ -194,6 +189,24 @@ export function idsPendentesDeExportacao(
 /** Evita disparo concorrente do mesmo vídeo (ex.: heartbeat/evento duplicado, ou catch-up cruzando com o SSE ao vivo). */
 const emAndamento = new Set<string>();
 
+/**
+ * Evita repetir o MESMO toast de aviso pro mesmo (vídeo, job) a cada 60s do
+ * timer — item 3 da 6ª revisão (Grok): uma falha PERSISTENTE (pasta apagada,
+ * artefato 404 permanente) não marca (corretamente — ver `deveMarcarExportado`),
+ * então o catch-up tenta de novo a cada 60s pra sempre, e sem isto avisava
+ * de novo a cada vez, indefinidamente. Chave por `${videoId}:${jobId}`, não
+ * só `videoId`: um job novo (retry) que falhe de novo merece aviso de novo —
+ * é uma falha diferente, não a mesma repetindo.
+ */
+const ultimoAvisoPorVideo = new Map<string, string>();
+
+export function avisarUmaVez(videoId: string, jobId: string, tipoAviso: string, mostrar: () => void): void {
+  const chave = `${videoId}:${jobId}`;
+  if (ultimoAvisoPorVideo.get(chave) === tipoAviso) return;
+  ultimoAvisoPorVideo.set(chave, tipoAviso);
+  mostrar();
+}
+
 export async function exportarVideoAutomaticamente(
   videoId: string | null | undefined,
   jobId: string | null | undefined,
@@ -217,17 +230,20 @@ export async function exportarVideoAutomaticamente(
   // `marcarExportadoNaPasta` pra o porquê.
   let pastaId: string | null = null;
   try {
-    const handle = await obterPastaSalva();
-    if (!handle) return; // nunca configurado — nada a fazer, sem ruído (condição prévia: não marca)
-    // Handle e pastaId capturados no MESMO instante — é o que garante que os
-    // bytes (escritos no `handle` capturado aqui) e a marca de sucesso (no
+    // Handle e pastaId vêm da MESMA leitura do IndexedDB (`obterPastaAtual`,
+    // item 2 da 6ª revisão — duas leituras separadas, mesmo cada uma rápida,
+    // deixavam uma janela pra pasta trocar ENTRE elas). É o que garante que
+    // os bytes (escritos no `handle` capturado aqui) e a marca de sucesso (no
     // fim, gravada só se `pastaId` ainda bater) sempre se refiram à MESMA
     // pasta. Sem isto: pessoa troca de pasta A→B no meio da exportação, os
     // bytes vão pra A (handle já capturado), mas a marca seria gravada na
     // chave de B (lida de novo, fresca, no fim) — B "acharia" que já tinha
     // esse vídeo sem nunca ter recebido nada, e o catch-up nunca mais
     // tentaria esse vídeo em B.
-    pastaId = await obterPastaId();
+    const pastaAtual = await obterPastaAtual();
+    if (!pastaAtual) return; // nunca configurado — nada a fazer, sem ruído (condição prévia: não marca)
+    const { handle } = pastaAtual;
+    pastaId = pastaAtual.pastaId;
 
     const exportados = await obterExportadosDaPasta(pastaId);
     if (exportados[videoId] === jobId) return; // já exportado ESTE job nesta pasta — nada a fazer
@@ -268,6 +284,27 @@ export async function exportarVideoAutomaticamente(
       escritos++;
     }
 
+    // Reconfere o total ANTES de decidir sucesso. Se um artefato novo
+    // apareceu (aula/transcrição gerada sob demanda) enquanto este laço
+    // rodava, a contagem capturada no início já está desatualizada:
+    // `escritos` podia bater com aquele total antigo sem o pacote estar
+    // completo de verdade. Sem isto (item 1 da 6ª revisão): uma exportação
+    // em andamento terminava o laço com a lista velha, marcava "sucesso
+    // pleno" bem na hora em que `reexportarAposArtefatoNovo` tentava
+    // invalidar essa marca pra pegar o artefato novo — o artefato nunca
+    // chegava na pasta, e como a marca passava a existir de qualquer jeito,
+    // o catch-up nunca mais tentava esse vídeo.
+    try {
+      const resFresco = await fetchApp(`/api/videos/${videoId}`);
+      if (resFresco.ok) {
+        const detalheFresco = (await resFresco.json()) as DetalheVideoWire;
+        total = Math.max(total, detalheFresco.artifacts.length);
+      }
+    } catch {
+      /* reconferência falhou — segue com o total que já tínhamos: uma checagem
+         extra não deve travar a exportação inteira se ela mesma falhar */
+    }
+
     const resultado = resultadoDaCopia(escritos, total);
     // A pasta REAL no disco é `pastaVideoNome` (com o sufixo do id, item 1 da
     // rodada anterior) — mostrar `tituloNome` sozinho aqui anunciava um
@@ -278,16 +315,20 @@ export async function exportarVideoAutomaticamente(
         description: "Cópia na pasta escolhida — o original continua na biblioteca do Bruto.",
       });
     } else {
-      toast.warning(`${resultado.titulo} ${destino}.`, {
-        description:
-          "O vídeo está salvo normalmente na biblioteca. Vai tentar de novo na próxima vez que a página carregar.",
+      avisarUmaVez(videoId, jobId, "parcial", () => {
+        toast.warning(`${resultado.titulo} ${destino}.`, {
+          description:
+            "O vídeo está salvo normalmente na biblioteca. Vai tentar de novo na próxima vez que a página carregar.",
+        });
       });
     }
     await marcarSeAPastaNaoMudou(videoId, jobId, pastaId, escritos, total);
   } catch {
-    toast.warning("Não deu para salvar cópia na pasta escolhida.", {
-      description:
-        "O vídeo está salvo normalmente na biblioteca. Se a pasta sumiu ou mudou de lugar, reabra Configurações.",
+    avisarUmaVez(videoId, jobId, "falha", () => {
+      toast.warning("Não deu para salvar cópia na pasta escolhida.", {
+        description:
+          "O vídeo está salvo normalmente na biblioteca. Se a pasta sumiu ou mudou de lugar, reabra Configurações.",
+      });
     });
     // Na prática esta condição quase nunca é verdadeira aqui — uma exceção
     // significa que o laço foi interrompido (ou nem começou), então
@@ -321,6 +362,9 @@ export async function pastaAindaExisteNoDisco(handle: FileSystemDirectoryHandle)
 /** Evita duas rodadas do timer/SSE processando o mesmo lote de pendentes ao mesmo tempo (item 3 da 3ª revisão). */
 let sincronizacaoEmAndamento = false;
 
+/** Assinatura (pastaId + vídeos pendentes) do último aviso "pasta não encontrada" já mostrado — item 3 da 6ª revisão, mesmo mecanismo de `avisarUmaVez`. */
+let ultimoAvisoPastaAusente: string | null = null;
+
 /**
  * Catch-up: roda ao carregar qualquer página do app (ver `SincronizacaoExportacao`
  * no layout raiz). Cobre o caso em que o `onDone` do SSE nunca disparou porque
@@ -341,8 +385,14 @@ export async function sincronizarExportacoesPendentes(): Promise<void> {
   sincronizacaoEmAndamento = true;
   try {
     if (!autoExportarAtivado()) return;
-    const handle = await obterPastaSalva();
-    if (!handle) return;
+    // Handle e pastaId da MESMA leitura (ver o comentário em
+    // `exportarVideoAutomaticamente`) — aqui não decide uma escrita
+    // sozinho, mas filtrar "pendentes" contra o pastaId errado faria o
+    // catch-up pular vídeo que devia tentar, ou tentar vídeo que a pasta
+    // atual já tem.
+    const pastaAtual = await obterPastaAtual();
+    if (!pastaAtual) return;
+    const { handle, pastaId } = pastaAtual;
     if ((await permissaoAtual(handle)) !== "granted") return;
 
     let prontos: VideoProntoParaExportar[];
@@ -355,16 +405,29 @@ export async function sincronizarExportacoesPendentes(): Promise<void> {
       return;
     }
 
-    const exportados = await obterExportados();
+    const exportados = await obterExportadosDaPasta(pastaId);
     const pendentes = idsPendentesDeExportacao(prontos, exportados);
     if (pendentes.length === 0) return;
 
     if (!(await pastaAindaExisteNoDisco(handle))) {
-      toast.warning("A pasta de exportação não foi encontrada.", {
-        description: `Pode ter sido movida, renomeada ou apagada. ${pendentes.length} vídeo(s) aguardando — abra Configurações para escolher a pasta de novo.`,
-      });
+      // Assinatura de QUAIS vídeos estão pendentes (não só a contagem) — se
+      // a pasta some de novo mais tarde com um conjunto DIFERENTE de
+      // pendentes, é um episódio novo, e merece aviso novo.
+      const assinatura = `${pastaId ?? "default"}|${[...pendentes]
+        .map((p) => p.videoId)
+        .sort()
+        .join(",")}`;
+      if (ultimoAvisoPastaAusente !== assinatura) {
+        ultimoAvisoPastaAusente = assinatura;
+        toast.warning("A pasta de exportação não foi encontrada.", {
+          description: `Pode ter sido movida, renomeada ou apagada. ${pendentes.length} vídeo(s) aguardando — abra Configurações para escolher a pasta de novo.`,
+        });
+      }
       return;
     }
+    // A pasta respondeu de novo — o próximo episódio de "sumiu", mesmo com
+    // o mesmo conjunto de pendentes de antes, é digno de aviso novo.
+    ultimoAvisoPastaAusente = null;
 
     for (const { videoId, jobId } of pendentes) {
       await exportarVideoAutomaticamente(videoId, jobId);
