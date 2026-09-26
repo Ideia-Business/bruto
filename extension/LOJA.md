@@ -194,7 +194,7 @@ Declarar **uso de dados** (a Loja chama de *data usage*):
 | Comunicações pessoais, localização? | **Não** |
 | Histórico de navegação (*web history*)? | **Sim** — a definição oficial inclui qualquer URL com que o navegador interage. Em Instagram e TikTok, a URL da aba é enviada ao **app do Bruto na própria máquina** (`127.0.0.1`), só quando o usuário clica em *Destrinchar no app local*. |
 | Atividade do usuário (cliques, movimento de mouse)? | **Não** |
-| Conteúdo de site (texto, imagens da página)? | **Sim** — a transcrição do vídeo é lida da página e enviada para gerar a aula: ao **app do Bruto na própria máquina do usuário** (`127.0.0.1`), quando ele o está rodando, ou ao provedor de IA **escolhido por ele**, com a chave dele. Não passa por servidor nosso e não é armazenada por nós. |
+| Conteúdo de site (texto, imagens da página)? | **Sim** — a transcrição do vídeo é lida da página e enviada para gerar a aula: ao **app do Bruto na própria máquina do usuário** (`127.0.0.1`), quando ele o está rodando, ao provedor de IA **escolhido por ele**, com a chave dele; ou, **no modo grátis** (sem app e sem chave), ao **servidor da Ideia Business** (`bruto-gratis.vercel.app`), que a repassa ao Ollama Cloud e não a guarda. Nos modos plano e chave, não passa por servidor nosso. |
 | Vende ou transfere dados a terceiros fora dos casos aprovados? | **Não** |
 | Usa dados para propósito alheio à função declarada? | **Não** |
 | Usa dados para avaliar crédito ou conceder empréstimo? | **Não** |
@@ -207,7 +207,7 @@ permissão de localhost chama atenção — a resposta, curta:
 > É o app do Bruto, de código aberto, que a própria pessoa instala e roda na máquina dela. A
 > extensão pede a aula a ele para que o consumo saia da assinatura de IA que a pessoa já paga,
 > em vez de exigir uma chave de API. `127.0.0.1` é a própria máquina: o pedido não sai dela.
-> Sem o app, a extensão simplesmente não o encontra e volta a pedir a chave — nada trava.
+> Sem o app, a extensão simplesmente não o encontra: com chave configurada, usa a chave; sem chave, usa o modo grátis. Nada trava.
 > A extensão manda ao app o prompt e a transcrição do vídeo, e **nunca a chave** do usuário: o
 > app não precisa dela, porque usa o plano.
 
