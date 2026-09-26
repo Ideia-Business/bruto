@@ -6,7 +6,7 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { avaliarLoteDeLinks } from "@/lib/lote-de-links";
+import { avaliarLoteDeLinks, planejarEnvioDoLote } from "@/lib/lote-de-links";
 
 describe("avaliarLoteDeLinks", () => {
   test("string vazia → lote vazio", () => {
@@ -55,8 +55,58 @@ describe("avaliarLoteDeLinks", () => {
     assert.equal(linha.linha, "https://youtu.be/dQw4w9WgXcQ");
   });
 
-  test("duas linhas iguais viram duas entradas (dedupe é papel do servidor)", () => {
+  test("duas linhas iguais viram duas entradas (dedupe de rede é papel de planejarEnvioDoLote)", () => {
     const texto = "https://youtu.be/dQw4w9WgXcQ\nhttps://youtu.be/dQw4w9WgXcQ";
     assert.equal(avaliarLoteDeLinks(texto).length, 2);
+  });
+});
+
+describe("planejarEnvioDoLote — agrupa por id, nunca por texto", () => {
+  test("mesma URL em duas grafias → uma chamada de rede só, duas linhas no resumo", () => {
+    // youtu.be/<id> e youtube.com/watch?v=<id> resolvem para o mesmo id em
+    // reconhecerLink — a 2ª linha não pode disparar POST de novo.
+    const texto = ["https://youtu.be/dQw4w9WgXcQ", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"].join("\n");
+    const lote = avaliarLoteDeLinks(texto);
+    const { tarefas, seguidores } = planejarEnvioDoLote(lote);
+
+    assert.equal(tarefas.length, 1, "só uma tarefa de rede para o par");
+    assert.equal(tarefas[0].index, 0);
+    assert.equal(seguidores.length, 1);
+    assert.deepEqual(seguidores[0], { index: 1, liderIndex: 0 });
+
+    // As duas linhas continuam representadas: 1 tarefa + 1 seguidora = 2 slots.
+    assert.equal(tarefas.length + seguidores.length, 2);
+  });
+
+  test("duas linhas com texto idêntico → dois slots no resumo, não um", () => {
+    const texto = "https://youtu.be/dQw4w9WgXcQ\nhttps://youtu.be/dQw4w9WgXcQ";
+    const lote = avaliarLoteDeLinks(texto);
+    const { tarefas, seguidores } = planejarEnvioDoLote(lote);
+
+    // Uma chamada de rede (mesmo id)...
+    assert.equal(tarefas.length, 1);
+    // ...mas os dois ÍNDICES do lote original aparecem no plano, cada um
+    // com seu papel — nunca colapsados num Map chaveado por texto.
+    const indicesCobertos = new Set([...tarefas.map((t) => t.index), ...seguidores.map((s) => s.index)]);
+    assert.deepEqual(indicesCobertos, new Set([0, 1]));
+  });
+
+  test("link curto do TikTok (id vazio) nunca agrupa, mesmo com texto idêntico", () => {
+    const texto = "https://vm.tiktok.com/ZMabc123/\nhttps://vm.tiktok.com/ZMabc123/";
+    const lote = avaliarLoteDeLinks(texto);
+    assert.equal(lote[0].referencia?.id, "", "id vazio é o cenário que não pode agrupar");
+
+    const { tarefas, seguidores } = planejarEnvioDoLote(lote);
+    assert.equal(tarefas.length, 2, "cada ocorrência dispara sua própria chamada");
+    assert.equal(seguidores.length, 0);
+  });
+
+  test("linha inválida fica fora do plano", () => {
+    const texto = "https://youtu.be/dQw4w9WgXcQ\nisto não é um link";
+    const lote = avaliarLoteDeLinks(texto);
+    const { tarefas, seguidores } = planejarEnvioDoLote(lote);
+    assert.equal(tarefas.length, 1);
+    assert.equal(tarefas[0].index, 0);
+    assert.equal(seguidores.length, 0);
   });
 });

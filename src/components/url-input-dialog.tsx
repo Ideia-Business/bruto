@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, XCircle, Copy } from "lucide-react";
@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Compatibilidade } from "./compatibilidade";
 import { fetchApp } from "@/lib/fetch-app";
-import { avaliarLoteDeLinks } from "@/lib/lote-de-links";
+import { avaliarLoteDeLinks, planejarEnvioDoLote } from "@/lib/lote-de-links";
 
 /** Um item do resumo, na ordem em que a linha apareceu no textarea. */
 interface ResultadoDoLote {
@@ -69,8 +69,14 @@ export function UrlInputDialog({
   const [translate, setTranslate] = useState(false);
   const [loading, setLoading] = useState(false);
   const [resultados, setResultados] = useState<ResultadoDoLote[] | null>(null);
+  // Cada submit ganha um número; se um envio mais novo começar antes de um
+  // mais velho terminar (ou o diálogo fechar/reabrir no meio do caminho), a
+  // resposta atrasada do mais velho é descartada em vez de sobrescrever o
+  // estado do mais novo.
+  const envioAtualRef = useRef(0);
 
   function fecharEResetar() {
+    envioAtualRef.current += 1;
     setOpen(false);
     setTexto("");
     setResultados(null);
@@ -81,29 +87,38 @@ export function UrlInputDialog({
     const lote = avaliarLoteDeLinks(texto);
     if (lote.length === 0) return;
 
+    const meuEnvio = ++envioAtualRef.current;
     setLoading(true);
     setResultados(null);
 
-    const invalidos: ResultadoDoLote[] = lote
-      .filter((item) => item.referencia === null)
-      .map((item) => ({
-        linha: item.linha,
-        status: "invalido" as const,
-        mensagem: "Link não reconhecido — veja a lista de plataformas abaixo.",
-      }));
+    // Slot por POSIÇÃO no lote, nunca por texto — duas linhas idênticas
+    // (mesmo agrupadas para uma única chamada de rede, ver `planejarEnvioDoLote`)
+    // têm cada uma o seu resultado no resumo.
+    const resultado: ResultadoDoLote[] = lote.map((item) => ({
+      linha: item.linha,
+      status: "invalido" as const,
+      mensagem: "Link não reconhecido — veja a lista de plataformas abaixo.",
+    }));
 
-    const validos = lote.filter((item) => item.referencia !== null);
+    const { tarefas, seguidores } = planejarEnvioDoLote(lote);
     const respostas = await Promise.allSettled(
-      validos.map((item) => enviarLinha(item.linha, { forceWhisper: whisper, translate })),
+      tarefas.map((t) => enviarLinha(t.linha, { forceWhisper: whisper, translate })),
     );
-    const enviados = respostas.map((r, i) =>
-      r.status === "fulfilled" ? r.value : { linha: validos[i].linha, status: "erro" as const, mensagem: "Erro inesperado." },
-    );
+    tarefas.forEach((t, i) => {
+      const r = respostas[i];
+      resultado[t.index] =
+        r.status === "fulfilled"
+          ? { ...r.value, linha: t.linha }
+          : { linha: t.linha, status: "erro", mensagem: "Erro inesperado." };
+    });
+    // Seguidoras copiam o resultado do líder do mesmo id — mesma URL em
+    // grafia diferente não dispara uma segunda chamada nem processa o
+    // vídeo duas vezes.
+    seguidores.forEach((s) => {
+      resultado[s.index] = { ...resultado[s.liderIndex], linha: lote[s.index].linha };
+    });
 
-    // Preserva a ordem original do que foi colado.
-    const porLinha = new Map<string, ResultadoDoLote>();
-    for (const item of [...invalidos, ...enviados]) porLinha.set(item.linha, item);
-    const resultado = lote.map((item) => porLinha.get(item.linha)!);
+    if (meuEnvio !== envioAtualRef.current) return; // envio superado — não aplica
 
     setResultados(resultado);
     setLoading(false);
@@ -158,7 +173,13 @@ export function UrlInputDialog({
               autoFocus
               placeholder={"YouTube, Instagram ou TikTok…\num link por linha"}
               value={texto}
-              onChange={(e) => setTexto(e.target.value)}
+              onChange={(e) => {
+                setTexto(e.target.value);
+                // Editar depois de ver o resumo volta para "Destrinchar" —
+                // sem isso, a única saída do resumo era fechar o diálogo
+                // (que apaga o texto) e não dava para corrigir e reenviar.
+                if (resultados) setResultados(null);
+              }}
               rows={4}
               disabled={loading}
             />
