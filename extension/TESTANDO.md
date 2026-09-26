@@ -126,6 +126,49 @@ de um vídeo (home do Instagram, perfil do TikTok), o popup mostra "Aqui não te
 
 O esperado: o popup avisa *"O app do Bruto não está aberto. Abra-o e tente de novo."* (ou mensagem similar). Nada é encaminhado.
 
+## 8. Teste o modo grátis
+
+Este teste só funciona **sem nenhuma chave configurada** e **sem o app aberto**. A extensão cai automático no modo grátis.
+
+### 8.1 Verificar o modo
+
+Abra as opções da extensão (clique no ícone do Bruto → **Colocar a chave**). Confira se a tela diz **"Modo grátis: 3 aulas por dia"** ou similar. Se disser "Usando chave de API" ou "Usando o seu plano", não está no modo grátis — configure as opções para isto.
+
+### 8.2 Primeira aula
+
+1. Abra um vídeo do YouTube **com legenda publicada** (confira se tem o botão "Mostrar transcrição").
+2. Clique no ícone do **Bruto**.
+3. Clique em **Destrinchar**.
+
+O esperado: a aula aparece. No popup, abaixo da aula, aparece um contador do tipo **"1 de 3 aulas hoje"** ou **"Restam 2 aulas de graça"**.
+
+Confira **Copiar** e **Baixar .md** funcionam, como no passo 5.
+
+### 8.3 Consumir a quota
+
+Repita o passo 8.2 mais duas vezes (totalizando 3 aulas). Na terceira aula, o contador muda para **"0 de 3 — limite atingido"** (ou similar).
+
+### 8.4 Limite atingido — testar as duas saídas
+
+1. Abra um **quarto** vídeo do YouTube.
+2. Clique em **Destrinchar**.
+
+O esperado: o popup mostra a mensagem de limite ("Usou suas 3 aulas grátis de hoje"). Oferece duas opções:
+
+- **Colar uma chave de API** — leva a um link ou formulário para colá-la, ou mensagem do tipo "Vá em Opções e configure uma chave".
+- **Abrir o app local** — leva a instruções ou link para abrir o app em `http://127.0.0.1:3000`.
+
+### 8.5 Mudar de modo — colando a chave
+
+1. Abra as **Opções de extensão** (Bruto na barra → **Colocar a chave**, ou chrome://extensions → Detalhes → Opções).
+2. Cole uma chave de um dos provedores (use a mesma do passo 4 do teste anterior, ou uma nova).
+3. Clique em **Testar credencial**.
+4. **Salvar**.
+
+Volte para as opções. Confira se a tela **mudou** para **"Usando chave de API"** (ou similar). A quota do modo grátis volta a contar? Não — agora você está no modo chave.
+
+Abra um vídeo e destrinche. A aula sai sem mostrar "de 3" — usa a sua chave.
+
 ---
 
 ## Se der errado

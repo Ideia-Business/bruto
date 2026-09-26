@@ -51,7 +51,7 @@ Ele funciona onde os outros não vão: **Instagram e TikTok**. A maioria só faz
 5. Exports em `.docx` e `.pdf`, com o mapa mental renderizado como imagem.
 6. Catálogo em SQLite; arquivos em `~/.bruto/library/<id>/`.
 
-Tudo local. Nenhum dado seu passa por servidor nosso — não existe servidor nosso.
+Tudo local. O app não passa por servidor nosso: fala só com o provedor de IA que você escolher. A exceção é o modo grátis da extensão, descrito abaixo.
 
 ## Instalação
 
@@ -151,10 +151,11 @@ npm run process -- "https://www.youtube.com/watch?v=<id>" [--whisper] [--traduzi
 
 Transforma em aula o vídeo que você **já está assistindo**, sem sair da aba. No YouTube, lê a legenda da página. Em Instagram e TikTok, encaminha ao app local (que precisa estar aberto). Não baixa mídia nenhuma.
 
-Funciona de **dois modos**, e a tela de opções diz em qual você está:
+Funciona de **três modos**, e a tela de opções diz em qual você está:
 
 - **pelo seu plano** — com o app do Bruto aberto nesta máquina (`npm run dev`), a extensão pede a aula a ele, e o consumo sai da assinatura que você já paga. Nenhuma chave é necessária;
-- **por chave de API** — sem o app no ar, a extensão fala direto com o provedor que você configurou, e aí você paga por token.
+- **por chave de API** — sem o app no ar, a extensão fala direto com o provedor que você configurou, e aí você paga por token;
+- **modo grátis** — sem configurar nada, a extensão usa o servidor gratuito da Ideia Business. 3 aulas por dia, sem chave. Quando chegar ao limite, você coloca uma chave (modo API) ou abre o app (modo plano).
 
 ```bash
 npm run build:ext

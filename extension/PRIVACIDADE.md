@@ -5,11 +5,7 @@ aula**, publicada pela [Ideia Business](https://ideiabusiness.com.br).
 
 ## O resumo, em três frases
 
-**Não existe servidor nosso.** A extensão roda inteira no seu navegador e fala com um de dois
-destinos, ambos seus: o **app do Bruto na sua própria máquina**, quando você o está rodando — e
-aí o consumo sai da assinatura de IA que você já paga —, ou **direto com o provedor de IA** que
-você escolheu, com a chave que você forneceu. Nós não recebemos, não armazenamos e não temos
-como ver nada do que você faz nela.
+A extensão roda inteira no seu navegador e fala com um de três destinos: o **app do Bruto na sua própria máquina**, quando você o está rodando — e aí o consumo sai da assinatura de IA que você já paga —; **direto com o provedor de IA** que você escolheu, com a chave que você forneceu; ou o **servidor grátis da Ideia Business**, se você não configurou nada. No primeiro e no segundo, não há servidor nosso: nós não recebemos, não armazenamos e não temos como ver nada do que você faz. No terceiro, leia a seção **O modo grátis** abaixo.
 
 Isso não é promessa de boa conduta: é consequência da arquitetura. Não há para onde seus dados
 irem, porque não há nada nosso no caminho. O código é aberto e auditável
@@ -22,6 +18,7 @@ Tudo em `chrome.storage.local` — **neste navegador, neste perfil**. Nunca em
 
 | O quê | Por que existe | Quando some |
 |---|---|---|
+| **UUID da instalação** (modo grátis) | identifica você para contar até 3 aulas de graça por dia. Gerado uma vez, nunca muda | guarda enquanto você tem a extensão; desaparece com a desinstalação |
 | **Sua chave de IA** | autentica você no provedor escolhido. Só existe se você a colocou, e no modo do app local não é preciso nenhuma — se você já tinha guardado uma antes, ela continua aqui, guardada e sem uso, até você apagá-la | quando você a apaga nas opções, ou desinstala a extensão |
 | **Bancada** — as aulas que você gerou | para que fechar o popup não perca o trabalho | guarda as 60 mais recentes; a mais antiga sai quando enche |
 | **Caderno de Ideias** — as suas faíscas | é a única coisa aqui que nasce de você | quando você apaga a faísca, ou desinstala a extensão |
@@ -36,12 +33,11 @@ outra coisa. São cópias suas, no seu aparelho; apagá-las é com você.
 
 ## Para onde os dados vão — a lista completa
 
-Quatro destinos. Um é a sua própria máquina; dois são de terceiros que **você** escolheu; e o
-quarto — o Lapid.ai — **é da mesma empresa que publica o Bruto**, e por isso está descrito por
-extenso no item 3. Nenhum deles recebe dado seu sem você mandar.
+Cinco destinos. Dois são da sua própria máquina (app do Bruto e Caderno de Ideias); dois são de terceiros que **você** escolheu (provedores de IA e YouTube); e um — o servidor grátis da Ideia Business — **é nosso, mas só existe porque você não configurou nada**. Nenhum deles recebe dado seu sem você mandar.
 
-O que não existe é servidor **do Bruto**: não há, em lugar nenhum, um serviço nosso que receba o
-que você faz aqui.
+Modo pelo plano e modo pela chave: **nenhum servidor nosso** é envolvido. Modo grátis: apenas a transcrição, título e canal vão ao nosso servidor para gerar a aula. A escolha é sua.
+
+O Lapid.ai (descrito no item 3) também é da mesma empresa que publica o Bruto, e só é aberto quando você aperta o botão **Lapidar**.
 
 ### 0. O app do Bruto, na sua máquina — quando você o está rodando
 
@@ -93,9 +89,40 @@ ao YouTube além da navegação normal que você já estava fazendo.
 
 Quando você clica em destrinchar um Reel ou vídeo em Instagram ou TikTok, a extensão envia
 **apenas a URL da aba ativa** ao app do Bruto na sua própria máquina, em `127.0.0.1:3000`.
-Este pedido **não sai do seu computador**: `127.0.0.1` é sua própria máquina. Nenhum servidor nosso
+Este pedido **não sai do seu computador**: `127.0.0.1` é sua própria máquina. Sem o app local aberto, nenhum servidor nosso
 é envolvido, e nenhum dado é armazenado conosco. Se o app não está aberto, a extensão avisa e
 não envia nada.
+
+### 2c. O modo grátis — servidor da Ideia Business, sem chave, 3 aulas por dia
+
+Sem configurar uma chave de API e sem o app local aberto, você cai no modo grátis: a extensão
+envia a transcrição, título e canal do vídeo ao servidor `bruto-gratis.vercel.app`
+(hospedado na Vercel, da Ideia Business). O servidor recebe essas três coisas, **monta o prompt
+da aula ele mesmo**, e pede o resultado ao Ollama Cloud **com a assinatura anual de IA do dono**
+— não é sua chave, é a dele. O Ollama processa e declara não usar o que recebe para treinar modelos.
+
+**O que o servidor faz:**
+- Monta o prompt da aula (padrão fixo, igual ao do app local).
+- Chama o Ollama Cloud.
+- Devolve o resultado da aula — em markdown, como qualquer outro modo.
+
+**O que o servidor NÃO faz:**
+- Não guarda a transcrição.
+- Não guarda a aula.
+- Não guarda o título nem o canal — descartas depois de montar o prompt.
+- Não vende, não usa para treinar, não compartilha.
+
+**Como você é contado — sem identificação:**
+- Na primeira vez que você usa a extensão, ela gera um UUID aleatório e guarda em `chrome.storage.local`.
+- Cada aula grátis que você pede, a extensão envia esse UUID e o servidor o usa para contar até 3 por dia.
+- O servidor também usa um hash do seu IP — nunca o IP em si —, com sal secreto, para proteger contra reinstalação abusiva (se você apaga e reinstala a extensão virou outro UUID, o IP segura isso).
+- Essas contas caducam em 36 horas; depois saem do servidor para sempre.
+
+**Os limites:**
+- 3 aulas por instalação, por dia. Quando chegar ao terceiro, o popup avisa "Usou suas 3 aulas grátis de hoje".
+- A 4ª aula mostra duas saídas: colar uma chave de API nas opções (e mudar para o modo da chave) ou abrir o app local (e mudar para o modo do plano).
+
+Essa é a única forma em que dados seus — ainda que resumidos a UUID e hash — passam por servidor nosso. Se você não quer, **coloque uma chave nas opções** (modo da chave) ou **abra o app local** (modo do plano) — nos dois casos, nada disso sai daqui.
 
 ### 3. O Lapid.ai — só quando você clica em "Lapidar"
 
