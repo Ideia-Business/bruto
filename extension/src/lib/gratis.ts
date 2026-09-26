@@ -18,6 +18,15 @@ const CHAVE_STORAGE_INSTALACAO = "bruto.instalacao";
 /** Cabeçalho exigido pelo servidor nas duas rotas — força preflight (ver CONTRATO.md). */
 const CABECALHO_CLIENTE = { "X-Bruto-Cliente": "extensao" } as const;
 
+/**
+ * Cabeçalho que carrega o UUID da instalação em `/api/cota`. NUNCA na query
+ * string: query string vai para o log de acesso da Vercel (URL completa),
+ * e o UUID é o identificador que liga as consultas de cota de uma mesma
+ * pessoa — achado do Grok, 26/09/2026. Em `/api/aula` o UUID já ia no corpo
+ * (POST), que não tem esse problema; só `/api/cota` (GET) precisava mudar.
+ */
+const CABECALHO_INSTALACAO = "X-Bruto-Instalacao";
+
 /** O contrato recusa `transcricao` acima disso — caracteres, não bytes. */
 export const LIMITE_TRANSCRICAO_CARACTERES = 120_000;
 
@@ -218,12 +227,22 @@ export interface PedidoAulaGratis {
   signal?: AbortSignal;
 }
 
+/**
+ * Qual corte a transcrição sofreu antes de ser enviada — os dois têm causa e
+ * mensagem diferentes para quem está vendo a tela: `"caracteres"` é o limite
+ * de 120.000 caracteres do campo; `"bytes"` é o teto de 200 KB do CORPO
+ * inteiro (o caso de texto em CJK ou cheio de emoji, que estoura bytes bem
+ * antes de estourar caracteres). `null` quando nada precisou ser cortado.
+ * Quando as duas frentes se aplicam, o corte por bytes é o que vale (é ele
+ * quem decide o tamanho final) — ver `cortarTranscricao`.
+ */
+export type TipoCorteTranscricao = "caracteres" | "bytes" | null;
+
 export interface AulaGratis {
   aula: string;
   restantes: number;
   limite: number;
-  /** `true` quando a transcrição foi cortada (por caracteres e/ou por bytes) antes de enviar. */
-  cortada: boolean;
+  corte: TipoCorteTranscricao;
 }
 
 const codificador = new TextEncoder();
@@ -275,7 +294,7 @@ export function cortarTranscricao(
   titulo: string,
   canal: string | null,
   transcricaoOriginal: string,
-): { transcricao: string; cortada: boolean } {
+): { transcricao: string; corte: TipoCorteTranscricao } {
   const porCaracteres =
     transcricaoOriginal.length > LIMITE_TRANSCRICAO_CARACTERES
       ? cortarNaFronteira(transcricaoOriginal, LIMITE_TRANSCRICAO_CARACTERES)
@@ -283,11 +302,13 @@ export function cortarTranscricao(
   const cortadaPorCaracteres = porCaracteres.length < transcricaoOriginal.length;
 
   if (bytesDoCorpo(instalacao, titulo, canal, porCaracteres) <= ALVO_BYTES_CORPO) {
-    return { transcricao: porCaracteres, cortada: cortadaPorCaracteres };
+    return { transcricao: porCaracteres, corte: cortadaPorCaracteres ? "caracteres" : null };
   }
 
   // `baixo` é sempre viável (código vazio cabe de sobra); `alto` começa no
-  // tamanho que acabou de FALHAR o teste acima.
+  // tamanho que acabou de FALHAR o teste acima. Chegar aqui já significa
+  // corte por BYTES — é ele quem decide o tamanho final, mesmo quando o
+  // corte por caracteres também se aplicou antes.
   let baixo = 0;
   let alto = porCaracteres.length;
   while (baixo < alto) {
@@ -297,7 +318,7 @@ export function cortarTranscricao(
     else alto = meio - 1;
   }
 
-  return { transcricao: cortarNaFronteira(porCaracteres, baixo), cortada: true };
+  return { transcricao: cortarNaFronteira(porCaracteres, baixo), corte: "bytes" };
 }
 
 /**
@@ -307,7 +328,7 @@ export function cortarTranscricao(
  */
 export async function pedirAulaGratis(p: PedidoAulaGratis): Promise<AulaGratis> {
   const instalacao = await idDaInstalacao();
-  const { transcricao, cortada } = cortarTranscricao(instalacao, p.titulo, p.canal, p.transcricao);
+  const { transcricao, corte } = cortarTranscricao(instalacao, p.titulo, p.canal, p.transcricao);
 
   const corpo = JSON.stringify({
     instalacao,
@@ -373,7 +394,7 @@ export async function pedirAulaGratis(p: PedidoAulaGratis): Promise<AulaGratis> 
       aula: json.aula,
       restantes: campos.restantes ?? 0,
       limite: campos.limite ?? 3,
-      cortada,
+      corte,
     };
   } finally {
     encerrarRelogio();
@@ -394,8 +415,8 @@ export async function verCotaGratis(): Promise<CotaGratis | null> {
   try {
     const instalacao = await idDaInstalacao();
     const { resposta: r, encerrarRelogio } = await buscar(
-      `/api/cota?instalacao=${encodeURIComponent(instalacao)}`,
-      { method: "GET", headers: { ...CABECALHO_CLIENTE } },
+      "/api/cota",
+      { method: "GET", headers: { ...CABECALHO_CLIENTE, [CABECALHO_INSTALACAO]: instalacao } },
       TIMEOUT_COTA_MS,
     );
     try {

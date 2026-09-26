@@ -91,6 +91,22 @@ export interface ClienteRedisMinimo {
 export function contadorSobre(redis: ClienteRedisMinimo): Contador {
   return {
     async incr(chave, ttlSeg) {
+      // debt: o EVAL pode ser APLICADO no Redis (o INCR e o EXPIRE condicional
+      // já rodaram do lado de lá) e a RESPOSTA se perder na volta — a conexão
+      // cai entre o Redis responder e este `await` resolver, e `redis.eval`
+      // rejeita como se nada tivesse acontecido. `verificarLimite` só marca a
+      // chave em `aplicados` (e portanto só a desfaz no rollback) DEPOIS de um
+      // `incr` bem-sucedido; se a rejeição vier de uma resposta perdida — não
+      // de uma falha real de aplicação —, o handler responde 503, mas o
+      // contador no Redis já subiu 1: a pessoa perde uma unidade sem receber
+      // aula. Resolver de verdade pediria idempotência por pedido (um ID único
+      // por tentativa, checado antes de incrementar de novo) — custo de
+      // desenho e de mais uma chave no Redis por pedido, para o pior caso
+      // sendo "uma aula grátis a menos" numa falha de rede que já é rara por
+      // si (a chamada é uma única viagem de ida e volta, tipicamente sub-100ms
+      // na REST API da Upstash). Decisão do líder (26/09/2026, revisão do
+      // Codex, 3ª rodada): não implementar — o custo não paga o benefício para
+      // um recurso GRÁTIS com teto de 3 por dia.
       const valor = await redis.eval<[string], number>(
         LUA_INCR_COM_TTL_NA_CRIACAO,
         [chave],

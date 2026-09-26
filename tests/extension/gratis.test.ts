@@ -9,12 +9,16 @@
  * corte por bytes precisa acontecer SEMPRE, e nunca no meio de um par
  * surrogate (emoji), senão o servidor recebe um code unit órfão.
  */
-import { test, describe } from "node:test";
+import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 
 import {
   cortarTranscricao,
   bytesDoCorpo,
+  verCotaGratis,
+  SERVIDOR_GRATIS,
   LIMITE_TRANSCRICAO_CARACTERES,
   ALVO_BYTES_CORPO,
 } from "../../extension/src/lib/gratis";
@@ -49,20 +53,20 @@ describe("cortarTranscricao — texto ASCII", () => {
     const texto = "a".repeat(1000);
     const r = cortarTranscricao(INSTALACAO, TITULO, CANAL, texto);
     assert.equal(r.transcricao, texto);
-    assert.equal(r.cortada, false);
+    assert.equal(r.corte, null);
   });
 
   test("texto ASCII de exatamente 120.000 caracteres não é cortado", () => {
     const texto = "a".repeat(LIMITE_TRANSCRICAO_CARACTERES);
     const r = cortarTranscricao(INSTALACAO, TITULO, CANAL, texto);
-    assert.equal(r.cortada, false);
+    assert.equal(r.corte, null);
     assert.equal(r.transcricao.length, LIMITE_TRANSCRICAO_CARACTERES);
   });
 
-  test("texto ASCII acima de 120.000 caracteres é cortado no limite de caracteres", () => {
+  test("texto ASCII acima de 120.000 caracteres é cortado no limite de CARACTERES", () => {
     const texto = "a".repeat(200_000);
     const r = cortarTranscricao(INSTALACAO, TITULO, CANAL, texto);
-    assert.equal(r.cortada, true);
+    assert.equal(r.corte, "caracteres", "ASCII nunca estoura bytes antes de estourar caracteres");
     assert.equal(r.transcricao.length, LIMITE_TRANSCRICAO_CARACTERES);
     assert.ok(
       bytesDoCorpo(INSTALACAO, TITULO, CANAL, r.transcricao) <= ALVO_BYTES_CORPO,
@@ -79,7 +83,11 @@ describe("cortarTranscricao — texto CJK (o achado do Codex)", () => {
     assert.ok(texto.length <= LIMITE_TRANSCRICAO_CARACTERES, "o teste tem de ficar sob o limite de caracteres");
 
     const r = cortarTranscricao(INSTALACAO, TITULO, CANAL, texto);
-    assert.equal(r.cortada, true, "tinha de cortar por bytes mesmo sem passar do limite de caracteres");
+    assert.equal(
+      r.corte,
+      "bytes",
+      "tinha de cortar por BYTES (não 'caracteres') mesmo sem passar do limite de caracteres",
+    );
     assert.ok(r.transcricao.length < texto.length, "o corte reduziu o texto");
     const bytes = bytesDoCorpo(INSTALACAO, TITULO, CANAL, r.transcricao);
     assert.ok(bytes <= ALVO_BYTES_CORPO, `corpo final (${bytes} bytes) tem de caber no orçamento`);
@@ -95,7 +103,7 @@ describe("cortarTranscricao — texto CJK (o achado do Codex)", () => {
   test("texto CJK que já cabe no orçamento de bytes não é cortado", () => {
     const texto = "漢".repeat(1000); // ~3 KB, longe do teto
     const r = cortarTranscricao(INSTALACAO, TITULO, CANAL, texto);
-    assert.equal(r.cortada, false);
+    assert.equal(r.corte, null);
     assert.equal(r.transcricao, texto);
   });
 });
@@ -113,6 +121,9 @@ describe("cortarTranscricao — emoji na fronteira do corte", () => {
     // 120.001 code units) — o corte tem de excluí-lo por inteiro, nunca só a
     // metade alta.
     assert.equal(r.transcricao, antes, "o par incompleto foi descartado por inteiro, não partido");
+    // Texto minúsculo (bem abaixo de 190.000 bytes) — o corte foi só por
+    // CARACTERES, nunca por bytes.
+    assert.equal(r.corte, "caracteres");
   });
 
   test("texto cheio de emoji (pares surrogate) que precisa de corte por bytes nunca parte um par", () => {
@@ -125,7 +136,7 @@ describe("cortarTranscricao — emoji na fronteira do corte", () => {
     assert.ok(bytesDoCorpo(INSTALACAO, TITULO, CANAL, texto) > 200 * 1024, "pré-condição: estoura bytes");
 
     const r = cortarTranscricao(INSTALACAO, TITULO, CANAL, texto);
-    assert.equal(r.cortada, true);
+    assert.equal(r.corte, "bytes");
     ehValido(r.transcricao);
     assert.ok(
       bytesDoCorpo(INSTALACAO, TITULO, CANAL, r.transcricao) <= ALVO_BYTES_CORPO,
@@ -149,5 +160,102 @@ describe("bytesDoCorpo — mede o corpo, não a transcrição isolada", () => {
     const comCanal = bytesDoCorpo(INSTALACAO, TITULO, CANAL, "abc");
     const semCanal = bytesDoCorpo(INSTALACAO, TITULO, null, "abc");
     assert.notEqual(comCanal, semCanal);
+  });
+});
+
+/**
+ * `verCotaGratis` — o UUID vai no CABEÇALHO, nunca na query string.
+ *
+ * ORIGEM: achado do Grok (26/09/2026) — a versão anterior mandava
+ * `?instalacao=<uuid>` na URL, e query string vai para o access log da
+ * Vercel (sem o TTL de 36h do Redis). O contrato (`servidor/CONTRATO.md`)
+ * passou a exigir `X-Bruto-Instalacao` no cabeçalho e a RECUSAR a query
+ * string. O duplo abaixo é um servidor HTTP de verdade — a dúvida é se o
+ * `fetch` de fato manda o cabeçalho e de fato NÃO manda a query, e isso só
+ * se prova contra o caminho inteiro, não com um mock de `fetch`.
+ */
+describe("verCotaGratis — o UUID vai no cabeçalho, nunca na query string", () => {
+  let responder: (req: http.IncomingMessage, res: http.ServerResponse) => void;
+  let ultimaUrl = "";
+  let ultimosCabecalhos: http.IncomingHttpHeaders = {};
+  let fetchReal: typeof fetch;
+
+  const servidor = http.createServer((req, res) => {
+    ultimaUrl = req.url ?? "";
+    ultimosCabecalhos = req.headers;
+    responder(req, res);
+  });
+
+  // Storage em memória: só o suficiente para `idDaInstalacao` funcionar sem
+  // um Chrome de verdade por trás.
+  const memoriaStorage: Record<string, unknown> = { "bruto.instalacao": INSTALACAO };
+
+  before(async () => {
+    await new Promise<void>((r) => servidor.listen(0, "127.0.0.1", r));
+    const porta = (servidor.address() as AddressInfo).port;
+
+    (globalThis as { chrome?: unknown }).chrome = {
+      storage: {
+        local: {
+          get: async (chaves: string[]) =>
+            Object.fromEntries(chaves.map((c) => [c, memoriaStorage[c]])),
+          set: async (itens: Record<string, unknown>) => {
+            Object.assign(memoriaStorage, itens);
+          },
+        },
+      },
+    };
+
+    fetchReal = globalThis.fetch;
+    globalThis.fetch = ((entrada: string | URL | Request, init?: RequestInit) => {
+      const url = String(typeof entrada === "object" && "url" in entrada ? entrada.url : entrada);
+      const alvo = url.startsWith(SERVIDOR_GRATIS)
+        ? url.replace(SERVIDOR_GRATIS, `http://127.0.0.1:${porta}`)
+        : url;
+      return fetchReal(alvo, init);
+    }) as typeof fetch;
+  });
+
+  after(async () => {
+    globalThis.fetch = fetchReal;
+    delete (globalThis as { chrome?: unknown }).chrome;
+    await new Promise<void>((r) => servidor.close(() => r()));
+  });
+
+  test("manda X-Bruto-Instalacao no cabeçalho, com o UUID exato", async () => {
+    responder = (_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ restantes: 2, limite: 3 }));
+    };
+    const cota = await verCotaGratis();
+    assert.deepEqual(cota, { restantes: 2, limite: 3 });
+    assert.equal(ultimosCabecalhos["x-bruto-instalacao"], INSTALACAO);
+  });
+
+  test("a URL chamada NÃO carrega `instalacao=` na query string", async () => {
+    responder = (_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ restantes: 1, limite: 3 }));
+    };
+    await verCotaGratis();
+    assert.equal(ultimaUrl, "/api/cota", "sem `?instalacao=` nem qualquer outra query");
+    assert.ok(!ultimaUrl.includes(INSTALACAO), "o UUID não pode aparecer na URL de jeito nenhum");
+  });
+
+  test("manda X-Bruto-Cliente também — a mesma tranca de sempre", async () => {
+    responder = (_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ restantes: 3, limite: 3 }));
+    };
+    await verCotaGratis();
+    assert.equal(ultimosCabecalhos["x-bruto-cliente"], "extensao");
+  });
+
+  test("400 do servidor (cabeçalho ausente/inválido) vira `null`, não exceção", async () => {
+    responder = (_req, res) => {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ erro: "cabeçalho ausente" }));
+    };
+    assert.equal(await verCotaGratis(), null);
   });
 });

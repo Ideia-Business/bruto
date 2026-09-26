@@ -15,7 +15,7 @@ export function cabecalhosCors(origem: string | null): Record<string, string> {
   if (!origem || !ORIGEM_PERMITIDA.test(origem)) return {};
   return {
     "access-control-allow-origin": origem,
-    "access-control-allow-headers": "content-type, x-bruto-cliente",
+    "access-control-allow-headers": "content-type, x-bruto-cliente, x-bruto-instalacao",
     "access-control-allow-methods": "GET, POST, OPTIONS",
   };
 }

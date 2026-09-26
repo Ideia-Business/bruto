@@ -79,6 +79,40 @@ function ehObjeto(v: unknown): v is Record<string, unknown> {
 }
 
 /**
+ * Corta `texto` para caber em `limiteBytes` bytes UTF-8 — sem partir um
+ * caractere no meio (nem um par surrogate: um emoji em UTF-16 é 2 code units,
+ * e em UTF-8 é uma sequência de 2 a 4 bytes; cortar um dos dois lados sozinho
+ * produz um caractere de substituição ilegível ou, pior, texto corrompido).
+ *
+ * Achado P2 da revisão do Codex (26/09/2026, 3ª rodada): a versão anterior
+ * comparava `texto.length` (unidades UTF-16, ou seja, CARACTERES) contra
+ * `TETO_AULA_BYTES` e cortava com `.slice()` — que também opera em unidades
+ * UTF-16. Uma aula com muito CJK (cada caractere = 1 unidade UTF-16, mas 3
+ * bytes em UTF-8) passava pela checagem com `texto.length` bem abaixo de
+ * 200.000 enquanto o corpo de verdade, em bytes, já passava de 500 KB — o
+ * teto do contrato ("limitar a 200 KB antes de devolver") nunca disparava.
+ *
+ * Cortar em bytes exige cuidado na fronteira: um byte de CONTINUAÇÃO UTF-8
+ * começa com os bits `10` (`0x80`–`0xBF`); um byte de ABERTURA de sequência
+ * (1, 2, 3 ou 4 bytes) nunca começa assim. Se o corte cair no meio de uma
+ * sequência multi-byte, recuamos até o início dela e excluímos o caractere
+ * INTEIRO — nunca metade dele.
+ */
+export function truncarUtf8SemPartirCaractere(texto: string, limiteBytes: number): string {
+  const bytes = new TextEncoder().encode(texto);
+  if (bytes.length <= limiteBytes) return texto;
+
+  let fim = limiteBytes;
+  // O byte bem na fronteira é de continuação → o corte caiu no meio de uma
+  // sequência multi-byte. Recua até o byte de ABERTURA dessa sequência (o
+  // primeiro que não é `10xxxxxx`) e exclui o caractere inteiro.
+  if ((bytes[fim] & 0xc0) === 0x80) {
+    while (fim > 0 && (bytes[fim] & 0xc0) === 0x80) fim--;
+  }
+  return new TextDecoder("utf-8").decode(bytes.subarray(0, fim));
+}
+
+/**
  * Extrai o texto da aula do corpo de `chat/completions` (formato OpenAI-compatível
  * que o Ollama Cloud implementa): `choices[0].message.content`. Qualquer outra
  * forma vira `resposta_invalida` — nunca se tenta "adivinhar" outro campo.
@@ -167,7 +201,7 @@ export async function chamarOllama(params: ChamarOllamaParams): Promise<Resultad
     const texto = extrairTexto(json);
     if (texto === null) return { ok: false, motivo: "resposta_invalida" };
 
-    const aula = texto.length > TETO_AULA_BYTES ? texto.slice(0, TETO_AULA_BYTES) : texto;
+    const aula = truncarUtf8SemPartirCaractere(texto, TETO_AULA_BYTES);
     return { ok: true, aula };
   } finally {
     clearTimeout(corte);

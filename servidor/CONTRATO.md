@@ -42,15 +42,19 @@ Respostas:
 | 502 | `{ "erro": "…" }` | o Ollama falhou (a cota da pessoa é devolvida) |
 | 503 | `{ "erro": "…" }` | servidor sem `OLLAMA_API_KEY` ou sem Redis configurado |
 
-### `GET /api/cota?instalacao=<uuid>`
+### `GET /api/cota`
 
-`200 { "restantes": n, "limite": 3 }`. Não consome nada.
+Cabeçalho `X-Bruto-Instalacao: <uuid v4>` — a instalação **nunca** vai na query string (ela entra
+no access log da Vercel, que não tem o TTL de 36h do Redis; furaria a promessa de "some em 36h").
+`200 { "restantes": n, "limite": 3 }`. Não consome nada. `400` se o cabeçalho faltar ou não for
+UUID v4, ou se a requisição ainda mandar `?instalacao=` na query string (recusada, não ignorada).
 
 ### `OPTIONS` (preflight)
 
 Responde 204 com `Access-Control-Allow-Origin` igual à origem **só** se ela começar com
-`chrome-extension://`; `Access-Control-Allow-Headers: content-type, x-bruto-cliente`;
-`Access-Control-Allow-Methods: GET, POST, OPTIONS`. Outra origem: sem cabeçalho CORS.
+`chrome-extension://`; `Access-Control-Allow-Headers: content-type, x-bruto-cliente,
+x-bruto-instalacao`; `Access-Control-Allow-Methods: GET, POST, OPTIONS`. Outra origem: sem
+cabeçalho CORS.
 
 ## Limites
 

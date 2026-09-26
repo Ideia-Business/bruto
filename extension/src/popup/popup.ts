@@ -684,9 +684,18 @@ async function destrinchar(): Promise<void> {
         signal: meuControle.signal,
       });
       aulaBruta = resultado.aula;
-      avisoQuota = resultado.cortada
-        ? `Modo grátis: restam ${resultado.restantes} de ${resultado.limite} aulas hoje. A transcrição foi cortada em 120.000 caracteres antes de enviar.`
-        : `Modo grátis: restam ${resultado.restantes} de ${resultado.limite} aulas hoje.`;
+      const baseQuota = `Modo grátis: restam ${resultado.restantes} de ${resultado.limite} aulas hoje.`;
+      // A causa do corte muda a mensagem: "caracteres" é o limite do CAMPO
+      // (120.000 caracteres); "bytes" é o teto do CORPO inteiro (200 KB) —
+      // texto em CJK ou cheio de emoji pode estourar bytes bem antes de
+      // chegar a 120.000 caracteres, e dizer "cortada em 120.000 caracteres"
+      // nesse caso seria uma causa que não foi a que realmente cortou.
+      avisoQuota =
+        resultado.corte === "caracteres"
+          ? `${baseQuota} A transcrição foi cortada em 120.000 caracteres antes de enviar.`
+          : resultado.corte === "bytes"
+            ? `${baseQuota} A transcrição foi cortada para caber no limite de 200 KB do modo grátis.`
+            : baseQuota;
     } else {
       // O prompt é o MESMO que o app local usa — vem de src/pipeline/prompts.
       // É o da AULA, não o do resumo: objetivos, conceitos do zero, glossário e
@@ -916,7 +925,7 @@ async function iniciar(): Promise<void> {
         // o texto só importa enquanto a tela "pronto" ainda está visível.
         if (telas.pronto.hidden) return;
         prontoDado.textContent = cota
-          ? `Modo grátis: ${cota.restantes} de ${cota.limite} aulas hoje.`
+          ? `Modo grátis: restam ${cota.restantes} de ${cota.limite} aulas hoje.`
           : "Modo grátis.";
       });
     }

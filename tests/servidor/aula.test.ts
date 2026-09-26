@@ -426,7 +426,10 @@ describe("CORS", () => {
     const resp = await OPTIONS(req);
     assert.equal(resp.status, 204);
     assert.equal(resp.headers.get("access-control-allow-origin"), "chrome-extension://abcdefghijklmnop");
-    assert.equal(resp.headers.get("access-control-allow-headers"), "content-type, x-bruto-cliente");
+    assert.equal(
+      resp.headers.get("access-control-allow-headers"),
+      "content-type, x-bruto-cliente, x-bruto-instalacao",
+    );
     assert.equal(resp.headers.get("access-control-allow-methods"), "GET, POST, OPTIONS");
   });
 
