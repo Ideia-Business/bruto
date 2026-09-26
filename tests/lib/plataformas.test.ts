@@ -208,3 +208,15 @@ describe("textoDoErro — a mensagem real vence a dica genérica só em NO_TRANS
     assert.equal(textoDoErro("NOVO_CODIGO", "algo"), "algo");
   });
 });
+
+import { SEM_BACKEND } from "@/pipeline/lib/transcribe";
+
+describe("SEM_BACKEND — o texto que a tela mostra quando falta transcritor", () => {
+  test("aponta para o instalador e para o uv, sem crases literais", () => {
+    assert.equal(textoDoErro("NO_TRANSCRIPT", SEM_BACKEND), SEM_BACKEND);
+    assert.match(SEM_BACKEND, /instalador/);
+    assert.match(SEM_BACKEND, /uv tool install openai-whisper/);
+    assert.doesNotMatch(SEM_BACKEND, /`/);
+    assert.doesNotMatch(SEM_BACKEND, /pip install/);
+  });
+});

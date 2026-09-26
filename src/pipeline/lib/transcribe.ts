@@ -500,10 +500,9 @@ function sha256Arquivo(p: string, tempero: string): string | null {
  * manda rodar comando de ferramenta interna que essa pessoa não tem.
  */
 export const SEM_BACKEND =
-  "Vídeo sem legenda e nenhum transcritor instalado. `pip install -U openai-whisper` " +
-  "funciona em qualquer sistema; em Apple Silicon `uv tool install mlx-whisper` é mais " +
-  "rápido. Ou rode o instalador de novo (install/instalar.sh no macOS/Linux, " +
-  "install\\instalar.ps1 no Windows).";
+  "Vídeo sem legenda e nenhum transcritor instalado. Rode o instalador do Bruto de novo, " +
+  "sem --sem-whisper. Ou instale à mão: uv tool install mlx-whisper (Mac com Apple Silicon) " +
+  "ou uv tool install openai-whisper (demais sistemas).";
 
 /** Diagnóstico para o `npm run doctor`. */
 export async function transcricaoDoctor(): Promise<{ ok: boolean; linhas: string[] }> {
