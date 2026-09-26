@@ -68,6 +68,18 @@ sua chave — item 3 acima.
 
 ---
 
+## Imagens da listagem (regras oficiais, conferidas em 25/09/2026)
+
+| Peça | Tamanho | Situação |
+|---|---|---|
+| Ícone da loja | 128×128 | obrigatório · `extension/dist/icons/128.png` |
+| Imagem promocional pequena | 440×280 | **obrigatório** · `extension/pacote/capturas/promo-440x280.png` (gerada da marca) |
+| Capturas | 1280×800, de 1 a 5 | obrigatório ao menos 1 · falta a da aula (só o dono) |
+| Destaque (*marquee*) | 1400×560 | opcional · `extension/pacote/capturas/marquee-1400x560.png` |
+
+Guia passo a passo completo, com todos os textos para copiar: gerado em 25/09/2026 como HTML
+(`guia-chrome-web-store-bruto.html`, entregue ao dono).
+
 ## O que a extensão entrega — conferido contra o código
 
 Auditoria de 12/09/2026, cruzando os textos daqui com o código. O achado foi de uma classe só:
@@ -102,7 +114,7 @@ Bruto — vídeo vira aula
 **Descrição curta** (máx. 132 — a que aparece no card de busca; é o `description` do manifesto)
 
 ```
-Vira o vídeo do YouTube que você está vendo numa aula em português — pelo plano de IA que você já assina, ou por chave.
+Vira o vídeo do YouTube numa aula em português, pelo plano de IA que você já assina ou por chave. Instagram e TikTok: app local.
 ```
 
 > A versão anterior deste campo dizia "resumo, **transcrição** e **mapa mental**". Nenhum dos dois
@@ -115,50 +127,40 @@ Vira o vídeo do YouTube que você está vendo numa aula em português — pelo 
 ```
 O Bruto não resume. Ensina.
 
-As dezenas de extensões que resumem vídeo devolvem cinco bullets e um paywall. O Bruto entrega
-uma aula: o que você deveria saber ao final, cada conceito explicado desde o começo, um
-glossário dos termos que o autor assumiu que você já conhecia, e um teste para descobrir se
-entendeu mesmo.
+As dezenas de extensões que resumem vídeo devolvem cinco bullets e um paywall. O Bruto entrega uma aula: o que você deveria saber ao final, cada conceito explicado desde o começo, um glossário dos termos que o autor assumiu que você já conhecia, e um teste para descobrir se entendeu mesmo.
 
 COMO FUNCIONA
 
 NO YOUTUBE
-Abra um vídeo, clique no ícone do Bruto e pronto. Ele lê a transcrição que o próprio YouTube
-publica na página — nunca baixa vídeo nem áudio — e monta a aula em português.
+Abra um vídeo, clique no ícone do Bruto e em Destrinchar. Ele lê a transcrição que o próprio YouTube publica na página — nunca baixa vídeo nem áudio — e monta a aula em português.
 
 EM INSTAGRAM E TIKTOK
-Quando você clica no ícone em um Reel ou vídeo, a extensão encaminha o link ao app do Bruto (que
-precisa estar rodando na sua máquina). O app transcreve o áudio e monta a aula. Se o app não estiver
-aberto, a extensão avisa.
+Num Reel ou num vídeo do TikTok, o ícone do Bruto reconhece a plataforma e oferece o botão Destrinchar no app local. Ele manda o link ao aplicativo do Bruto, que precisa estar aberto na sua máquina: o app transcreve o áudio e monta a aula. Se o app não estiver aberto, a extensão avisa e não envia nada.
 
 DOIS MODOS, E A TELA DE OPÇÕES DIZ EM QUAL VOCÊ ESTÁ
 
-1. O SEU PLANO. Se você já paga uma assinatura de IA, use-a. Com o app do Bruto aberto nesta
-máquina, a extensão pede a aula a ele, o app fala com a IA pelo plano, e não é preciso chave
-nenhuma. Uma extensão de navegador não executa programa — por isso quem conversa com a
-assinatura é o app, e a extensão só fala com ele, em 127.0.0.1, nesta máquina.
+1. O SEU PLANO. Se você já paga uma assinatura de IA, use-a. Com o app do Bruto aberto nesta máquina, a extensão pede a aula a ele, o app fala com a IA pelo plano, e não é preciso chave nenhuma. Uma extensão de navegador não executa programa — por isso quem conversa com a assinatura é o app, e a extensão só fala com ele, em 127.0.0.1, nesta máquina.
 
-2. SUA CHAVE. Sem o app, você escolhe o provedor (Anthropic, OpenAI, OpenRouter, Ollama Cloud ou
-Google) e usa a sua própria chave. Ela fica só neste navegador e fala direto com o provedor: não
-existe servidor nosso no caminho. Aqui você paga por uso, ao provedor.
+2. SUA CHAVE. Sem o app, você escolhe o provedor (Anthropic, OpenAI, OpenRouter, Ollama Cloud ou Google) e usa a sua própria chave. Ela fica só neste navegador e fala direto com o provedor: não existe servidor nosso no caminho. Aqui você paga por uso, ao provedor.
 
-Em nenhum dos dois há mensalidade nossa, limite ou cadastro — a extensão não tem conta e não sabe
-quem você é. E a tela de opções diz, em letras, em qual modo você está e por quê: quem instalou
-isto para não pagar por token precisa ver quando está pagando por token.
+Em nenhum dos dois há mensalidade nossa, limite ou cadastro — a extensão não tem conta e não sabe quem você é. E a tela de opções diz, em letras, em qual modo você está e por quê: quem instalou isto para não pagar por token precisa ver quando está pagando por token.
 
 BANCADA
-As aulas que você destrincha ficam guardadas neste navegador. Fechar o popup não perde nada.
+As aulas que a extensão monta ficam guardadas neste navegador. Fechar o popup não perde nada. As de Instagram e TikTok ficam no catálogo do aplicativo local.
 
 CADERNO DE IDEIAS
-Ao fim de cada aula, uma pergunta: isso te deu alguma ideia? O que você escrever fica no
-Caderno. É a única coisa aqui que nasce de você — uma aula se refaz em trinta segundos, uma
-ideia que passou não volta.
+Ao fim de cada aula, uma pergunta: isso te deu alguma ideia? O que você escrever fica no Caderno. É a única coisa aqui que nasce de você — uma aula se refaz em trinta segundos, uma ideia que passou não volta.
 
 CÓDIGO ABERTO
-Licença MIT, auditável em github.com/Ideia-Business/bruto. Há também um aplicativo local, do
-mesmo projeto, que dá conta de Instagram e TikTok transcrevendo o áudio.
+Licença MIT, auditável em github.com/Ideia-Business/bruto. O aplicativo local, do mesmo projeto, instala com um comando no macOS, no Linux e no Windows.
 
-Projeto independente, sem afiliação com YouTube, Anthropic, OpenAI ou Google.
+Projeto independente, sem afiliação com YouTube, Instagram, TikTok, Anthropic, OpenAI ou Google.
+```
+
+**Propósito único** (aba Privacy — o revisor lê primeiro)
+
+```
+Transformar o vídeo que a pessoa está assistindo numa aula em português: objetivos, conceitos explicados do zero, glossário e teste de fixação. No YouTube a extensão lê a transcrição publicada na própria página e gera a aula com a IA escolhida pela pessoa; em Instagram e TikTok ela encaminha o link ao aplicativo do Bruto que a pessoa roda na própria máquina. As aulas geradas pela extensão e as anotações ficam guardadas neste navegador; as de Instagram e TikTok ficam no catálogo do aplicativo local.
 ```
 
 **Justificativa de cada permissão** (o console pergunta uma a uma)
@@ -166,10 +168,10 @@ Projeto independente, sem afiliação com YouTube, Anthropic, OpenAI ou Google.
 | Permissão | Cole isto |
 |---|---|
 | `storage` | Guardar, apenas neste navegador, a chave de IA do usuário, as aulas geradas e as anotações dele. Nada é enviado a servidor nosso — não existe servidor nosso. |
-| `activeTab` | Ler a transcrição publicada na aba que o usuário está vendo, somente quando ele clica no ícone da extensão. |
+| `activeTab` | Ler, somente quando o usuário clica no ícone da extensão, o endereço da aba que ele está vendo (para saber se é YouTube, Instagram ou TikTok) e a transcrição publicada nessa aba. |
 | `scripting` | Injetar, nessa aba, o script que lê o painel "Mostrar transcrição" do YouTube. É a única forma de obter o texto sem baixar mídia. |
 | `downloads` | Salvar uma aula em arquivo, quando o usuário pede. O arquivo é gerado no próprio navegador. |
-| `host_permissions` | Dois destinos, e nenhum outro é alcançável. (a) Os cinco endereços dos provedores de IA, para falar com o que o usuário escolheu, com a chave dele. (b) `http://127.0.0.1:3000` — o app do Bruto, que o próprio usuário roda na máquina dele: é por ele que a extensão usa a assinatura de IA que o usuário já paga, em vez de exigir chave. `127.0.0.1` é a própria máquina: esse endereço não sai dela e não alcança servidor nenhum na internet. |
+| `host_permissions` | Dois destinos, e nenhum outro é alcançável. (a) Os cinco endereços dos provedores de IA, para falar com o que o usuário escolheu, com a chave dele. (b) http://127.0.0.1:3000 — o aplicativo do Bruto, de código aberto, que o próprio usuário instala e roda na máquina dele: é por ele que a extensão usa a assinatura de IA que o usuário já paga, e é para ele que a extensão encaminha o link de um vídeo do Instagram ou do TikTok quando o usuário clica em Destrinchar no app local. 127.0.0.1 é a própria máquina: esse endereço não sai dela e não alcança servidor nenhum na internet. |
 
 **Justificativa do código remoto:** não há. Todo o código executado vem dentro do pacote.
 
@@ -181,7 +183,8 @@ Declarar **uso de dados** (a Loja chama de *data usage*):
 |---|---|
 | Coleta informação de identificação pessoal? | **Não** |
 | Informação de saúde, financeira, de autenticação? | **Não** |
-| Comunicações pessoais, localização, histórico de navegação? | **Não** |
+| Comunicações pessoais, localização? | **Não** |
+| Histórico de navegação (*web history*)? | **Sim** — a definição oficial inclui qualquer URL com que o navegador interage. Em Instagram e TikTok, a URL da aba é enviada ao **app do Bruto na própria máquina** (`127.0.0.1`), só quando o usuário clica em *Destrinchar no app local*. |
 | Atividade do usuário (cliques, movimento de mouse)? | **Não** |
 | Conteúdo de site (texto, imagens da página)? | **Sim** — a transcrição do vídeo é lida da página e enviada para gerar a aula: ao **app do Bruto na própria máquina do usuário** (`127.0.0.1`), quando ele o está rodando, ou ao provedor de IA **escolhido por ele**, com a chave dele. Não passa por servidor nosso e não é armazenada por nós. |
 | Vende ou transfere dados a terceiros fora dos casos aprovados? | **Não** |
