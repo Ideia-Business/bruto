@@ -10,6 +10,15 @@ export interface TagsAiResult {
 }
 
 /**
+ * Placeholders do exemplo de formato no prompt — deliberadamente algo que
+ * NUNCA faria sentido como tag/título de verdade (prefixo "exemplo-" óbvio),
+ * para que `pareceEcoDoPromptExemplo` abaixo detecte com segurança um modelo
+ * que copiou o exemplo em vez de responder de verdade.
+ */
+const EXEMPLO_TAGS_DO_PROMPT = ["exemplo-tag-a", "exemplo-tag-b"];
+const EXEMPLO_TITLE_DO_PROMPT = "exemplo-titulo-novo";
+
+/**
  * Prompt de tags + título — chamada balanceada (sonnet), DEPOIS da categoria já
  * decidida (é por isso que a etapa do pipeline faz duas chamadas em sequência:
  * só se sabe QUAIS tags já existem "nesta categoria" depois de saber a categoria).
@@ -36,19 +45,19 @@ Tarefas:
 1. Escolha de 2 a 5 tags de assunto para este vídeo, priorizando as da lista acima. Só invente uma tag nova quando nenhuma existente servir de verdade.
 2. Avalie o título original: "${meta.title}". Se ele for genérico, truncado, clickbait vazio ou pouco fiel ao conteúdo, proponha um título mais claro e fiel (até 100 caracteres, em português). Se o original já for bom, responda null — não invente um título só para ter o que colocar.
 
-Responda SOMENTE com um objeto JSON, sem cercas de código, sem preâmbulo, EXATAMENTE em um destes dois formatos (nunca misture os dois — "title" é OU uma string OU null, nunca as duas coisas juntas no mesmo texto):
+Responda SOMENTE com um objeto JSON, sem cercas de código, sem preâmbulo, EXATAMENTE em um destes dois formatos (nunca misture os dois — "title" é OU uma string OU null, nunca as duas coisas juntas no mesmo texto). Os dois abaixo são só ILUSTRAÇÃO DO FORMATO — nunca copie os valores de exemplo, sempre substitua pelo conteúdo de verdade deste vídeo:
 
 Quando você propõe um título novo:
-{"tags": ["tag um", "tag dois"], "title": "título melhor"}
+{"tags": ["${EXEMPLO_TAGS_DO_PROMPT[0]}", "${EXEMPLO_TAGS_DO_PROMPT[1]}"], "title": "${EXEMPLO_TITLE_DO_PROMPT}"}
 
 Quando o título original já está bom:
-{"tags": ["tag um", "tag dois"], "title": null}
+{"tags": ["${EXEMPLO_TAGS_DO_PROMPT[0]}", "${EXEMPLO_TAGS_DO_PROMPT[1]}"], "title": null}
 
-Regras: "tags" é uma lista de 2 a 5 strings curtas (1 a 4 palavras), em português, minúsculas, sem numeração e sem repetir a categoria. "title" é uma string ou o literal JSON null — nunca escreva null entre aspas, e nunca escreva os dois formatos juntos.`;
+Regras: "tags" é uma lista de 2 a 5 strings curtas (1 a 4 palavras), em português, minúsculas, sem numeração e sem repetir a categoria — NUNCA os valores de exemplo acima. "title" é uma string ou o literal JSON null — nunca escreva null entre aspas, e nunca escreva os dois formatos juntos.`;
 }
 
-function limitarTags(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
+/** Só chame depois de já confirmar que `raw` é um array (ver `parseTagsResponse`). */
+function limitarTags(raw: unknown[]): string[] {
   const vistos = new Set<string>();
   const out: string[] = [];
   for (const item of raw) {
@@ -60,6 +69,17 @@ function limitarTags(raw: unknown): string[] {
     if (out.length >= 5) break;
   }
   return out;
+}
+
+/**
+ * true quando as tags batem EXATAMENTE com o exemplo do prompt (mesmo
+ * conteúdo, mesma ordem) — sinal de que o modelo ecoou a instrução em vez de
+ * responder de verdade. O título não entra na comparação: ele já é `null` num
+ * dos dois exemplos válidos, e "título ausente" sozinho não é suspeito — é a
+ * combinação com as tags-placeholder que denuncia o eco.
+ */
+function pareceEcoDoPromptExemplo(tags: string[]): boolean {
+  return tags.length === EXEMPLO_TAGS_DO_PROMPT.length && tags.every((t, i) => t === EXEMPLO_TAGS_DO_PROMPT[i]);
 }
 
 /**
@@ -111,12 +131,15 @@ function extrairJson(raw: string): string | null {
 }
 
 /**
- * null = FALHA DE PARSING — JSON malformado, ausente, ou envolvido em texto
- * que a extração não recuperou. Distinto de `{ tags: [], title: null }`, que é
- * uma resposta VÁLIDA (a IA respondeu no formato certo, só não achou tag boa
- * nem título melhor). Antes desta correção os dois casos eram idênticos, e
- * `reclassificar-cli` imprimia falha de parsing como "✔ ... [(nenhuma)]" —
- * sucesso, quando na verdade a resposta nem foi lida.
+ * null = FALHA DE PARSING — JSON malformado, ausente, envolvido em texto que a
+ * extração não recuperou, OU sintaticamente válido mas com o CONTRATO errado
+ * (`tags` não é array, `title` não é string/null) ou ecoando literalmente o
+ * exemplo do prompt. Distinto de `{ tags: [], title: null }`, que é uma
+ * resposta VÁLIDA (a IA respondeu no formato certo, só não achou tag boa nem
+ * título melhor). Antes desta correção qualquer JSON sintaticamente válido —
+ * mesmo com tipo errado ou sendo o próprio exemplo ecoado — virava sucesso, e
+ * `05-category.ts` (que substitui o conjunto de tags sempre que o parsing
+ * "funciona") apagava as tags reais do vídeo com lixo ou com o placeholder.
  */
 export function parseTagsResponse(raw: string): TagsAiResult | null {
   const jsonText = extrairJson(raw);
@@ -124,12 +147,26 @@ export function parseTagsResponse(raw: string): TagsAiResult | null {
 
   try {
     const obj = JSON.parse(jsonText) as { tags?: unknown; title?: unknown };
+
+    // Contrato: "tags" TEM que ser array (senão é falha de parsing, nunca
+    // lista vazia — string solta como "python, ia" não pode virar "nenhuma
+    // tag boa", pois isso apaga as tags que o vídeo já tinha).
+    if (!Array.isArray(obj.tags)) return null;
+    // Contrato: "title" só pode ser string ou o valor JSON null.
+    if (obj.title !== null && obj.title !== undefined && typeof obj.title !== "string") return null;
+
     const tags = limitarTags(obj.tags);
     const tituloBruto = typeof obj.title === "string" ? obj.title.trim() : "";
     // A IA às vezes erra a formatação e devolve a STRING "null" em vez do
     // valor JSON null — sem esta checagem, "null" vira o título de verdade do
     // vídeo (via setBrutoTitle) e contamina o PDF/DOCX exportado.
     const title = tituloBruto && tituloBruto.toLowerCase() !== "null" ? tituloBruto.slice(0, 150) : null;
+
+    // A IA ecoou o EXEMPLO do prompt em vez de responder de verdade — o JSON
+    // é sintaticamente válido e passa em toda validação de tipo acima, mas o
+    // conteúdo é o placeholder, não uma resposta real.
+    if (pareceEcoDoPromptExemplo(tags)) return null;
+
     return { tags, title };
   } catch {
     return null;

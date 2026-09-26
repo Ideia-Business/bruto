@@ -39,32 +39,43 @@ export function TagPicker({ videoId }: { videoId: string }) {
     marcadasRef.current = marcadas;
   }, [marcadas]);
 
-  // Fila serial dos PUTs: cada `salvar` só DISPARA depois do anterior ter
-  // respondido — nunca dois PUTs concorrentes. Sem isto, marcar A e depois B
-  // rapidamente dispara PUT{A} e PUT{A,B} em paralelo; se a rede entregar o
-  // PUT{A} DEPOIS do PUT{A,B} (fora de ordem), o banco fica em {A} enquanto a
-  // UI (otimista) mostra {A,B} — um reload mostraria o estado errado (achado
-  // do Codex, 5ª rodada). Como cada clique já lê `marcadas` do render mais
-  // recente (React flusha entre eventos), cada `proximo` já é o alvo
-  // cumulativo certo — só faltava garantir a ORDEM de chegada ao servidor.
+  // Fila serial de TODA operação de rede deste picker (leituras E escritas) —
+  // nunca duas em voo ao mesmo tempo. Cobre dois achados:
+  //  1) marcar A e depois B rapidamente disparava PUT{A} e PUT{A,B} em
+  //     paralelo; se a rede entregasse o PUT{A} DEPOIS do PUT{A,B} (fora de
+  //     ordem), o banco ficava em {A} enquanto a UI (otimista) mostrava {A,B}
+  //     (achado do Codex, 5ª rodada).
+  //  2) fechar e reabrir o diálogo enquanto um PUT ainda estava na fila
+  //     disparava um `carregar()` (GET) direto, sem fila — a resposta podia
+  //     chegar ANTES do servidor processar o PUT pendente, e `carregar`
+  //     sobrescrevia `marcadas` com dado desatualizado (achado do Codex, 6ª
+  //     rodada). Botar `carregar` na MESMA fila garante que ele só roda depois
+  //     de qualquer escrita anterior já ter sido despachada e respondida —
+  //     um contador de geração sozinho não bastaria aqui, porque o PUT pode
+  //     nem ter SIDO ENVIADO ainda quando o GET dispara; só a fila garante a
+  //     ORDEM DE DESPACHO, não só a ordem de quem foi chamado por último.
   const filaRef = useRef<Promise<void>>(Promise.resolve());
 
-  const carregar = useCallback(async () => {
-    setCarregando(true);
-    try {
-      const [tRes, vRes] = await Promise.all([
-        fetchApp("/api/tags"),
-        fetchApp(`/api/videos/${videoId}/tags`),
-      ]);
-      const t = (await tRes.json()) as { tags: TagRow[] };
-      const v = (await vRes.json()) as { tagIds: string[] };
-      setRows(t.tags);
-      setMarcadas(new Set(v.tagIds));
-    } catch {
-      toast.error("Não deu para carregar suas tags.");
-    } finally {
-      setCarregando(false);
-    }
+  const carregar = useCallback((): Promise<void> => {
+    const tarefa = filaRef.current.then(async () => {
+      setCarregando(true);
+      try {
+        const [tRes, vRes] = await Promise.all([
+          fetchApp("/api/tags"),
+          fetchApp(`/api/videos/${videoId}/tags`),
+        ]);
+        const t = (await tRes.json()) as { tags: TagRow[] };
+        const v = (await vRes.json()) as { tagIds: string[] };
+        setRows(t.tags);
+        setMarcadas(new Set(v.tagIds));
+      } catch {
+        toast.error("Não deu para carregar suas tags.");
+      } finally {
+        setCarregando(false);
+      }
+    });
+    filaRef.current = tarefa;
+    return tarefa;
   }, [videoId]);
 
   const mudarAbertura = useCallback(

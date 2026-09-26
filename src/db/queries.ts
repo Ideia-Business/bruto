@@ -251,16 +251,26 @@ export function setBrutoTitle(videoId: string, title: string): void {
   db.update(brutos).set({ title }).where(eq(brutos.id, videoId)).run();
 }
 
+export interface BrutoPendente {
+  id: string;
+  title: string;
+}
+
 /**
- * Quantos vídeos ainda estão com classificação pendente (nunca foi
- * classificado com sucesso pelo passo 05, nem corrigido à mão) — o "jeito de
- * listar" que faltava: sem isto, um vídeo cuja primeira classificação falhou
- * ficava com categoria "outros" indistinguível de uma decisão de verdade da
- * IA, e ninguém saberia que precisa rodar `npm run reclassificar` nele.
+ * QUAIS vídeos ainda estão com classificação pendente (nunca foi classificado
+ * com sucesso pelo passo 05, nem corrigido à mão) — não só quantos. Uma
+ * contagem sozinha (a versão anterior desta função) dizia "há N pendentes"
+ * sem dizer QUAIS, e quem fosse atrás não tinha como saber o que rodar. Sem
+ * isto, um vídeo cuja primeira classificação falhou ficava com categoria
+ * "outros" indistinguível de uma decisão de verdade da IA.
  */
-export function contarBrutosComClassificacaoPendente(): number {
-  return db.select({ id: brutos.id }).from(brutos).where(eq(brutos.classificacaoPendente, true)).all()
-    .length;
+export function listarBrutosComClassificacaoPendente(): BrutoPendente[] {
+  return db
+    .select({ id: brutos.id, title: brutos.title })
+    .from(brutos)
+    .where(eq(brutos.classificacaoPendente, true))
+    .orderBy(brutos.title)
+    .all();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

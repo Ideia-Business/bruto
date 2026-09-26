@@ -159,18 +159,22 @@ describe("npm run reclassificar — reprocessamento retroativo sequencial", () =
   });
 
   /**
-   * REGRESSÃO (achado 1, Grok): antes desta correção, um vídeo cuja primeira
-   * classificação falhasse ficava com categoria "outros" indistinguível de
-   * "a IA decidiu de propósito" — sem nenhum sinal de que falta reclassificar.
-   * O campo `classificacao_pendente` e este resumo são o "jeito de listar".
+   * REGRESSÃO (achado 1, Grok, 3ª rodada — e achado 4, Grok, 6ª rodada): antes
+   * da primeira correção, um vídeo cuja classificação falhasse ficava com
+   * categoria "outros" indistinguível de "a IA decidiu de propósito" — sem
+   * nenhum sinal de que falta reclassificar. A contagem sozinha (fix da 3ª
+   * rodada) dizia "há N pendentes" sem dizer QUAIS — agora o resumo LISTA
+   * título e id de cada um.
    */
-  test("REGRESSÃO: o resumo final avisa quantos vídeos seguem com classificação pendente", () => {
+  test("REGRESSÃO: o resumo final lista QUAIS vídeos seguem com classificação pendente (não só quantos)", () => {
     const { saida } = rodar();
     // SEM_ARTEFATO nasce pendente e nunca é tocado (falta artefato em disco) —
     // continua pendente ao final. COM_ARTEFATO já estava classificado antes
     // (pendente=false) e uma falha de reclassificação não o torna pendente
     // retroativamente (não há informação nova de que algo mudou).
-    assert.match(saida, /⚠ 1 vídeo\(s\) na biblioteca ainda com classificação pendente\./);
+    assert.match(saida, /⚠ 1 vídeo\(s\) na biblioteca ainda com classificação pendente:/);
+    assert.match(saida, new RegExp(`· ${SEM_ARTEFATO.title} \\(${SEM_ARTEFATO.id}\\)`));
+    assert.doesNotMatch(saida, new RegExp(`· ${COM_ARTEFATO.title} \\(${COM_ARTEFATO.id}\\)`));
   });
 
   test("filtrar por um único id processa só aquele vídeo", () => {

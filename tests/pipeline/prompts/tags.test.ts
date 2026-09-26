@@ -30,9 +30,10 @@ describe("tagsPrompt", () => {
       /"title":\s*"[^"]*"\s*\|\s*null/,
       "o exemplo não pode misturar string e null com | dentro do mesmo JSON",
     );
-    // Os dois formatos válidos precisam aparecer, cada um por si.
-    assert.match(prompt, /\{"tags":\s*\["tag um", "tag dois"\], "title": "título melhor"\}/);
-    assert.match(prompt, /\{"tags":\s*\["tag um", "tag dois"\], "title": null\}/);
+    // Os dois formatos válidos precisam aparecer, cada um por si, com os
+    // placeholders óbvios (nunca palavras que pareçam resposta de verdade).
+    assert.match(prompt, /\{"tags":\s*\["exemplo-tag-a", "exemplo-tag-b"\], "title": "exemplo-titulo-novo"\}/);
+    assert.match(prompt, /\{"tags":\s*\["exemplo-tag-a", "exemplo-tag-b"\], "title": null\}/);
   });
 });
 
@@ -63,11 +64,6 @@ describe("parseTagsResponse", () => {
     assert.equal(r.tags.length, 5);
   });
 
-  test("campos ausentes/tipo errado são tratados como vazios, sem lançar (JSON válido, contrato errado)", () => {
-    const r = parseTagsResponse('{"tags": "não é lista", "title": 42}');
-    assert.deepEqual(r, { tags: [], title: null });
-  });
-
   test("string vazia de título não vira título (evita título em branco)", () => {
     const r = parseTagsResponse('{"tags": [], "title": "   "}');
     assert.ok(r);
@@ -75,10 +71,38 @@ describe("parseTagsResponse", () => {
   });
 
   /**
-   * REGRESSÃO (achado 3, Grok — o mais grave desta rodada): a IA às vezes
-   * erra a formatação e devolve a STRING "null" em vez do valor JSON null. Sem
-   * esta checagem, "null" vira o TÍTULO DE VERDADE do vídeo (`setBrutoTitle`)
-   * e contamina o PDF/DOCX exportado.
+   * REGRESSÃO (achado 1, os dois revisores — o mais grave da 6ª rodada):
+   * `tags` com o TIPO errado (JSON sintaticamente válido, mas não é array)
+   * caía silenciosamente em `[]` — uma lista vazia é uma resposta VÁLIDA (a IA
+   * decidiu que não há tag boa), então `05-category.ts` (que substitui o
+   * conjunto sempre que o parsing "funciona") apagava as tags reais do vídeo
+   * com base numa resposta que na verdade violou o contrato. Agora isso é
+   * FALHA DE PARSING (null), nunca lista vazia.
+   */
+  test('REGRESSÃO: "tags" com tipo errado (não-array) vira null, NUNCA lista vazia', () => {
+    assert.equal(parseTagsResponse('{"tags": "python, ia", "title": null}'), null);
+    assert.equal(parseTagsResponse('{"tags": 42, "title": null}'), null);
+    assert.equal(parseTagsResponse('{"tags": null, "title": null}'), null);
+    assert.equal(parseTagsResponse('{"title": null}'), null, "tags AUSENTE também é contrato quebrado");
+  });
+
+  test('REGRESSÃO: "title" com tipo errado (número, booleano, objeto) vira null, nunca título vazio', () => {
+    assert.equal(parseTagsResponse('{"tags": ["ia"], "title": 42}'), null);
+    assert.equal(parseTagsResponse('{"tags": ["ia"], "title": true}'), null);
+    assert.equal(parseTagsResponse('{"tags": ["ia"], "title": {"x": 1}}'), null);
+  });
+
+  test('"title" ausente (chave nem existe) é tratado como null, não como contrato quebrado', () => {
+    const r = parseTagsResponse('{"tags": ["ia"]}');
+    assert.ok(r);
+    assert.equal(r.title, null);
+  });
+
+  /**
+   * REGRESSÃO (achado 3, Grok — rodada anterior): a IA às vezes erra a
+   * formatação e devolve a STRING "null" em vez do valor JSON null. Sem esta
+   * checagem, "null" vira o TÍTULO DE VERDADE do vídeo (`setBrutoTitle`) e
+   * contamina o PDF/DOCX exportado.
    */
   test('REGRESSÃO: title como a STRING "null" (não o valor JSON) vira null, nunca o título', () => {
     const r = parseTagsResponse('{"tags": ["ia"], "title": "null"}');
@@ -118,24 +142,67 @@ describe("parseTagsResponse", () => {
   });
 
   /**
-   * REGRESSÃO (achado 3, Grok — 5ª rodada): a versão anterior ia do PRIMEIRO
-   * `{` ao ÚLTIMO `}` do texto inteiro. Se a IA ecoar os dois exemplos do
-   * próprio prompt (falha conhecida de modelo — repetir instrução em vez de
-   * responder), esse recorte juntava os dois objetos JSON num blob inválido e
-   * `JSON.parse` falhava. Agora o scanner para na chave que fecha a PRIMEIRA
-   * abertura — extrai o primeiro objeto balanceado, ignora o resto.
+   * REGRESSÃO (achado 3, Grok — 5ª rodada): a versão anterior de
+   * `extrairJson` ia do PRIMEIRO `{` ao ÚLTIMO `}` do texto inteiro. Dois
+   * objetos JSON colados (nomes de tag genéricos aqui — o cenário específico
+   * de ECOAR O EXEMPLO do prompt tem teste dedicado logo abaixo) juntavam num
+   * blob inválido e `JSON.parse` falhava por inteiro. Agora o scanner para na
+   * chave que fecha a PRIMEIRA abertura — extrai o primeiro objeto
+   * balanceado, ignora o resto.
    */
-  test("REGRESSÃO: dois objetos JSON colados (eco dos dois exemplos do prompt) não vira um blob inválido", () => {
-    const doisObjetosColados =
-      '{"tags": ["tag um", "tag dois"], "title": "título melhor"}\n{"tags": ["tag um", "tag dois"], "title": null}';
+  test("REGRESSÃO: dois objetos JSON colados não viram um blob inválido — extrai só o primeiro", () => {
+    const doisObjetosColados = '{"tags": ["ia", "python"], "title": "Um título"}\n{"tags": ["outra", "coisa"], "title": null}';
     const r = parseTagsResponse(doisObjetosColados);
     assert.ok(r, "deveria ter extraído o PRIMEIRO objeto balanceado, não falhado no blob dos dois juntos");
-    assert.deepEqual(r.tags, ["tag um", "tag dois"]);
+    assert.deepEqual(r.tags, ["ia", "python"]);
+    assert.equal(r.title, "Um título");
   });
 
   test("chave/colchete dentro de uma STRING não confunde a contagem de profundidade", () => {
     const r = parseTagsResponse('{"tags": ["ia"], "title": "Ep. 5: {Especial} [parte 2]"}');
     assert.ok(r, "aspas literais dentro de valores de string não deveriam quebrar o balanceamento de chaves");
     assert.equal(r.title, "Ep. 5: {Especial} [parte 2]");
+  });
+
+  /**
+   * REGRESSÃO (achado 2, Grok — 6ª rodada, "ainda mais grave que o 1"): o
+   * scanner de chaves balanceadas (fix da rodada anterior) resolveu "dois
+   * objetos colados", mas abriu um buraco novo — se a IA ecoar o PRÓPRIO
+   * EXEMPLO do prompt (os literais exatos do formato pedido) em vez de
+   * responder de verdade, o objeto extraído é JSON perfeitamente válido, com
+   * os TIPOS certos, e passava em qualquer validação de contrato. O vídeo
+   * ficava com tags/título PLACEHOLDER, indistinguível de uma resposta real.
+   * Agora: tags que batem EXATAMENTE com o exemplo do prompt (mesmo conteúdo,
+   * mesma ordem) são tratadas como falha de parsing, não como resposta real —
+   * e os placeholders do prompt viraram algo ("exemplo-tag-a"/"exemplo-tag-b")
+   * que nunca faria sentido como tag de verdade, reduzindo ainda mais a
+   * chance de uma resposta LEGÍTIMA colidir por coincidência.
+   */
+  test("REGRESSÃO: ecoar o exemplo do prompt (com título de exemplo) vira falha de parsing", () => {
+    const r = parseTagsResponse('{"tags": ["exemplo-tag-a", "exemplo-tag-b"], "title": "exemplo-titulo-novo"}');
+    assert.equal(r, null);
+  });
+
+  test("REGRESSÃO: ecoar o exemplo do prompt (com title: null) também vira falha de parsing", () => {
+    const r = parseTagsResponse('{"tags": ["exemplo-tag-a", "exemplo-tag-b"], "title": null}');
+    assert.equal(r, null);
+  });
+
+  test("REGRESSÃO: ecoar os DOIS exemplos colados (o cenário original do achado) vira falha de parsing", () => {
+    const doisExemplosDoPrompt =
+      '{"tags": ["exemplo-tag-a", "exemplo-tag-b"], "title": "exemplo-titulo-novo"}\n{"tags": ["exemplo-tag-a", "exemplo-tag-b"], "title": null}';
+    assert.equal(parseTagsResponse(doisExemplosDoPrompt), null);
+  });
+
+  test("controle negativo: tags parecidas mas DIFERENTES do exemplo não são tratadas como eco", () => {
+    const r = parseTagsResponse('{"tags": ["exemplo-tag-a"], "title": null}'); // só uma, não as duas
+    assert.ok(r, "uma única tag parcialmente parecida com o placeholder não deveria disparar a detecção de eco");
+    assert.deepEqual(r.tags, ["exemplo-tag-a"]);
+  });
+
+  test("controle negativo: tags reais de assunto passam normalmente (não são o placeholder)", () => {
+    const r = parseTagsResponse('{"tags": ["inteligência artificial", "python"], "title": null}');
+    assert.ok(r);
+    assert.deepEqual(r.tags, ["inteligência artificial", "python"]);
   });
 });

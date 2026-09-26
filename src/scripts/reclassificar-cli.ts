@@ -16,7 +16,7 @@ import { db } from "@/db/client";
 import { brutos } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { artifactPaths } from "@/pipeline/lib/paths";
-import { contarBrutosComClassificacaoPendente } from "@/db/queries";
+import { listarBrutosComClassificacaoPendente } from "@/db/queries";
 import { runCategory } from "@/pipeline/steps/05-category";
 
 async function main(): Promise<void> {
@@ -83,12 +83,15 @@ async function main(): Promise<void> {
     `\nConcluído: ${ok} reclassificado(s), ${semArtefato} pulado(s) (sem artefato), ${comErro} com erro.`,
   );
 
-  // O "jeito de listar" pedido na revisão: quantos vídeos, NA BIBLIOTECA
-  // INTEIRA (não só neste lote), ainda estão sem uma classificação de
-  // verdade — inclui os pulados por falta de artefato e os que falharam aqui.
-  const pendentes = contarBrutosComClassificacaoPendente();
-  if (pendentes > 0) {
-    console.log(`⚠ ${pendentes} vídeo(s) na biblioteca ainda com classificação pendente.\n`);
+  // O "jeito de listar QUAIS" pedido na revisão (uma contagem sozinha não
+  // dizia o que rodar): todo vídeo, NA BIBLIOTECA INTEIRA (não só neste
+  // lote), que ainda não tem uma classificação de verdade — inclui os
+  // pulados por falta de artefato e os que falharam aqui.
+  const pendentes = listarBrutosComClassificacaoPendente();
+  if (pendentes.length > 0) {
+    console.log(`⚠ ${pendentes.length} vídeo(s) na biblioteca ainda com classificação pendente:`);
+    for (const p of pendentes) console.log(`    · ${p.title} (${p.id})`);
+    console.log("");
   } else {
     console.log("");
   }
