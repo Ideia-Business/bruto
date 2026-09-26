@@ -8,7 +8,14 @@
 # Especificação completa: install/CONTRATO.md (este script cumpre ela; quem
 # mudar um dos dois, muda o outro). Compatível com bash 3.2 (o do macOS) —
 # nada de `declare -A`, `${var,,}`, `mapfile`.
+#
+# O CORPO INTEIRO MORA NA FUNÇÃO bruto_instalar, chamada na última linha. Em
+# `curl … | bash`, o script chega pela entrada padrão e o bash o lê aos
+# pedaços: um `apt-get` no meio lia essa mesma entrada e engolia o resto do
+# instalador, que terminava calado com código 0 (medido em 25/09/2026 num
+# Ubuntu limpo). Dentro de uma função, o bash precisa ler tudo antes de rodar.
 
+bruto_instalar() {
 set -euo pipefail
 # $HOME/.local/bin PRIMEIRO: é onde `uv tool install` grava os shims
 # (yt-dlp, whisper). Se o sistema também tiver uma versão de pacote da
@@ -136,7 +143,7 @@ instalar_pacote_linux() {
     *) return 1 ;;
   esac
   echo "    \$ $cmd"
-  bash -c "$cmd"
+  bash -c "$cmd" </dev/null
 }
 
 if [ "$SO" = "Linux" ]; then
@@ -519,3 +526,6 @@ else
 fi
 echo "   Sem atalho: bash \"$BRUTO_ALVO/launcher/serve.sh\""
 echo "   Atualizar: rode este mesmo comando de novo"
+}
+
+bruto_instalar "$@"
