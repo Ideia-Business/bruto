@@ -3,7 +3,7 @@ import { redact } from "@/pipeline/lib/llm/redact";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { jobs } from "@/db/schema";
-import { isBrutoDone } from "@/db/queries";
+import { isBrutoDone, getBrutoById } from "@/db/queries";
 import { emitProgress } from "./bus";
 import { fetchMetadata, persistMetadata } from "./steps/01-metadata";
 import { runTranscript } from "./steps/02-transcript";
@@ -140,6 +140,27 @@ export function ehDuplicataTardia(
   return !idJaEraConhecidoNoEnqueue && deps.isBrutoDone(metaId);
 }
 
+export interface DepsSincronizarTitulo {
+  getBrutoById: (id: string) => { title: string } | null;
+}
+
+/**
+ * Repõe `meta.title` com o título ATUAL do banco antes do resto do pipeline
+ * rodar. `persistMetadata` NUNCA toca no título num reprocessamento (ver
+ * 01-metadata.ts) — sem isto, um vídeo já classificado antes (com um título
+ * bom já confirmado) teria os prompts de resumo/categoria/tags desta passada
+ * avaliando o título CRU do yt-dlp como "o original", e a IA podia então
+ * SOBRESCREVER o título bom com uma reescrita do texto cru (achado do Grok,
+ * 10ª rodada — efeito colateral do achado da rodada anterior).
+ */
+export function sincronizarTituloComBanco(
+  meta: VideoMetadata,
+  deps: DepsSincronizarTitulo = { getBrutoById },
+): void {
+  const atual = deps.getBrutoById(meta.id);
+  if (atual) meta.title = atual.title;
+}
+
 export interface DepsProcessJob {
   fetchMetadata: (url: string) => Promise<VideoMetadata>;
   persistMetadata: (meta: VideoMetadata) => Promise<void>;
@@ -184,6 +205,8 @@ export async function processJob(
 
     await deps.persistMetadata(meta);
     update(jobId, { videoId: meta.id });
+
+    sincronizarTituloComBanco(meta);
 
     // 2) transcript
     update(jobId, { currentStep: "transcript", progressPct: 15 });

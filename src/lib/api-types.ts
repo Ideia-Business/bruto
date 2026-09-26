@@ -15,6 +15,7 @@ export interface BrutoCard {
   thumbnailPath: string | null;
   categoryId: number | null;
   transcriptSource: string | null;
+  classificacaoPendente: boolean;
   createdAt: string | number | Date;
   tags: TagLite[];
 }

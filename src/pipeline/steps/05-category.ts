@@ -137,7 +137,15 @@ export async function runCategory(
   if (!tagsIndisponivel) {
     setBrutoTagsFromNames(meta.id, tagNames);
   }
-  if (titleSuggestion) {
+  // Só grava/reporta se a sugestão for DE VERDADE diferente do título que já
+  // entrou nesta chamada (`meta.title` — o chamador é quem garante que isto
+  // já é o título ATUAL do banco, não o cru do yt-dlp; ver runner.ts e
+  // reclassificar-cli.ts). Uma "sugestão" idêntica ao que já está não é uma
+  // melhoria — regravar seria só ruído, e reportar como sugestão faria o
+  // chamador reexportar docx/pdf à toa (achado do Grok, 10ª rodada).
+  if (titleSuggestion === meta.title) {
+    titleSuggestion = null;
+  } else if (titleSuggestion) {
     setBrutoTitle(meta.id, titleSuggestion);
   }
 

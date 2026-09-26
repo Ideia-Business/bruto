@@ -34,6 +34,7 @@ async function main(): Promise<void> {
   console.log(`\n▶ Reclassificando ${todos.length} bruto(s), um por vez…\n`);
 
   let ok = 0;
+  let parcial = 0;
   let semArtefato = 0;
   let comErro = 0;
 
@@ -79,8 +80,18 @@ async function main(): Promise<void> {
         await reexportarComTituloNovo(bruto, resultado.titleSuggestion, transcriptText);
         tituloTexto = ` · título novo: "${resultado.titleSuggestion}" (docx/pdf reexportados)`;
       }
-      console.log(`  ✔ ${bruto.title} → ${resultado.categorySlug} [${tagsTexto}]${tituloTexto}`);
-      ok++;
+      // REGRESSÃO (achado 4, Codex, 10ª rodada): categoria funcionou, mas as
+      // tags/título não deram para interpretar — antes isso contava como
+      // sucesso pleno (`ok++`) e o CLI saía com código 0, escondendo que a
+      // reclassificação ficou incompleta. Agora é um terceiro balde,
+      // "parcial", com símbolo próprio e refletido no código de saída.
+      if (resultado.tagsIndisponivel) {
+        console.log(`  ◐ ${bruto.title} → ${resultado.categorySlug} [${tagsTexto}] — parcial: categoria ok, tags/título indisponíveis`);
+        parcial++;
+      } else {
+        console.log(`  ✔ ${bruto.title} → ${resultado.categorySlug} [${tagsTexto}]${tituloTexto}`);
+        ok++;
+      }
     } catch (err) {
       console.log(`  ✖ ${bruto.title} — falhou: ${err instanceof Error ? err.message : String(err)}`);
       comErro++;
@@ -88,7 +99,7 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `\nConcluído: ${ok} reclassificado(s), ${semArtefato} pulado(s) (sem artefato), ${comErro} com erro.`,
+    `\nConcluído: ${ok} reclassificado(s), ${parcial} parcial(is) (categoria ok, tags/título não), ${semArtefato} pulado(s) (sem artefato), ${comErro} com erro.`,
   );
 
   // O "jeito de listar QUAIS" pedido na revisão (uma contagem sozinha não
@@ -104,7 +115,10 @@ async function main(): Promise<void> {
     console.log("");
   }
 
-  process.exit(comErro > 0 ? 1 : 0);
+  // Parcial também vira código de saída não-zero — categoria sozinha não é a
+  // reclassificação completa que o dono pediu, e automação lendo só o exit
+  // code não pode achar que deu tudo certo (achado do Codex, 10ª rodada).
+  process.exit(comErro > 0 || parcial > 0 ? 1 : 0);
 }
 
 void main();

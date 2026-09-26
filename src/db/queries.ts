@@ -21,6 +21,7 @@ interface CardBase {
   thumbnailPath: string | null;
   categoryId: number | null;
   transcriptSource: string | null;
+  classificacaoPendente: boolean;
   createdAt: Date;
 }
 
@@ -43,6 +44,7 @@ function toCard(v: Bruto): CardBase {
     thumbnailPath: v.thumbnailPath,
     categoryId: v.categoryId,
     transcriptSource: v.transcriptSource,
+    classificacaoPendente: v.classificacaoPendente,
     createdAt: v.createdAt,
   };
 }

@@ -9,8 +9,9 @@ import { detalheParaWire } from "@/lib/wire";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { artifacts, jobs, brutos } from "@/db/schema";
-import { getBrutoDetail, setBrutoCategory, setBrutoTitle } from "@/db/queries";
-import { videoDir } from "@/pipeline/lib/paths";
+import { getBrutoById, getBrutoDetail, setBrutoCategory, setBrutoTitle } from "@/db/queries";
+import { artifactPaths, videoDir } from "@/pipeline/lib/paths";
+import { reexportarComTituloNovo } from "@/pipeline/lib/reexportar-titulo";
 
 /** GET /api/videos/[id] → detalhe + conteúdo das abas. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -38,8 +39,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (typeof body.title === "string") {
     const title = body.title.trim();
     if (!title) return NextResponse.json({ error: "O título não pode ficar vazio." }, { status: 400 });
-    setBrutoTitle(id, title.slice(0, 300));
+    const tituloFinal = title.slice(0, 300);
+    setBrutoTitle(id, tituloFinal);
     touched = true;
+
+    // Sem isto, o catálogo mostrava o nome novo mas o docx/pdf em
+    // library/<id>/ continuavam com o título antigo pra sempre — renomear
+    // manualmente na tela é bem mais comum que rodar `reclassificar-cli`
+    // (o único outro lugar que chamava isto até aqui). Best-effort: a
+    // função já engole os próprios erros, e sem transcrição em disco não
+    // há o que reexportar ainda.
+    const bruto = getBrutoById(id);
+    const paths = artifactPaths(id);
+    if (bruto && fs.existsSync(paths.transcript)) {
+      await reexportarComTituloNovo(bruto, tituloFinal, fs.readFileSync(paths.transcript, "utf8"));
+    }
   }
   if (!touched) {
     return NextResponse.json({ error: "Nada para atualizar (title ou categoryId)." }, { status: 400 });

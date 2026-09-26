@@ -28,6 +28,11 @@ export function TagPicker({ videoId }: { videoId: string }) {
   const [marcadas, setMarcadas] = useState<Set<string>>(new Set());
   const [nova, setNova] = useState("");
   const [carregando, setCarregando] = useState(false);
+  // Só vira true depois de uma carga BEM-SUCEDIDA, e nunca volta a false —
+  // uma falha de recarregamento posterior não apaga `marcadas` (que já tem
+  // um retrato válido, ainda que talvez levemente desatualizado); o perigo
+  // real é só a PRIMEIRA carga nunca ter completado (ver `podeEditar` abaixo).
+  const [carregadoComSucesso, setCarregadoComSucesso] = useState(false);
 
   // Espelha `marcadas` para leitura DEPOIS de um `await` — sem isto,
   // `criarEIncluir` (que faz `await` no POST de criar a tag antes de compor o
@@ -93,8 +98,15 @@ export function TagPicker({ videoId }: { videoId: string }) {
       if (edicaoRef.current === edicaoAntes) {
         setMarcadas(new Set(v.tagIds));
       }
+      setCarregadoComSucesso(true);
     } catch {
       toast.error("Não deu para carregar suas tags.");
+      // REGRESSÃO (achado 1, Codex, 10ª rodada): NÃO marcar sucesso aqui — o
+      // `finally` abaixo solta `carregando`, mas se a PRIMEIRA carga falhou,
+      // `marcadas` nunca foi populado (continua vazio). Sem este bloqueio, o
+      // formulário reabilitava e criar uma tag nesse estado apagava as tags
+      // reais do vídeo no PUT (mesma classe do achado de timing já corrigido,
+      // agora pelo caminho de FALHA).
     } finally {
       setCarregando(false);
     }
@@ -206,8 +218,18 @@ export function TagPicker({ videoId }: { videoId: string }) {
         </DialogHeader>
 
         <div className="max-h-64 space-y-1 overflow-y-auto">
-          {carregando && rows.length === 0 ? (
+          {carregando && !carregadoComSucesso ? (
             <p className="py-6 text-center text-sm text-muted-foreground">Carregando…</p>
+          ) : !carregadoComSucesso ? (
+            // REGRESSÃO (achado 1, Codex, 10ª rodada): a primeira carga
+            // falhou — nunca liberar edição aqui, `marcadas` está vazio de
+            // verdade (não é "o vídeo não tem tags", é "não sabemos ainda").
+            <div className="flex flex-col items-center gap-2 py-6 text-center">
+              <p className="text-sm text-muted-foreground">Não deu para carregar suas tags.</p>
+              <Button size="sm" variant="outline" onClick={() => void carregar()} className="gap-1.5">
+                Tentar de novo
+              </Button>
+            </div>
           ) : rows.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
               Nenhuma tag ainda. Crie a primeira abaixo.
@@ -258,16 +280,21 @@ export function TagPicker({ videoId }: { videoId: string }) {
             onChange={(e) => setNova(e.target.value)}
             placeholder="Criar uma tag nova"
             className="h-9"
-            disabled={carregando}
+            disabled={carregando || !carregadoComSucesso}
           />
-          {/* REGRESSÃO (achado 1, Codex, 9ª rodada): criar uma tag ANTES da
-              primeira carga terminar usava `marcadasRef.current` ainda
-              vazio/desatualizado — o PUT saía sem as tags que o vídeo já
-              tinha, apagando-as. O contador de edição protege contra um GET
-              sobrescrever DEPOIS de uma edição, mas não contra uma edição que
-              NASCE de dado incompleto. Desabilitar enquanto `carregando` é
-              true (primeira carga OU recarregamento) fecha essa janela. */}
-          <Button type="submit" size="sm" disabled={!nova.trim() || carregando} className="gap-1.5">
+          {/* REGRESSÃO (achado 1, Codex, 9ª e 10ª rodadas): criar uma tag
+              ANTES da primeira carga terminar (ou depois dela FALHAR) usava
+              `marcadasRef.current` ainda vazio/desatualizado — o PUT saía sem
+              as tags que o vídeo já tinha, apagando-as. O contador de edição
+              protege contra um GET sobrescrever DEPOIS de uma edição, mas não
+              contra uma edição que NASCE de dado incompleto. Só libera depois
+              de `carregadoComSucesso` — nunca reabilita numa carga que falhou. */}
+          <Button
+            type="submit"
+            size="sm"
+            disabled={!nova.trim() || carregando || !carregadoComSucesso}
+            className="gap-1.5"
+          >
             <Plus className="size-4" />
             Criar
           </Button>

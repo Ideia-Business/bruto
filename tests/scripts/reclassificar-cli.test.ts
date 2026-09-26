@@ -132,7 +132,10 @@ describe("npm run reclassificar — reprocessamento retroativo sequencial", () =
 
   test("resumo final reporta 0 reclassificado, 1 pulado e 1 com erro", () => {
     const { saida } = rodar();
-    assert.match(saida, /Concluído: 0 reclassificado\(s\), 1 pulado\(s\) \(sem artefato\), 1 com erro\./);
+    assert.match(
+      saida,
+      /Concluído: 0 reclassificado\(s\), 0 parcial\(is\) \(categoria ok, tags\/título não\), 1 pulado\(s\) \(sem artefato\), 1 com erro\./,
+    );
   });
 
   test("sai com código não-zero quando há erro (para automação perceber a falha)", () => {
