@@ -53,9 +53,9 @@ export const ERROR_HINT: Record<string, string> = {
   LOGIN_REQUIRED:
     "A plataforma recusou o acesso sem login — comum no Instagram depois de vários vídeos seguidos. O Bruto já tentou de novo sozinho; espere alguns minutos e reprocesse.",
   YTDLP_OUTDATED:
-    "O extrator do YouTube está desatualizado. Rode: brew upgrade yt-dlp",
+    "O extrator de vídeo está desatualizado. Rode: uv tool upgrade yt-dlp (ou rode o instalador do Bruto de novo).",
   NO_TRANSCRIPT:
-    "Vídeo sem legenda e sem Whisper disponível. Instale: uv tool install mlx-whisper",
+    "Vídeo sem legenda e sem transcritor instalado. Rode o instalador do Bruto de novo, sem --sem-whisper (Mac com Apple Silicon: uv tool install mlx-whisper; outros: uv tool install openai-whisper).",
   LLM_QUOTA: "O provedor de IA respondeu limite de uso. Tente novamente mais tarde.",
   LLM_AUTH:
     "O provedor de IA recusou a credencial. Confira a chave no seu .env — veja .env.example.",
