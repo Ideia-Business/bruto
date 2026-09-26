@@ -118,6 +118,30 @@ describe("parseTagsResponse", () => {
     assert.deepEqual(r.tags, []);
   });
 
+  /**
+   * REGRESSÃO (achado 1, os dois revisores — 3ª camada do mesmo bug, 8ª
+   * rodada): o array já validado (é array, elementos são string) ainda pode
+   * ter TODO elemento descartado pelo filtro de CONTEÚDO — string vazia/só
+   * espaço (Codex) ou tag genuína só que passou de 40 caracteres (Grok).
+   * `[]` resultante seria indistinguível de "a IA decidiu que não há tag
+   * boa". Só uma lista que JÁ chegou vazia do JSON é sucesso de verdade.
+   */
+  test('REGRESSÃO: array não-vazio cujo CONTEÚDO o filtro zera por inteiro vira null (não [])', () => {
+    assert.equal(parseTagsResponse('{"tags": ["   "], "title": null}'), null, "string só espaço (achado do Codex)");
+    assert.equal(
+      parseTagsResponse('{"tags": ["introdução à inteligência artificial generativa"], "title": null}'),
+      null,
+      "tag genuína, só que passa de 40 caracteres (achado do Grok)",
+    );
+    assert.equal(parseTagsResponse('{"tags": [""], "title": null}'), null, "string vazia");
+  });
+
+  test("controle positivo: array com PELO MENOS uma tag válida sobrevive, mesmo com lixo misturado", () => {
+    const r = parseTagsResponse('{"tags": ["   ", "python"], "title": null}');
+    assert.ok(r, "com pelo menos uma tag válida sobrevivendo ao filtro, não é falha de parsing");
+    assert.deepEqual(r.tags, ["python"]);
+  });
+
   test('"title" ausente (chave nem existe) é tratado como null, não como contrato quebrado', () => {
     const r = parseTagsResponse('{"tags": ["ia"]}');
     assert.ok(r);

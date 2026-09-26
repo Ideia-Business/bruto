@@ -61,11 +61,24 @@ export function TagPicker({ videoId }: { videoId: string }) {
   // auto-referência) está documentado e testado sem precisar de React.
   const filaRef = useRef(criarFilaSerial());
 
+  // Contador de EDIÇÃO (bumped só em `salvar`, nunca em `carregar`) — a fila
+  // já garante a ORDEM de despacho na rede, mas não impede um GET que estava
+  // em voo de aplicar dado desatualizado depois que uma edição mais nova já
+  // rodou: reabrir o diálogo enfileira um `carregar()`; se a pessoa clicar
+  // numa tag ANTES desse GET voltar, `carregarAgora` (abaixo) sobrescrevia
+  // `marcadas` com o retrato PRÉ-clique assim que o GET chegava, apagando a
+  // atualização otimista — e nada reaplicava o valor certo depois que o PUT
+  // subsequente confirmava no servidor (achado do Codex + Grok, 8ª rodada).
+  // Regra: um GET ou um PUT só pode aplicar seu resultado em `marcadas` se
+  // NENHUMA edição mais nova aconteceu desde que ELE MESMO começou.
+  const edicaoRef = useRef(0);
+
   // O trabalho de verdade de "carregar", SEM passar pela fila — só para quem
   // JÁ ESTÁ rodando dentro de um item da fila (a recuperação de erro do
   // `salvar`, logo abaixo). Nunca chame isto de fora da fila diretamente;
   // para o caso normal (abrir o diálogo) use `carregar()`.
   const carregarAgora = useCallback(async () => {
+    const edicaoAntes = edicaoRef.current;
     setCarregando(true);
     try {
       const [tRes, vRes] = await Promise.all([
@@ -75,7 +88,11 @@ export function TagPicker({ videoId }: { videoId: string }) {
       const t = (await tRes.json()) as { tags: TagRow[] };
       const v = (await vRes.json()) as { tagIds: string[] };
       setRows(t.tags);
-      setMarcadas(new Set(v.tagIds));
+      // Só aplica o conjunto do servidor se nada mudou localmente enquanto
+      // este GET estava em voo — uma edição mais nova é sempre quem manda.
+      if (edicaoRef.current === edicaoAntes) {
+        setMarcadas(new Set(v.tagIds));
+      }
     } catch {
       toast.error("Não deu para carregar suas tags.");
     } finally {
@@ -95,6 +112,7 @@ export function TagPicker({ videoId }: { videoId: string }) {
 
   const salvar = useCallback(
     (proximo: Set<string>): Promise<void> => {
+      const minhaEdicao = ++edicaoRef.current;
       setMarcadas(proximo);
       return filaRef.current.enfileirar(async () => {
         try {
@@ -104,6 +122,16 @@ export function TagPicker({ videoId }: { videoId: string }) {
             body: JSON.stringify({ tagIds: [...proximo] }),
           });
           if (!res.ok) throw new Error("falhou");
+          // Reafirma o valor confirmado pelo servidor — só se NENHUMA edição
+          // mais nova já aconteceu depois desta (senão estaríamos voltando a
+          // tela para um estado mais velho que o que a pessoa já pediu
+          // depois; a edição mais nova, quando confirmar, reafirma a SI
+          // MESMA). Sem isto, um GET que clarão no meio do caminho (ver
+          // `edicaoRef` acima) nunca era corrigido de volta depois que a
+          // escrita de verdade confirmava no servidor.
+          if (edicaoRef.current === minhaEdicao) {
+            setMarcadas(proximo);
+          }
         } catch {
           toast.error("A mudança não foi salva.");
           // REGRESSÃO (achado 1, Codex + Grok, 7ª rodada): jamais chame

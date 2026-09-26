@@ -162,6 +162,15 @@ export function parseTagsResponse(raw: string): TagsAiResult | null {
     if (obj.title !== null && obj.title !== undefined && typeof obj.title !== "string") return null;
 
     const tags = limitarTags(obj.tags);
+    // Contrato, 3ª camada (achado 1, os dois revisores, 8ª rodada): o array
+    // JÁ validado como array-de-strings ainda pode ter TODO elemento
+    // descartado pelo filtro de CONTEÚDO (string vazia/só espaço, tag longa
+    // demais, duplicata) — `{"tags": ["   "]}` ou uma tag genuína só que com
+    // mais de 40 caracteres. Resultado `[]` seria indistinguível de "a IA
+    // decidiu que não há tag boa". Só uma lista que já chegou VAZIA do JSON
+    // (`"tags": []`) é sucesso de verdade; se ela tinha conteúdo e o filtro
+    // zerou tudo, é falha de parsing.
+    if (obj.tags.length > 0 && tags.length === 0) return null;
     const tituloBruto = typeof obj.title === "string" ? obj.title.trim() : "";
     // A IA às vezes erra a formatação e devolve a STRING "null" em vez do
     // valor JSON null — sem esta checagem, "null" vira o título de verdade do
