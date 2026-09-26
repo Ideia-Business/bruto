@@ -33,6 +33,7 @@ import {
   pastaAindaExisteNoDisco,
   reexportarAposArtefatoNovo,
   resultadoDaCopia,
+  revisaoAtual,
 } from "@/lib/exportar-artefatos";
 
 describe("sanitizarNomeArquivo", () => {
@@ -329,6 +330,29 @@ describe("ambiente sem File System Access API (Node/CI, Safari/Firefox)", () => 
   test("esquecerExportacaoDoVideo()/reexportarAposArtefatoNovo() nunca lançam sem suporte", async () => {
     await assert.doesNotReject(esquecerExportacaoDoVideo("algum-video-id"));
     await assert.doesNotReject(reexportarAposArtefatoNovo("algum-video-id"));
+  });
+});
+
+describe("revisaoAtual/reexportarAposArtefatoNovo — item 1 (7ª revisão), detecta REGENERAR um artefato que já existia", () => {
+  test("vídeo nunca tocado começa na revisão 0", () => {
+    assert.equal(revisaoAtual("video-nunca-visto"), 0);
+  });
+
+  test("reexportarAposArtefatoNovo incrementa a revisão do vídeo — é o sinal que exportarVideoAutomaticamente usa pra saber que o conteúdo mudou no meio do caminho", async () => {
+    const videoId = `video-revisao-${Date.now()}`;
+    assert.equal(revisaoAtual(videoId), 0);
+    await reexportarAposArtefatoNovo(videoId);
+    assert.equal(revisaoAtual(videoId), 1);
+    await reexportarAposArtefatoNovo(videoId);
+    assert.equal(revisaoAtual(videoId), 2);
+  });
+
+  test("a revisão é por vídeo — regenerar artefato de um vídeo não mexe na revisão de outro", async () => {
+    const videoA = `video-a-${Date.now()}`;
+    const videoB = `video-b-${Date.now()}`;
+    await reexportarAposArtefatoNovo(videoA);
+    assert.equal(revisaoAtual(videoA), 1);
+    assert.equal(revisaoAtual(videoB), 0);
   });
 });
 

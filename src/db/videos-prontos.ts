@@ -18,6 +18,30 @@ export interface JobResumido {
   videoId: string | null;
   status: string;
   createdAt: Date;
+  /** Só existe pra job que já rodou até o fim (done/error) — é `runner.ts` quem grava, na hora exata da transição. */
+  finishedAt: Date | null;
+}
+
+/**
+ * Ordena do mais recente pro mais antigo. `finishedAt` (não `createdAt`) é o
+ * critério primário — achado da 7ª revisão (Grok): `createdAt` grava em
+ * SEGUNDOS, e dois jobs do MESMO vídeo criados dentro do mesmo segundo
+ * (reprocessar rápido, corrida de duplo POST) empatavam, e o desempate caía
+ * na ordem que o SELECT sem `ORDER BY` devolvia — podia escolher o job MAIS
+ * VELHO como "o mais recente". `finishedAt` é bem mais confiável: a fila do
+ * pipeline é SERIAL (um job de cada vez), então dois jobs do mesmo vídeo só
+ * terminam ao mesmo tempo numa coincidência bem mais estreita que "criados
+ * no mesmo segundo". `id` como ÚLTIMO recurso não é uma alegação de "é o
+ * job mais novo" (nanoid não é ordenável cronologicamente) — só garante uma
+ * ordem determinística em vez de depender da ordem não especificada do
+ * SELECT, no caso (nunca visto) de os dois critérios de tempo também
+ * empatarem.
+ */
+function porRecencia(a: JobResumido, b: JobResumido): number {
+  const tA = (a.finishedAt ?? a.createdAt).getTime();
+  const tB = (b.finishedAt ?? b.createdAt).getTime();
+  if (tA !== tB) return tB - tA;
+  return b.id.localeCompare(a.id);
 }
 
 /**
@@ -35,7 +59,7 @@ export function videosProntosParaExportar(jobsTodos: JobResumido[]): VideoPronto
   );
   const done = jobsTodos
     .filter((j) => j.videoId && j.status === "done" && !emAndamento.has(j.videoId))
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    .sort(porRecencia);
   const jobIdPorVideo = new Map<string, string>();
   for (const j of done) {
     const videoId = j.videoId as string;

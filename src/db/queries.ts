@@ -193,7 +193,13 @@ export { videosProntosParaExportar } from "./videos-prontos";
  */
 export function getVideosProntosParaExportar(): VideoProntoParaExportar[] {
   const todos = db
-    .select({ id: jobs.id, videoId: jobs.videoId, status: jobs.status, createdAt: jobs.createdAt })
+    .select({
+      id: jobs.id,
+      videoId: jobs.videoId,
+      status: jobs.status,
+      createdAt: jobs.createdAt,
+      finishedAt: jobs.finishedAt,
+    })
     .from(jobs)
     .all();
   return videosProntosParaExportar(todos);

@@ -163,11 +163,28 @@ export async function esquecerExportacaoDoVideo(videoId: string): Promise<void> 
 }
 
 /**
+ * Quantas vezes um artefato foi gerado/regenerado pra cada vídeo NESTA aba.
+ * Não é "quantos artefatos existem" — isso a recontagem por CONTAGEM logo
+ * abaixo já cobre. É "o CONTEÚDO de um artefato que já existia mudou" (achado
+ * da 7ª revisão, Codex): regenerar o "contexto pra IA" depois que a
+ * exportação já tinha baixado a versão anterior dele mantém a contagem
+ * igual — a exportação em andamento não vê nada de diferente por contagem
+ * sozinha. Incrementada em `reexportarAposArtefatoNovo`, capturada no início
+ * de `exportarVideoAutomaticamente` e comparada de novo antes de marcar.
+ */
+const revisaoPorVideo = new Map<string, number>();
+
+export function revisaoAtual(videoId: string): number {
+  return revisaoPorVideo.get(videoId) ?? 0;
+}
+
+/**
  * Esquece a marca e tenta exportar de novo na hora — a pessoa que acabou de
  * gerar a aula/transcrição organizada/contexto pra IA não devia precisar
  * navegar pra outra página só pra a cópia pegar o artefato novo.
  */
 export async function reexportarAposArtefatoNovo(videoId: string): Promise<void> {
+  revisaoPorVideo.set(videoId, revisaoAtual(videoId) + 1);
   await esquecerExportacaoDoVideo(videoId);
   void sincronizarExportacoesPendentes();
 }
@@ -229,6 +246,11 @@ export async function exportarVideoAutomaticamente(
   // chamada — nunca relido no meio. Ver o comentário perto de
   // `marcarExportadoNaPasta` pra o porquê.
   let pastaId: string | null = null;
+  // Capturada AGORA, antes de qualquer await — se `reexportarAposArtefatoNovo`
+  // rodar pra este vídeo enquanto o laço abaixo ainda está escrevendo, o
+  // valor muda, e é isso que avisa (mais abaixo) que o que acabamos de
+  // escrever já está desatualizado, mesmo com a CONTAGEM batendo.
+  const revisaoCapturada = revisaoAtual(videoId);
   try {
     // Handle e pastaId vêm da MESMA leitura do IndexedDB (`obterPastaAtual`,
     // item 2 da 6ª revisão — duas leituras separadas, mesmo cada uma rápida,
@@ -310,7 +332,21 @@ export async function exportarVideoAutomaticamente(
     // rodada anterior) — mostrar `tituloNome` sozinho aqui anunciava um
     // caminho que não existe.
     const destino = `${categoriaNome}/${pastaVideoNome}`;
-    if (resultado.tipo === "sucesso") {
+    // Item 1 da 7ª revisão (Codex): regenerar um artefato que JÁ EXISTIA
+    // (mesma contagem, conteúdo novo) não muda `total` — só a recontagem por
+    // CONTAGEM (item 1 da 6ª) não basta. Se a revisão mudou desde o início
+    // desta chamada, o que acabamos de escrever já está velho: nem toast de
+    // sucesso nem marca — o próximo catch-up reexporta com o conteúdo fresco
+    // e sobrescreve o arquivo (createWritable trunca).
+    const revisaoMudou = revisaoAtual(videoId) !== revisaoCapturada;
+    if (revisaoMudou) {
+      avisarUmaVez(videoId, jobId, "revisao-mudou", () => {
+        toast.warning(`Um dos arquivos foi atualizado durante a cópia para ${destino}.`, {
+          description:
+            "O vídeo está salvo normalmente na biblioteca. A cópia se atualiza sozinha na próxima vez que a página carregar.",
+        });
+      });
+    } else if (resultado.tipo === "sucesso") {
       toast.success(`${resultado.titulo} ${destino}`, {
         description: "Cópia na pasta escolhida — o original continua na biblioteca do Bruto.",
       });
@@ -322,7 +358,9 @@ export async function exportarVideoAutomaticamente(
         });
       });
     }
-    await marcarSeAPastaNaoMudou(videoId, jobId, pastaId, escritos, total);
+    if (!revisaoMudou) {
+      await marcarSeAPastaNaoMudou(videoId, jobId, pastaId, escritos, total);
+    }
   } catch {
     avisarUmaVez(videoId, jobId, "falha", () => {
       toast.warning("Não deu para salvar cópia na pasta escolhida.", {
@@ -334,8 +372,12 @@ export async function exportarVideoAutomaticamente(
     // significa que o laço foi interrompido (ou nem começou), então
     // `escritos === total` só valeria se a falha tivesse acontecido DEPOIS
     // do laço terminar por completo. É a mesma regra do caminho normal,
-    // aplicada por consistência — não uma regra nova para o catch.
-    await marcarSeAPastaNaoMudou(videoId, jobId, pastaId, escritos, total);
+    // aplicada por consistência — não uma regra nova para o catch. A
+    // checagem de revisão também vale aqui, pelo mesmo motivo do caminho
+    // normal.
+    if (revisaoAtual(videoId) === revisaoCapturada) {
+      await marcarSeAPastaNaoMudou(videoId, jobId, pastaId, escritos, total);
+    }
   } finally {
     emAndamento.delete(videoId);
   }

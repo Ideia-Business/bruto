@@ -19,7 +19,7 @@ import assert from "node:assert/strict";
 import { videosProntosParaExportar, type JobResumido } from "@/db/videos-prontos";
 
 function job(parcial: Partial<JobResumido> & Pick<JobResumido, "id" | "videoId" | "status">): JobResumido {
-  return { createdAt: new Date(0), ...parcial };
+  return { createdAt: new Date(0), finishedAt: null, ...parcial };
 }
 
 describe("videosProntosParaExportar", () => {
@@ -58,6 +58,59 @@ describe("videosProntosParaExportar", () => {
       job({ id: "job-antigo", videoId: "v1", status: "done", createdAt: new Date(1000) }),
     ]);
     assert.deepEqual(resultado, [{ videoId: "v1", jobId: "job-novo" }]);
+  });
+
+  // Item 2 (7ª revisão, Grok): createdAt grava em SEGUNDOS — dois jobs do
+  // MESMO vídeo criados dentro do mesmo segundo (reprocessar rápido, corrida
+  // de duplo POST) empatavam ali, e o desempate caía na ordem não
+  // especificada do SELECT — podia escolher o job MAIS VELHO. finishedAt é
+  // o critério primário agora: a fila do pipeline é serial, então dois jobs
+  // do mesmo vídeo praticamente nunca terminam no mesmo instante, mesmo
+  // tendo sido CRIADOS no mesmo segundo.
+  test("createdAt empatado (mesmo segundo) → finishedAt desempata, escolhe o que terminou depois", () => {
+    const resultado = videosProntosParaExportar([
+      job({
+        id: "job-antigo",
+        videoId: "v1",
+        status: "done",
+        createdAt: new Date(1000),
+        finishedAt: new Date(1500),
+      }),
+      job({
+        id: "job-novo-do-retry",
+        videoId: "v1",
+        status: "done",
+        createdAt: new Date(1000), // MESMO segundo do job antigo — createdAt sozinho empataria
+        finishedAt: new Date(9000), // mas terminou bem depois
+      }),
+    ]);
+    assert.deepEqual(resultado, [{ videoId: "v1", jobId: "job-novo-do-retry" }]);
+  });
+
+  test("ordem de entrada não importa pro desempate por finishedAt também", () => {
+    const resultado = videosProntosParaExportar([
+      job({ id: "job-novo", videoId: "v1", status: "done", createdAt: new Date(1000), finishedAt: new Date(9000) }),
+      job({ id: "job-antigo", videoId: "v1", status: "done", createdAt: new Date(1000), finishedAt: new Date(1500) }),
+    ]);
+    assert.deepEqual(resultado, [{ videoId: "v1", jobId: "job-novo" }]);
+  });
+
+  test("finishedAt ausente (job done sem finishedAt, caso defensivo) cai pro createdAt", () => {
+    const resultado = videosProntosParaExportar([
+      job({ id: "job-antigo", videoId: "v1", status: "done", createdAt: new Date(1000), finishedAt: null }),
+      job({ id: "job-novo", videoId: "v1", status: "done", createdAt: new Date(2000), finishedAt: null }),
+    ]);
+    assert.deepEqual(resultado, [{ videoId: "v1", jobId: "job-novo" }]);
+  });
+
+  test("os dois critérios de tempo também empatados → desempate final por id é determinístico (não some, não lança)", () => {
+    const resultado = videosProntosParaExportar([
+      job({ id: "a", videoId: "v1", status: "done", createdAt: new Date(1000), finishedAt: new Date(1500) }),
+      job({ id: "b", videoId: "v1", status: "done", createdAt: new Date(1000), finishedAt: new Date(1500) }),
+    ]);
+    assert.equal(resultado.length, 1);
+    assert.equal(resultado[0].videoId, "v1");
+    assert.ok(["a", "b"].includes(resultado[0].jobId));
   });
 
   // Segunda metade do item 2: vídeo com um job done ANTIGO e um job novo
