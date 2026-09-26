@@ -152,6 +152,12 @@ export function parseTagsResponse(raw: string): TagsAiResult | null {
     // lista vazia — string solta como "python, ia" não pode virar "nenhuma
     // tag boa", pois isso apaga as tags que o vídeo já tinha).
     if (!Array.isArray(obj.tags)) return null;
+    // Contrato, um nível mais fundo (achado 2, Codex, 7ª rodada): o ARRAY
+    // pode ser de verdade mas os ELEMENTOS não — ex.: `[{"name":"python"}]`.
+    // `limitarTags` descartaria cada item não-string e devolveria `[]`,
+    // indistinguível de "a IA decidiu que não há tag boa" — mesma classe de
+    // dano do achado anterior, um passo adiante.
+    if (!obj.tags.every((t) => typeof t === "string")) return null;
     // Contrato: "title" só pode ser string ou o valor JSON null.
     if (obj.title !== null && obj.title !== undefined && typeof obj.title !== "string") return null;
 

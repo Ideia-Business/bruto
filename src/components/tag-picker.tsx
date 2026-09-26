@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import type { TagRow } from "@/lib/api-types";
 import { fetchApp } from "@/lib/fetch-app";
+import { criarFilaSerial } from "@/lib/fila-serial";
 
 /**
  * Escolhe as tags de assunto deste bruto — mesmo desenho do `FilaoPicker`
@@ -54,29 +55,35 @@ export function TagPicker({ videoId }: { videoId: string }) {
   //     um contador de geração sozinho não bastaria aqui, porque o PUT pode
   //     nem ter SIDO ENVIADO ainda quando o GET dispara; só a fila garante a
   //     ORDEM DE DESPACHO, não só a ordem de quem foi chamado por último.
-  const filaRef = useRef<Promise<void>>(Promise.resolve());
+  //
+  // A fila em si (`criarFilaSerial`) vive em `src/lib/fila-serial.ts`, fora do
+  // componente — é lá que o achado 1 da 7ª rodada (deadlock por
+  // auto-referência) está documentado e testado sem precisar de React.
+  const filaRef = useRef(criarFilaSerial());
 
-  const carregar = useCallback((): Promise<void> => {
-    const tarefa = filaRef.current.then(async () => {
-      setCarregando(true);
-      try {
-        const [tRes, vRes] = await Promise.all([
-          fetchApp("/api/tags"),
-          fetchApp(`/api/videos/${videoId}/tags`),
-        ]);
-        const t = (await tRes.json()) as { tags: TagRow[] };
-        const v = (await vRes.json()) as { tagIds: string[] };
-        setRows(t.tags);
-        setMarcadas(new Set(v.tagIds));
-      } catch {
-        toast.error("Não deu para carregar suas tags.");
-      } finally {
-        setCarregando(false);
-      }
-    });
-    filaRef.current = tarefa;
-    return tarefa;
+  // O trabalho de verdade de "carregar", SEM passar pela fila — só para quem
+  // JÁ ESTÁ rodando dentro de um item da fila (a recuperação de erro do
+  // `salvar`, logo abaixo). Nunca chame isto de fora da fila diretamente;
+  // para o caso normal (abrir o diálogo) use `carregar()`.
+  const carregarAgora = useCallback(async () => {
+    setCarregando(true);
+    try {
+      const [tRes, vRes] = await Promise.all([
+        fetchApp("/api/tags"),
+        fetchApp(`/api/videos/${videoId}/tags`),
+      ]);
+      const t = (await tRes.json()) as { tags: TagRow[] };
+      const v = (await vRes.json()) as { tagIds: string[] };
+      setRows(t.tags);
+      setMarcadas(new Set(v.tagIds));
+    } catch {
+      toast.error("Não deu para carregar suas tags.");
+    } finally {
+      setCarregando(false);
+    }
   }, [videoId]);
+
+  const carregar = useCallback((): Promise<void> => filaRef.current.enfileirar(carregarAgora), [carregarAgora]);
 
   const mudarAbertura = useCallback(
     (proximo: boolean) => {
@@ -89,7 +96,7 @@ export function TagPicker({ videoId }: { videoId: string }) {
   const salvar = useCallback(
     (proximo: Set<string>): Promise<void> => {
       setMarcadas(proximo);
-      const tarefa = filaRef.current.then(async () => {
+      return filaRef.current.enfileirar(async () => {
         try {
           const res = await fetchApp(`/api/videos/${videoId}/tags`, {
             method: "PUT",
@@ -99,13 +106,18 @@ export function TagPicker({ videoId }: { videoId: string }) {
           if (!res.ok) throw new Error("falhou");
         } catch {
           toast.error("A mudança não foi salva.");
-          await carregar();
+          // REGRESSÃO (achado 1, Codex + Grok, 7ª rodada): jamais chame
+          // `carregar()` (que reenfileira) AQUI DENTRO — esta função já É a
+          // tarefa que a fila está esperando terminar; reenfileirar a
+          // recuperação nela mesma é o deadlock por auto-referência
+          // documentado em `src/lib/fila-serial.ts`. `carregarAgora()` faz o
+          // mesmo trabalho SEM reentrar na fila — seguro aqui porque já
+          // estamos DENTRO do item da fila que está rodando agora.
+          await carregarAgora();
         }
       });
-      filaRef.current = tarefa;
-      return tarefa;
     },
-    [videoId, carregar],
+    [videoId, carregarAgora],
   );
 
   const alternar = useCallback(

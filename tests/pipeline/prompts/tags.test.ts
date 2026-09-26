@@ -92,6 +92,32 @@ describe("parseTagsResponse", () => {
     assert.equal(parseTagsResponse('{"tags": ["ia"], "title": {"x": 1}}'), null);
   });
 
+  /**
+   * REGRESSÃO (achado 2, Codex, 7ª rodada — um nível mais fundo que o achado
+   * 1): o ARRAY de `tags` é de verdade, mas os ELEMENTOS não são string —
+   * `limitarTags` descartaria cada item não-string e devolveria `[]`,
+   * indistinguível de "a IA decidiu que não há tag boa" (mesma classe de dano
+   * do achado 1, um passo adiante). Agora qualquer elemento que não seja
+   * string já derruba a resposta inteira como falha de parsing.
+   */
+  test('REGRESSÃO: array de "tags" com ELEMENTOS de tipo errado vira null (não silenciosamente [])', () => {
+    assert.equal(parseTagsResponse('{"tags": [{"name": "python"}], "title": null}'), null);
+    assert.equal(parseTagsResponse('{"tags": [42, "ia"], "title": null}'), null, "um único elemento errado já invalida a lista inteira");
+    assert.equal(parseTagsResponse('{"tags": [null], "title": null}'), null);
+  });
+
+  test('controle positivo: array de "tags" só com strings continua funcionando normalmente', () => {
+    const r = parseTagsResponse('{"tags": ["python", "ia"], "title": null}');
+    assert.ok(r);
+    assert.deepEqual(r.tags, ["python", "ia"]);
+  });
+
+  test('array de "tags" VAZIO continua sendo uma resposta válida (a IA decidiu que não há tag boa)', () => {
+    const r = parseTagsResponse('{"tags": [], "title": null}');
+    assert.ok(r, "lista vazia é uma resposta legítima, não deveria virar falha de parsing");
+    assert.deepEqual(r.tags, []);
+  });
+
   test('"title" ausente (chave nem existe) é tratado como null, não como contrato quebrado', () => {
     const r = parseTagsResponse('{"tags": ["ia"]}');
     assert.ok(r);
