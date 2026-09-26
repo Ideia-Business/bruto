@@ -98,7 +98,12 @@ export function UrlInputDialog({
     const loteCompleto = avaliarLoteDeLinks(texto);
     if (loteCompleto.length === 0) return;
 
-    const lote = filtrarNaoEnviados(loteCompleto, enviadosAnteriormenteRef.current);
+    // Capturado AGORA: se o diálogo fechar/reabrir enquanto este envio está em
+    // voo, `fecharEResetar` troca `.current` por um Set novo — mas a resposta
+    // atrasada deste envio precisa continuar escrevendo no Set DESTA sessão,
+    // nunca no de uma sessão futura (achado do Codex, 3ª rodada).
+    const meuSetDeEnviados = enviadosAnteriormenteRef.current;
+    const lote = filtrarNaoEnviados(loteCompleto, meuSetDeEnviados);
     if (lote.length === 0) {
       toast.info("Nada novo para enviar — esses links já foram processados.");
       return;
@@ -139,7 +144,7 @@ export function UrlInputDialog({
     // envio for superado a seguir: é fato do servidor, não da exibição.
     lote.forEach((item, i) => {
       if (resultado[i].status === "fila" || resultado[i].status === "duplicado") {
-        enviadosAnteriormenteRef.current.add(chaveDeRastreio(item));
+        meuSetDeEnviados.add(chaveDeRastreio(item));
       }
     });
 
