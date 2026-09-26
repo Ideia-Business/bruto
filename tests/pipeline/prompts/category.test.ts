@@ -53,8 +53,35 @@ describe("parseCategorySlug", () => {
     assert.equal(parseCategorySlug("  Tecnologia  "), "tecnologia");
   });
 
-  test("resposta fora da lista vira 'outros'", () => {
-    assert.equal(parseCategorySlug("categoria-inventada"), "outros");
-    assert.equal(parseCategorySlug(""), "outros");
+  test("tolera aspas/crase/ponto final envolvendo o slug", () => {
+    assert.equal(parseCategorySlug('"tecnologia"'), "tecnologia");
+    assert.equal(parseCategorySlug("`tecnologia`"), "tecnologia");
+    assert.equal(parseCategorySlug("tecnologia."), "tecnologia");
+  });
+
+  test("'outros' só quando a IA respondeu exatamente 'outros'", () => {
+    assert.equal(parseCategorySlug("outros"), "outros");
+  });
+
+  /**
+   * REGRESSÃO (achado do Grok na revisão cross-vendor): a versão anterior
+   * removia todo caractere fora de `a-z-` da resposta INTEIRA antes de
+   * comparar — "Categoria: tecnologia" virava "categoriatecnologia", não
+   * batia com nada, e caía em "outros" por adivinhação. Depois da correção do
+   * item 1 desta lane (falha de chamada não sobrescreve categoria), esse
+   * "outros" por engano passou a se comportar como classificação de VERDADE e
+   * sobrescrevia a categoria correta que o vídeo já tinha. Agora qualquer
+   * resposta com texto ao redor do slug é FALHA DE PARSING (null), nunca
+   * "outros" por adivinhação.
+   */
+  test("REGRESSÃO: preâmbulo/sufixo em torno do slug vira falha de parsing (null), nunca 'outros'", () => {
+    assert.equal(parseCategorySlug("Categoria: tecnologia"), null);
+    assert.equal(parseCategorySlug("A categoria é tecnologia."), null);
+    assert.equal(parseCategorySlug("tecnologia\n\nEste vídeo fala sobre..."), null);
+  });
+
+  test("resposta que não bate com nenhum slug válido vira falha de parsing (null)", () => {
+    assert.equal(parseCategorySlug("categoria-inventada"), null);
+    assert.equal(parseCategorySlug(""), null);
   });
 });

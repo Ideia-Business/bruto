@@ -52,11 +52,12 @@ async function main(): Promise<void> {
         transcriptText,
         summaryMd,
       );
-      // `categorySlug: null` = a CHAMADA falhou (timeout, IA fora do ar) — o
-      // vídeo manteve a categoria que já tinha, e isto conta como FALHA, nunca
-      // sucesso. Reportar "outros" aqui seria mentir que reclassificamos.
+      // `categorySlug: null` = falha de CHAMADA (timeout, IA fora do ar) OU de
+      // PARSING (resposta fora do formato esperado) — o vídeo manteve a
+      // categoria que já tinha, e isto conta como FALHA, nunca sucesso.
+      // Reportar "outros" aqui seria mentir que reclassificamos.
       if (resultado.categorySlug === null) {
-        console.log(`  ✖ ${bruto.title} — a IA não respondeu, categoria mantida como estava`);
+        console.log(`  ✖ ${bruto.title} — não foi possível classificar, categoria mantida como estava`);
         comErro++;
         continue;
       }

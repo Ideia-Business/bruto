@@ -18,6 +18,11 @@ import { Compatibilidade } from "./compatibilidade";
 import type { BrutoCard, CatalogResponse, Job, TagRow } from "@/lib/api-types";
 import { fetchApp } from "@/lib/fetch-app";
 
+/** Sentinela de "sem filtro" no `<Select>` — nunca pode colidir com um ID de
+ *  tag de verdade (nanoid), diferente do slug, que vem de fora e não é um
+ *  namespace controlado por nós. */
+const SEM_FILTRO = "__todas__";
+
 /**
  * Orquestra a home: renderiza o catálogo inicial (do servidor) e mantém a row
  * "Em processamento" viva. Cada card de job assina seu próprio SSE; ao terminar,
@@ -30,8 +35,12 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
 
   // Filtro por tag — puramente client-side sobre o catálogo já carregado (as
   // tags de cada vídeo já vêm no payload). Sem tela própria: tag é só filtro.
+  // Filtra por ID da tag, nunca pelo slug: slug vem de fora (IA ou nome livre
+  // digitado por alguém) e não é um namespace controlado por nós — um slug
+  // "todas" colidiria com o valor sentinela de "limpar filtro" se ele fosse o
+  // valor comparado. ID gerado por nanoid nunca colide com a sentinela.
   const [tagRows, setTagRows] = useState<TagRow[]>([]);
-  const [filtroTag, setFiltroTag] = useState<string | null>(null);
+  const [filtroTagId, setFiltroTagId] = useState<string | null>(null);
 
   const refetchTags = useCallback(async () => {
     try {
@@ -51,8 +60,8 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
   }, [refetchTags]);
 
   const combina = useCallback(
-    (v: BrutoCard) => !filtroTag || v.tags.some((t) => t.slug === filtroTag),
-    [filtroTag],
+    (v: BrutoCard) => !filtroTagId || v.tags.some((t) => t.id === filtroTagId),
+    [filtroTagId],
   );
   const catalogFiltrado = useMemo(
     () =>
@@ -136,16 +145,16 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
         <div className="flex items-center gap-2 px-1">
           <TagIcon className="size-4 text-muted-foreground" />
           <Select
-            value={filtroTag ?? "todas"}
-            onValueChange={(v) => setFiltroTag(v === "todas" ? null : v)}
+            value={filtroTagId ?? SEM_FILTRO}
+            onValueChange={(v) => setFiltroTagId(v === SEM_FILTRO ? null : v)}
           >
             <SelectTrigger size="sm" className="h-8 w-auto gap-1 border-border bg-secondary text-xs">
               <SelectValue placeholder="Todas as tags" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todas">Todas as tags</SelectItem>
+              <SelectItem value={SEM_FILTRO}>Todas as tags</SelectItem>
               {tagRows.map(({ tag, count }) => (
-                <SelectItem key={tag.id} value={tag.slug}>
+                <SelectItem key={tag.id} value={tag.id}>
                   {tag.name} ({count})
                 </SelectItem>
               ))}
@@ -162,7 +171,7 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
         <CategoryRow title="Histórico" brutos={historicoFiltrado} />
       )}
 
-      {filtroTag && catalogFiltrado.length === 0 && historicoFiltrado.length === 0 && (
+      {filtroTagId && catalogFiltrado.length === 0 && historicoFiltrado.length === 0 && (
         <p className="py-10 text-center text-sm text-muted-foreground">
           Nenhum vídeo com essa tag ainda.
         </p>

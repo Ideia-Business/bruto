@@ -19,12 +19,14 @@ export type CategoryStepInput = Pick<VideoMetadata, "id" | "title" | "channel" |
 
 export interface CategoryStepResult {
   /**
-   * null quando a CHAMADA de classificação falhou (timeout, IA fora do ar,
-   * etc.) — nesse caso o vídeo mantém a categoria que já tinha, NADA é
-   * gravado, e o chamador deve contar isto como FALHA, não sucesso. Antes desta
-   * correção, uma falha aqui gravava "outros" por cima da categoria existente;
-   * rodar `npm run reclassificar` com a IA indisponível apagava a organização
-   * do catálogo inteiro reportando sucesso.
+   * null quando a classificação FALHOU — por CHAMADA (timeout, IA fora do ar)
+   * ou por PARSING (a resposta não bateu exatamente com nenhum slug válido,
+   * ex.: preâmbulo tipo "Categoria: tecnologia"). Nos dois casos o vídeo
+   * mantém a categoria que já tinha, NADA é gravado, e o chamador deve contar
+   * isto como FALHA, não sucesso. Antes desta correção, os dois caminhos
+   * gravavam "outros" por cima da categoria existente; rodar
+   * `npm run reclassificar` com a IA indisponível OU respondendo fora do
+   * formato apagava a organização do catálogo inteiro reportando sucesso.
    */
   categorySlug: CategorySlug | null;
   /** Nomes das tags aplicadas ao bruto — [] quando a IA não sugeriu nenhuma (ou a classificação falhou). */
@@ -42,9 +44,11 @@ export interface CategoryStepResult {
  * transcrição INTEIRA sem corte — por isso o timeout é o mesmo piso de
  * `03-summary.ts` (180s), não o de uma classificação rasa.
  *
- * A categoria é best-effort SÓ no sentido de "resposta fora do esperado vira
- * outros" (`parseCategorySlug`) — uma FALHA na chamada em si (exception) NUNCA
- * apaga a categoria que o vídeo já tinha; ver `CategoryStepResult.categorySlug`.
+ * A categoria NUNCA é best-effort no sentido de "adivinhar": falha de CHAMADA
+ * (exception) e falha de PARSING (resposta que não bate exatamente com nenhum
+ * slug válido — `parseCategorySlug` devolve null, nunca "outros" por
+ * adivinhação) são tratadas de forma IDÊNTICA — nada é gravado, e o vídeo
+ * mantém a categoria que já tinha; ver `CategoryStepResult.categorySlug`.
  * Tags e título continuam best-effort de verdade: falha ali só deixa o vídeo
  * sem tag/com o título de antes, nunca reverte algo que já existia.
  */
@@ -56,7 +60,7 @@ export async function runCategory(
   const conteudo = conteudoParaClassificacao(summaryMd, transcriptText);
   const metaCategoria: MetaParaCategoria = { title: meta.title, channel: meta.channel, tags: meta.tags };
 
-  let slug: CategorySlug;
+  let slug: CategorySlug | null;
   try {
     const raw = await runLLMText({
       task: "category",
@@ -67,8 +71,12 @@ export async function runCategory(
     });
     slug = parseCategorySlug(raw);
   } catch {
-    // Falha de verdade na chamada (não uma resposta estranha — essa vira
-    // "outros" dentro de `parseCategorySlug`) — não toca em nada.
+    slug = null;
+  }
+
+  if (slug === null) {
+    // Falha de CHAMADA ou de PARSING — os dois caminhos são o mesmo caso:
+    // não sabemos a categoria certa, então não tocamos na que já existe.
     return { categorySlug: null, tags: [], titleSuggestion: null };
   }
 

@@ -110,7 +110,7 @@ describe("npm run reclassificar — reprocessamento retroativo sequencial", () =
 
   test("REGRESSÃO: com a IA indisponível, o vídeo é reportado como FALHA — nunca como 'outros'", () => {
     const { saida } = rodar();
-    assert.match(saida, new RegExp(`✖ ${COM_ARTEFATO.title} — a IA não respondeu, categoria mantida como estava`));
+    assert.match(saida, new RegExp(`✖ ${COM_ARTEFATO.title} — não foi possível classificar, categoria mantida como estava`));
     assert.doesNotMatch(
       saida,
       new RegExp(`✔ ${COM_ARTEFATO.title}`),

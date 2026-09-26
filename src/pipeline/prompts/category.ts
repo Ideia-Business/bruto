@@ -23,7 +23,7 @@ export type MetaParaCategoria = Pick<VideoMetadata, "title" | "channel" | "tags"
  * de vídeos longos não pode decidir só pelos primeiros minutos.
  */
 export function categoryPrompt(meta: MetaParaCategoria): string {
-  return `Classifique o vídeo abaixo em UMA das categorias, a partir do texto recebido via stdin (resumo executivo, seguido da transcrição completa). Responda SOMENTE com o slug, nada mais.
+  return `Classifique o vídeo abaixo em UMA das categorias, a partir do texto recebido via stdin (resumo executivo, seguido da transcrição completa). Responda com o slug e MAIS NADA: sem "Categoria:" antes, sem pontuação, sem explicação, sem aspas — só o slug puro, exatamente como aparece na lista.
 
 Categorias: ${CATEGORY_SLUGS.join(" | ")}
 
@@ -42,10 +42,24 @@ export function conteudoParaClassificacao(summaryMd: string, transcriptText: str
   return `## Resumo\n${summaryMd}\n\n## Transcrição completa\n${transcriptText}`;
 }
 
-/** Resposta fora da lista → 'outros'. */
-export function parseCategorySlug(raw: string): CategorySlug {
-  const cleaned = raw.trim().toLowerCase().replace(/[^a-z-]/g, "");
-  return (CATEGORY_SLUGS as readonly string[]).includes(cleaned)
-    ? (cleaned as CategorySlug)
-    : "outros";
+/**
+ * Exige correspondência EXATA com um dos slugs válidos — nunca concatena texto
+ * ao redor para "salvar" a resposta. A versão anterior removia todo caractere
+ * fora de `a-z-` da string INTEIRA antes de comparar: uma resposta com
+ * preâmbulo ("Categoria: tecnologia", coisa que modelo faz mesmo instruído a
+ * não fazer) virava "categoriatecnologia", não batia com nada, e caía em
+ * "outros" — que, depois da correção de `05-category.ts` para falha de
+ * CHAMADA, passou a ser tratado como classificação de verdade e sobrescrevia
+ * a categoria correta que o vídeo já tinha. Resposta que não bate exatamente
+ * é tratada como FALHA DE PARSING (null), nunca como "outros" por adivinhação
+ * — mesmo contrato de uma falha de chamada (`05-category.ts` trata os dois
+ * caminhos de forma idêntica: nada é gravado, o chamador conta como erro).
+ */
+export function parseCategorySlug(raw: string): CategorySlug | null {
+  const cleaned = raw
+    .trim()
+    .replace(/^[`"']+|[`"'.]+$/g, "")
+    .trim()
+    .toLowerCase();
+  return (CATEGORY_SLUGS as readonly string[]).includes(cleaned) ? (cleaned as CategorySlug) : null;
 }
