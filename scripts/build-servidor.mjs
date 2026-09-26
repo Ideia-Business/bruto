@@ -80,6 +80,16 @@ async function main() {
   // O mesmo vercel.json que rege `maxDuration` das funções.
   fs.copyFileSync(path.join(origemServidor, "vercel.json"), path.join(destino, "vercel.json"));
 
+  // `vercel link` nesta pasta grava um `.env.local` com token da plataforma.
+  // Nada de `.env*` sobe no deploy, nem o `.vercel/` (medido em 26/09/2026).
+  fs.writeFileSync(path.join(destino, ".vercelignore"), ".env*\n.vercel\n");
+  // Vínculo com o projeto `bruto-gratis` sem `vercel link` (que traria o .env.local).
+  fs.mkdirSync(path.join(destino, ".vercel"), { recursive: true });
+  fs.copyFileSync(path.join(origemServidor, "vercel-projeto.json"), path.join(destino, ".vercel", "project.json"));
+  for (const nome of fs.readdirSync(destino)) {
+    if (nome.startsWith(".env")) fs.rmSync(path.join(destino, nome), { force: true });
+  }
+
   // Gate 3 — o payload inteiro tem os quatro arquivos que a Vercel precisa.
   const exigidos = [...handlers, "package.json", "vercel.json"];
   const ausentes = exigidos.filter((f) => {

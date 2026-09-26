@@ -204,7 +204,7 @@ async function pintarModo(): Promise<void> {
   const cota = await verCotaGratis();
   modoPorque.textContent =
     (cota ? `Grátis: restam ${cota.restantes} de ${cota.limite} aulas hoje. ` : "") +
-    "Sem app com plano e sem chave, o Bruto usa uma cota diária grátis, paga pelo dono da extensão. Cole uma chave abaixo, ou abra o app do Bruto nesta máquina, para sair do modo grátis.";
+    "Sem app com plano e sem chave, o Bruto usa uma cota diária grátis, paga pela Ideia Business. Cole uma chave abaixo, ou abra o app do Bruto nesta máquina, para sair do modo grátis.";
 }
 
 async function iniciar(): Promise<void> {
