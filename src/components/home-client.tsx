@@ -32,14 +32,23 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
   // tags de cada vídeo já vêm no payload). Sem tela própria: tag é só filtro.
   const [tagRows, setTagRows] = useState<TagRow[]>([]);
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
-  useEffect(() => {
-    fetchApp("/api/tags")
-      .then((res) => res.json())
-      .then((d: { tags: TagRow[] }) => setTagRows(d.tags))
-      .catch(() => {
-        /* silencioso — o filtro só some, o catálogo continua funcionando */
-      });
+
+  const refetchTags = useCallback(async () => {
+    try {
+      const res = await fetchApp("/api/tags");
+      const d = (await res.json()) as { tags: TagRow[] };
+      setTagRows(d.tags);
+    } catch {
+      /* silencioso — o filtro só some, o catálogo continua funcionando */
+    }
   }, []);
+
+  useEffect(() => {
+    // Microtask — mesma técnica de `search-command.tsx`: evita que o setState
+    // dentro de `refetchTags` seja visto como SÍNCRONO dentro do efeito
+    // (react-hooks/set-state-in-effect), o que dispara renders em cascata.
+    queueMicrotask(() => void refetchTags());
+  }, [refetchTags]);
 
   const combina = useCallback(
     (v: BrutoCard) => !filtroTag || v.tags.some((t) => t.slug === filtroTag),
@@ -63,7 +72,10 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
     } catch {
       /* silencioso — próxima tentativa cobre */
     }
-  }, []);
+    // Um vídeo que acabou de processar pode ter ganhado tag nova — sem isto o
+    // filtro só atualiza quando a página recarrega.
+    void refetchTags();
+  }, [refetchTags]);
 
   // Debounce do refetch quando um job termina (evita rajada com vários jobs).
   const scheduleRefetch = useCallback(() => {

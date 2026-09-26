@@ -18,10 +18,18 @@ import type { VideoMetadata } from "@/pipeline/types";
 export type CategoryStepInput = Pick<VideoMetadata, "id" | "title" | "channel" | "tags">;
 
 export interface CategoryStepResult {
-  categorySlug: CategorySlug;
-  /** Nomes das tags aplicadas ao bruto — [] quando a IA não sugeriu nenhuma. */
+  /**
+   * null quando a CHAMADA de classificação falhou (timeout, IA fora do ar,
+   * etc.) — nesse caso o vídeo mantém a categoria que já tinha, NADA é
+   * gravado, e o chamador deve contar isto como FALHA, não sucesso. Antes desta
+   * correção, uma falha aqui gravava "outros" por cima da categoria existente;
+   * rodar `npm run reclassificar` com a IA indisponível apagava a organização
+   * do catálogo inteiro reportando sucesso.
+   */
+  categorySlug: CategorySlug | null;
+  /** Nomes das tags aplicadas ao bruto — [] quando a IA não sugeriu nenhuma (ou a classificação falhou). */
   tags: string[];
-  /** Título proposto pela IA, ou null quando o original já estava bom. */
+  /** Título proposto pela IA, ou null quando o original já estava bom (ou a classificação falhou). */
   titleSuggestion: string | null;
 }
 
@@ -29,10 +37,16 @@ export interface CategoryStepResult {
  * Etapa 5 — classificação de categoria, tags e título via IA.
  *
  * Sequencial de propósito, em duas chamadas: só depois de saber a categoria
- * (chamada 1, leve) é que faz sentido perguntar "quais tags já existem NESTA
- * categoria" (chamada 2, que também avalia o título). Best-effort como sempre
- * foi a classificação: falha em qualquer chamada não derruba o job — o vídeo
- * fica com "outros"/sem tag/título original, e um reprocessamento cobre depois.
+ * (chamada 1) é que faz sentido perguntar "quais tags já existem NESTA
+ * categoria" (chamada 2, que também avalia o título). As duas processam a
+ * transcrição INTEIRA sem corte — por isso o timeout é o mesmo piso de
+ * `03-summary.ts` (180s), não o de uma classificação rasa.
+ *
+ * A categoria é best-effort SÓ no sentido de "resposta fora do esperado vira
+ * outros" (`parseCategorySlug`) — uma FALHA na chamada em si (exception) NUNCA
+ * apaga a categoria que o vídeo já tinha; ver `CategoryStepResult.categorySlug`.
+ * Tags e título continuam best-effort de verdade: falha ali só deixa o vídeo
+ * sem tag/com o título de antes, nunca reverte algo que já existia.
  */
 export async function runCategory(
   meta: CategoryStepInput,
@@ -42,18 +56,20 @@ export async function runCategory(
   const conteudo = conteudoParaClassificacao(summaryMd, transcriptText);
   const metaCategoria: MetaParaCategoria = { title: meta.title, channel: meta.channel, tags: meta.tags };
 
-  let slug: CategorySlug = "outros";
+  let slug: CategorySlug;
   try {
     const raw = await runLLMText({
       task: "category",
       prompt: categoryPrompt(metaCategoria),
       input: conteudo,
       tier: "fast",
-      timeoutMs: 60_000,
+      timeoutMs: 180_000,
     });
     slug = parseCategorySlug(raw);
   } catch {
-    slug = "outros";
+    // Falha de verdade na chamada (não uma resposta estranha — essa vira
+    // "outros" dentro de `parseCategorySlug`) — não toca em nada.
+    return { categorySlug: null, tags: [], titleSuggestion: null };
   }
 
   const cat = db.select().from(categories).where(eq(categories.slug, slug)).get();
@@ -74,7 +90,7 @@ export async function runCategory(
         prompt: tagsPrompt({ title: meta.title }, cat.name, existentes),
         input: conteudo,
         tier: "balanced",
-        timeoutMs: 90_000,
+        timeoutMs: 180_000,
       });
       const parsed = parseTagsResponse(raw);
       tagNames = parsed.tags;

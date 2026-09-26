@@ -36,10 +36,15 @@ Tarefas:
 1. Escolha de 2 a 5 tags de assunto para este vídeo, priorizando as da lista acima. Só invente uma tag nova quando nenhuma existente servir de verdade.
 2. Avalie o título original: "${meta.title}". Se ele for genérico, truncado, clickbait vazio ou pouco fiel ao conteúdo, proponha um título mais claro e fiel (até 100 caracteres, em português). Se o original já for bom, responda null — não invente um título só para ter o que colocar.
 
-Responda SOMENTE com um objeto JSON, sem cercas de código, sem preâmbulo, EXATAMENTE neste formato:
-{"tags": ["tag um", "tag dois"], "title": "título melhor" | null}
+Responda SOMENTE com um objeto JSON, sem cercas de código, sem preâmbulo, EXATAMENTE em um destes dois formatos (nunca misture os dois — "title" é OU uma string OU null, nunca as duas coisas juntas no mesmo texto):
 
-Regras: "tags" é uma lista de 2 a 5 strings curtas (1 a 4 palavras), em português, minúsculas, sem numeração e sem repetir a categoria. "title" é uma string ou o literal JSON null.`;
+Quando você propõe um título novo:
+{"tags": ["tag um", "tag dois"], "title": "título melhor"}
+
+Quando o título original já está bom:
+{"tags": ["tag um", "tag dois"], "title": null}
+
+Regras: "tags" é uma lista de 2 a 5 strings curtas (1 a 4 palavras), em português, minúsculas, sem numeração e sem repetir a categoria. "title" é uma string ou o literal JSON null — nunca escreva null entre aspas, e nunca escreva os dois formatos juntos.`;
 }
 
 function limitarTags(raw: unknown): string[] {

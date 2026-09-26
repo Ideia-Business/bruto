@@ -14,6 +14,26 @@ describe("tagsPrompt", () => {
     const prompt = tagsPrompt({ title: "Título" }, "Ciência", []);
     assert.ok(prompt.includes("nenhuma tag usada nesta categoria ainda"));
   });
+
+  /**
+   * REGRESSÃO (achado do Grok na revisão cross-vendor): o exemplo de formato
+   * trazia `"title": "título melhor" | null` com o `|` LITERAL dentro do JSON
+   * de exemplo. Um modelo que copia o formato ao pé da letra devolve um JSON
+   * inválido (`parseTagsResponse` cai no catch, o vídeo fica sem tag nenhuma).
+   * O prompt agora mostra DOIS exemplos válidos separados — nunca o `|` dentro
+   * de um bloco que parece JSON.
+   */
+  test("REGRESSÃO: não mostra `| null` dentro do exemplo de JSON (union type inválido como JSON)", () => {
+    const prompt = tagsPrompt({ title: "Título" }, "Tecnologia", []);
+    assert.doesNotMatch(
+      prompt,
+      /"title":\s*"[^"]*"\s*\|\s*null/,
+      "o exemplo não pode misturar string e null com | dentro do mesmo JSON",
+    );
+    // Os dois formatos válidos precisam aparecer, cada um por si.
+    assert.match(prompt, /\{"tags":\s*\["tag um", "tag dois"\], "title": "título melhor"\}/);
+    assert.match(prompt, /\{"tags":\s*\["tag um", "tag dois"\], "title": null\}/);
+  });
 });
 
 describe("parseTagsResponse", () => {

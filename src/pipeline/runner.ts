@@ -153,7 +153,13 @@ export async function processJob(jobId: string): Promise<void> {
 
     // 5) category (+ tags + título mais fiel)
     update(jobId, { currentStep: "category", progressPct: 74 });
-    await runCategory(meta, transcript.text, summaryMd);
+    const categoryResult = await runCategory(meta, transcript.text, summaryMd);
+    // O passo 05 já gravou o título novo no banco — sem isto, o export (passo
+    // 6, logo abaixo) usaria o `meta.title` capturado ANTES da classificação,
+    // e o PDF/DOCX sairia com o título velho enquanto o banco já tem o novo.
+    if (categoryResult.titleSuggestion) {
+      meta.title = categoryResult.titleSuggestion;
+    }
 
     // 6) export — docx, pdf e imagem do mapa mental
     update(jobId, { currentStep: "export", progressPct: 80 });
