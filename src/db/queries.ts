@@ -180,6 +180,22 @@ export function getBrutoById(id: string): Bruto | null {
   return db.select().from(brutos).where(eq(brutos.id, id)).get() ?? null;
 }
 
+/**
+ * IDs de vídeos com pelo menos um job concluído — usado para "recuperar" a
+ * exportação automática quando a pessoa não estava numa página que assina o
+ * SSE do job no momento em que ele terminou (ver `sincronizarExportacoesPendentes`
+ * em `src/lib/exportar-artefatos.ts`).
+ */
+export function getDoneVideoIds(): string[] {
+  const linhas = db
+    .select({ id: jobs.videoId })
+    .from(jobs)
+    .where(eq(jobs.status, "done"))
+    .all();
+  const ids = linhas.map((r) => r.id).filter((id): id is string => id !== null);
+  return Array.from(new Set(ids));
+}
+
 /** Vídeo já processado com sucesso? (dedupe do POST de nova URL). */
 export function isBrutoDone(id: string): boolean {
   const done = db

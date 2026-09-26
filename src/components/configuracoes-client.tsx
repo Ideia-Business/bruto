@@ -95,6 +95,10 @@ export function ConfiguracoesClient() {
   async function esquecer() {
     await esquecerPastaEscolhida();
     setEstado({ tipo: "sem-pasta" });
+    // Sem pasta, o interruptor ligado só faria os próximos vídeos "não exportarem"
+    // em silêncio (a função já trata "nunca configurado" como condição prévia, sem
+    // aviso). Aqui a pasta EXISTIA e foi removida — desligar evita essa confusão.
+    alternarAutoExportar(false);
   }
 
   function alternarAutoExportar(ativo: boolean) {

@@ -140,8 +140,39 @@ export function definirAutoExportar(ativo: boolean): void {
   }
 }
 
-/** Remove caracteres inválidos em nomes de pasta/arquivo (Windows é o mais restritivo dos SOs comuns). */
+/** Teto de tamanho de um componente de caminho (pasta ou arquivo) — bem abaixo do limite dos SOs comuns. */
+const LIMITE_NOME = 150;
+
+/**
+ * Remove o que os três SOs comuns rejeitam num nome de pasta/arquivo (Windows
+ * é o mais restritivo — a régua usada aqui): caracteres de controle
+ * (`\u0000`–`\u001f`), os separadores/reservados `/ \ ? % * : | " < >`, ponto
+ * final (Windows recusa "Espere..." como nome) e os nomes puros `.`/`..`
+ * (recusados pela própria File System Access API). Sem isto,
+ * `getDirectoryHandle`/`getFileHandle` REJEITA a promessa e a exportação
+ * inteira cai no catch com um aviso que parece problema de permissão — e não
+ * é. Por isso a limpeza acontece aqui, antes de qualquer tentativa de criar
+ * pasta ou arquivo, nunca depois de uma falha.
+ */
 export function sanitizarNomeArquivo(nome: string): string {
-  const limpo = nome.replace(/[/\\?%*:|"<>]/g, "-").trim().slice(0, 150);
-  return limpo || "sem-nome";
+  let limpo = nome
+    .replace(/[\u0000-\u001f]/g, "")
+    .replace(/[/\\?%*:|"<>]/g, "-")
+    .trim();
+  limpo = limpo.replace(/\.+$/, "").trim();
+  limpo = limpo.slice(0, LIMITE_NOME).replace(/\.+$/, "").trim();
+  if (limpo === "" || limpo === "." || limpo === "..") return "Sem título";
+  return limpo;
+}
+
+/**
+ * Nome de pasta do vídeo — título + `(videoId)`. Dois vídeos DIFERENTES podem
+ * ter o mesmo título (mesmo dentro da mesma categoria); sem o id, o segundo
+ * sobrescreveria os arquivos do primeiro em silêncio. O id nunca é cortado
+ * pelo teto de tamanho: o título é que cede espaço para ele caber inteiro.
+ */
+export function nomeDaPastaDoVideo(tituloSanitizado: string, videoId: string): string {
+  const sufixo = ` (${videoId})`;
+  const disponivelParaTitulo = Math.max(LIMITE_NOME - sufixo.length, 1);
+  return `${tituloSanitizado.slice(0, disponivelParaTitulo)}${sufixo}`;
 }

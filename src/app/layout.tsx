@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Source_Serif_4, Fraunces, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
+import { SincronizacaoExportacao } from "@/components/sincronizacao-exportacao";
 
 // Inter opera a UI (nav, botões, metadados); Source Serif 4 é a fonte de
 // leitura (aula, resumo, transcrição); Fraunces dá gravitas aos títulos.
@@ -62,6 +63,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-background font-sans text-foreground">
         {children}
         <Toaster richColors position="top-center" />
+        <SincronizacaoExportacao />
       </body>
     </html>
   );
