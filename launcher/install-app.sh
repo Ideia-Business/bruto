@@ -11,10 +11,14 @@ set -eu
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="$HOME/Applications/Bruto.app"
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+GEN_TMP="$APP_DIR/_gen_tmp.$$.mjs"
+trap 'rm -rf "$WORK"; rm -f "$GEN_TMP"' EXIT
 
 cd "$APP_DIR"
-export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:$PATH"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+# shellcheck source=_node.sh
+. "$APP_DIR/launcher/_node.sh"
+bruto_escolher_node || { echo "✗ Node.js 20+ não encontrado — rode o instalador de novo." >&2; exit 1; }
 
 echo "→ Gerando ícone…"
 cat > "$WORK/_gen.mjs" <<NODE
@@ -27,10 +31,17 @@ await p.setContent('<!doctype html><html><body style="margin:0">'+svg+'</body></
 await p.locator('svg').screenshot({ path: '$WORK/icon-1024.png', omitBackground: true });
 await b.close();
 NODE
-cp "$WORK/_gen.mjs" "$APP_DIR/_gen_tmp.mjs"
-node "$APP_DIR/_gen_tmp.mjs"
-rm -f "$APP_DIR/_gen_tmp.mjs"
+cp "$WORK/_gen.mjs" "$GEN_TMP"
+# Ícone é enfeite: sem Chromium do Playwright, o app nasce com o ícone
+# padrão do AppleScript em vez de não nascer (achado do Grok, 25/09).
+TEM_ICONE=1
+if ! node "$GEN_TMP"; then
+  TEM_ICONE=0
+  echo "⚠️  Não consegui gerar o ícone (Chromium do Playwright ausente?). O app sai com o ícone padrão." >&2
+  echo "   Para ter o ícone depois: npx playwright install chromium && bash launcher/install-app.sh" >&2
+fi
 
+if [ "$TEM_ICONE" = 1 ]; then
 echo "→ Montando ícones (PWA + macOS)…"
 SRC="$WORK/icon-1024.png"
 sips -z 192 192 "$SRC" --out "$APP_DIR/public/icon-192.png" >/dev/null
@@ -49,6 +60,7 @@ sips -z 512 512 "$SRC" --out "$ICONSET/icon_256x256@2x.png" >/dev/null
 sips -z 512 512 "$SRC" --out "$ICONSET/icon_512x512.png" >/dev/null
 cp "$SRC" "$ICONSET/icon_512x512@2x.png"
 iconutil -c icns "$ICONSET" -o "$WORK/ResumeVideo.icns"
+fi
 
 echo "→ Criando o app…"
 cat > "$WORK/launcher.applescript" <<OSA
@@ -57,7 +69,7 @@ OSA
 rm -rf "$DEST"
 mkdir -p "$HOME/Applications"
 osacompile -o "$DEST" "$WORK/launcher.applescript"
-cp "$WORK/ResumeVideo.icns" "$DEST/Contents/Resources/applet.icns"
+if [ "$TEM_ICONE" = 1 ]; then cp "$WORK/ResumeVideo.icns" "$DEST/Contents/Resources/applet.icns"; fi
 touch "$DEST"
 
 echo "✅ Pronto: \"$DEST\""

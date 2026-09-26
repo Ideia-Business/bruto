@@ -25,6 +25,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { dividirPath, localizarBinario, pythonDaFerramentaUv } from "@/pipeline/lib/binario";
 import { DATA_ROOT } from "@/pipeline/lib/paths";
 import { redact } from "@/pipeline/lib/llm/redact";
 import { PipelineError } from "@/pipeline/types";
@@ -57,6 +58,22 @@ export function ambienteMinimo(): NodeJS.ProcessEnv {
   // NODE_ENV entra porque o tipo do Node o exige e porque não é segredo —
   // ferramentas de linha de comando costumam consultá-lo.
   const permitidas = ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "SHELL", "USER", "NODE_ENV"];
+  // No Windows não existem HOME/TMPDIR/USER/SHELL — quem os substitui são
+  // estas outras, e um Python instalado no Windows falha sem SYSTEMROOT (ele
+  // usa a variável para localizar DLLs do sistema). PATHEXT é o que permite
+  // ao subprocesso resolver um nome nu (`python3`) para o `.exe`/`.cmd` certo.
+  if (process.platform === "win32") {
+    permitidas.push(
+      "USERPROFILE",
+      "TEMP",
+      "TMP",
+      "USERNAME",
+      "APPDATA",
+      "LOCALAPPDATA",
+      "SYSTEMROOT",
+      "PATHEXT",
+    );
+  }
   const env: Record<string, string> = {};
   for (const nome of permitidas) {
     const v = process.env[nome];
@@ -142,19 +159,14 @@ function rodar(
 /**
  * Procura um executável no PATH sem gastar um processo. Mais barato e mais
  * previsível que chamar `which` — e não depende de shell.
+ *
+ * No win32, testa também cada extensão de PATHEXT (ver `binario.ts`): sem
+ * isso, `ffmpeg`/`whisper` nunca eram encontrados no Windows, porque o que
+ * está no disco é `ffmpeg.exe`/`whisper.exe`, nunca o nome nu.
  */
 function noPath(bin: string): boolean {
-  const dirs = (process.env.PATH || "").split(path.delimiter).filter(Boolean);
-  for (const d of dirs) {
-    const p = path.join(d, bin);
-    try {
-      fs.accessSync(p, fs.constants.X_OK);
-      return true;
-    } catch {
-      // segue para o próximo diretório
-    }
-  }
-  return false;
+  const dirs = dividirPath(process.env.PATH || "");
+  return localizarBinario(bin, { diretorios: dirs }) !== null;
 }
 
 /** Script que pergunta ao Python se o módulo `mlx_whisper` está instalado. */
@@ -163,6 +175,27 @@ sys.exit(0 if importlib.util.find_spec("mlx_whisper") else 1)
 `;
 
 let cacheMlx: boolean | null = null;
+let cachePythonMlx: string | null | undefined; // undefined = ainda não resolvido; null = nenhum achado
+
+/**
+ * Qual Python usar para o `mlx_whisper`: o de dentro do venv ISOLADO que
+ * `uv tool install mlx-whisper` cria tem prioridade — é lá, e só lá, que o
+ * módulo de fato está instalado (ver o comentário grande em `binario.ts`
+ * sobre por que o `python3` global nunca o enxerga). Cai para o `python3` do
+ * PATH só quando esse venv não existe — o caminho de quem instalou o módulo
+ * por fora, sem o instalador.
+ *
+ * Memoizado pela MESMA razão do `cacheMlx`: resolver isso não muda no meio
+ * de um processo do Bruto, e a sonda (`temMlx`) e a transcrição (`rodarMlx`)
+ * PRECISAM usar o mesmo Python — memoizar é o que garante isso sem passar o
+ * caminho manualmente entre as duas.
+ */
+function pythonParaMlx(): string | null {
+  if (cachePythonMlx !== undefined) return cachePythonMlx;
+  const daFerramenta = pythonDaFerramentaUv("mlx-whisper");
+  cachePythonMlx = daFerramenta ?? (noPath("python3") ? "python3" : null);
+  return cachePythonMlx;
+}
 
 /**
  * mlx-whisper é um módulo Python, não um binário — só dá para saber perguntando
@@ -171,12 +204,13 @@ let cacheMlx: boolean | null = null;
  */
 async function temMlx(): Promise<boolean> {
   if (cacheMlx !== null) return cacheMlx;
-  if (!noPath("python3")) {
+  const python = pythonParaMlx();
+  if (!python) {
     cacheMlx = false;
     return false;
   }
   try {
-    const r = await rodar("python3", ["-"], { timeoutMs: 30_000, stdin: SONDA_MLX });
+    const r = await rodar(python, ["-"], { timeoutMs: 30_000, stdin: SONDA_MLX });
     cacheMlx = r.code === 0;
   } catch {
     cacheMlx = false;
@@ -230,7 +264,10 @@ export async function transcricaoDisponivel(): Promise<boolean> {
 /** Extrai wav mono 16 kHz — o formato que todos os backends esperam. */
 async function extrairAudioWav(origem: string, destino: string): Promise<void> {
   if (!noPath("ffmpeg")) {
-    throw new PipelineError("NO_TRANSCRIPT", "ffmpeg ausente — instale com: brew install ffmpeg");
+    throw new PipelineError(
+      "NO_TRANSCRIPT",
+      "ffmpeg ausente — rode o instalador de novo (install/instalar.sh no macOS/Linux, install\\instalar.ps1 no Windows)",
+    );
   }
   const r = await rodar(
     "ffmpeg",
@@ -288,7 +325,13 @@ print(text)
 `;
 
 async function rodarMlx(wav: string, lang: string): Promise<Execucao> {
-  return rodar("python3", ["-", wav, MODELO, lang], {
+  // O MESMO Python que `temMlx()` usou para confirmar a disponibilidade —
+  // `pythonParaMlx()` memoiza, então isto nunca é um interpretador diferente
+  // (que teria o módulo instalado só num dos dois). Fallback para "python3"
+  // é só defensivo: na prática `detectarBackend()` já garantiu `temMlx()`
+  // true antes de qualquer chamada a esta função.
+  const python = pythonParaMlx() ?? "python3";
+  return rodar(python, ["-", wav, MODELO, lang], {
     timeoutMs: TIMEOUT_TRANSCRICAO_MS,
     stdin: SCRIPT_MLX,
   });
@@ -457,9 +500,9 @@ function sha256Arquivo(p: string, tempero: string): string | null {
  * manda rodar comando de ferramenta interna que essa pessoa não tem.
  */
 export const SEM_BACKEND =
-  "Vídeo sem legenda e nenhum transcritor instalado. Instale um: " +
-  "`uv tool install mlx-whisper` (Apple Silicon), `pip install -U openai-whisper`, " +
-  "ou `brew install whisper-cpp` com um modelo ggml.";
+  "Vídeo sem legenda e nenhum transcritor instalado. Rode o instalador do Bruto de novo, " +
+  "sem --sem-whisper. Ou instale à mão: uv tool install mlx-whisper (Mac com Apple Silicon) " +
+  "ou uv tool install openai-whisper (demais sistemas).";
 
 /** Diagnóstico para o `npm run doctor`. */
 export async function transcricaoDoctor(): Promise<{ ok: boolean; linhas: string[] }> {

@@ -45,7 +45,7 @@ import {
   formatUploadDate,
   TRANSCRIPT_SOURCE_LABEL,
   PLATFORM_LABEL,
-  ERROR_HINT,
+  textoDoErro,
 } from "@/lib/format";
 
 const MindmapViewer = dynamic(
@@ -83,6 +83,7 @@ interface DetailData {
     id: string;
     status: string;
     errorCode: string | null;
+    errorMessage?: string | null;
   } | null;
   content: {
     summaryMd: string | null;
@@ -335,7 +336,7 @@ export function BrutoDetail({
       ) : data.latestJob?.status === "error" ? (
         <div className="space-y-3 rounded-xl border border-destructive/40 bg-destructive/10 p-6">
           <p className="text-sm text-destructive">
-            {ERROR_HINT[data.latestJob.errorCode ?? "UNKNOWN"]}
+            {textoDoErro(data.latestJob.errorCode, data.latestJob.errorMessage)}
           </p>
           <div className="flex gap-2">
             <Button size="sm" disabled={busy} onClick={() => action(`/api/videos/${data.bruto.id}/retry`, "Reprocessando…")}>

@@ -77,8 +77,12 @@ async function main(): Promise<void> {
 
   if (essentialFail) {
     console.log("\n✖ Faltam dependências essenciais.");
-    console.log("    brew install yt-dlp ffmpeg");
-    console.log("    e configure um provedor de IA: cp .env.example .env\n");
+    console.log(
+      process.platform === "win32"
+        ? "    Rode o instalador de novo: powershell -ExecutionPolicy Bypass -File install\\instalar.ps1"
+        : "    Rode o instalador de novo: bash install/instalar.sh",
+    );
+    console.log("    Para a IA: faça login no claude ou no codex, ou copie .env.example para .env\n");
     process.exit(1);
   }
   console.log(`\n✔ Ambiente pronto. Modelo via: ${provedorAtivo}\n`);

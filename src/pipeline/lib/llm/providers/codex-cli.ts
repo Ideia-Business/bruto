@@ -56,7 +56,13 @@
  * vazio devolvido como se fosse resultado.
  */
 
-import { spawn } from "node:child_process";
+// `cross-spawn`, não `node:child_process` — mesma razão do `claude-cli.ts`:
+// no Windows o `codex` instalado por npm é um shim `.cmd`, que `spawn` puro
+// não resolve (ENOENT) e que, desde o Node 20.12 (CVE-2024-27980), só abre
+// via `cmd.exe`. `cross-spawn` resolve o shim e escapa cada argumento por
+// posição de argv — sem `shell: true` — o que importa aqui porque `req.input`
+// é transcrição de vídeo de terceiro, texto não confiável.
+import spawn from "cross-spawn";
 import os from "node:os";
 import { ENV_SENSIVEIS, redact } from "../redact";
 import type { LlmCapability, LlmProvider, LlmRequest, LlmResult } from "../types";
@@ -118,6 +124,16 @@ function executar(args: string[], input: string | undefined, timeoutMs: number):
       stdio: ["pipe", "pipe", "pipe"],
     });
 
+    // Mesmo caso de `claude-cli.ts`: o tipo de `cross-spawn` devolve
+    // `ChildProcess` com streams nuláveis, ao contrário do `child_process`
+    // nativo. Em runtime os três sempre existem (pedimos "pipe" nos três);
+    // tratamos a ausência como erro em vez de calar o compilador com `!`.
+    const { stdout: saida, stderr: erro, stdin: entrada } = child;
+    if (!saida || !erro || !entrada) {
+      reject(new Error("não foi possível abrir os fluxos do `codex`"));
+      return;
+    }
+
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -128,10 +144,10 @@ function executar(args: string[], input: string | undefined, timeoutMs: number):
       child.kill("SIGKILL");
     }, timeoutMs);
 
-    child.stdout.on("data", (d: Buffer) => {
+    saida.on("data", (d: Buffer) => {
       stdout += d.toString("utf8");
     });
-    child.stderr.on("data", (d: Buffer) => {
+    erro.on("data", (d: Buffer) => {
       stderr += d.toString("utf8");
     });
 
@@ -149,8 +165,8 @@ function executar(args: string[], input: string | undefined, timeoutMs: number):
       resolve({ stdout, stderr, code, timedOut });
     });
 
-    if (input != null) child.stdin.write(input);
-    child.stdin.end();
+    if (input != null) entrada.write(input);
+    entrada.end();
   });
 }
 
