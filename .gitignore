@@ -81,6 +81,9 @@ STATE.md
 
 # pacote gerado para envio à Chrome Web Store
 /extension/pacote/
+
+# payload isolado do servidor do modo grátis (gerado por node scripts/build-servidor.mjs)
+/servidor/.payload/
 .cursor/rules/agents/
 .github/agents/
 .codex/*
