@@ -7,13 +7,20 @@ import { artifactPaths, ensureVideoDir } from "@/pipeline/lib/paths";
 import { recordArtifact } from "@/pipeline/lib/artifacts";
 import type { VideoMetadata } from "@/pipeline/types";
 
+export { fetchMetadata };
+
 /**
- * Etapa 1 — metadata: busca --dump-json, baixa thumbnail, faz upsert do vídeo
- * (categoria provisória "outros") e grava info.json. Retorna a metadata para
- * as etapas seguintes.
+ * Grava no disco e no banco o que `fetchMetadata` só buscou: thumbnail,
+ * info.json e o upsert em `brutos` (categoria provisória "outros").
+ *
+ * Separada de `fetchMetadata` (que só chama o yt-dlp, sem tocar em disco ou
+ * banco) para o runner poder decidir SE vale a pena persistir ANTES de
+ * chamar esta função — ver `ehDuplicataTardia` em `runner.ts`. Sem essa
+ * separação, um link curto do TikTok cujo ID real já estivesse `done`
+ * sobrescrevia silenciosamente título/thumbnail/info.json de um vídeo já
+ * pronto, mesmo pulando as etapas caras (transcript/whisper/summary/…).
  */
-export async function runMetadata(url: string): Promise<VideoMetadata> {
-  const meta = await fetchMetadata(url);
+export async function persistMetadata(meta: VideoMetadata): Promise<void> {
   const paths = artifactPaths(meta.id);
   ensureVideoDir(meta.id);
 
@@ -65,5 +72,16 @@ export async function runMetadata(url: string): Promise<VideoMetadata> {
   }
 
   recordArtifact(meta.id, "info_json", paths.infoJson);
+}
+
+/**
+ * Etapa 1 — metadata: busca --dump-json, baixa thumbnail, faz upsert do
+ * vídeo e grava info.json. Composição de `fetchMetadata` + `persistMetadata`
+ * para quem quer o passo completo de uma vez só (o runner usa as duas
+ * metades separadamente — ver o comentário de `persistMetadata`).
+ */
+export async function runMetadata(url: string): Promise<VideoMetadata> {
+  const meta = await fetchMetadata(url);
+  await persistMetadata(meta);
   return meta;
 }
