@@ -191,7 +191,7 @@ export function UrlInputDialog({
       }}
     >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent>
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Novo vídeo</DialogTitle>
           <DialogDescription>
