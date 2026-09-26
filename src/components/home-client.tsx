@@ -20,11 +20,19 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
   const [data, setData] = useState<CatalogResponse>(initial);
   const [activeJobs, setActiveJobs] = useState<Job[]>(initial.activeJobs);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Debounce reduz QUANTAS vezes buscamos, mas não impede uma busca antiga
+  // de responder DEPOIS de uma mais nova (duas em voo ao mesmo tempo — o
+  // `clearTimeout` só cancela o disparo, nunca um fetch já em andamento).
+  // Geração: só a resposta da busca mais recente é aplicada (achado de
+  // Codex e Grok, 4ª rodada do multi-link).
+  const geracaoRef = useRef(0);
 
   const refetch = useCallback(async () => {
+    const minhaGeracao = ++geracaoRef.current;
     try {
       const res = await fetchApp("/api/videos");
       const fresh = (await res.json()) as CatalogResponse;
+      if (minhaGeracao !== geracaoRef.current) return; // superada por outra busca
       setData(fresh);
       setActiveJobs(fresh.activeJobs);
     } catch {
@@ -39,9 +47,14 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
   }, [refetch]);
 
   // Quando um job é enfileirado pelo dialog, buscamos o novo job da API.
+  // Pelo scheduleRefetch (debounce), não refetch() direto: dois envios do
+  // multi-link em sequência rápida podiam ter a resposta do mais velho
+  // chegar depois da do mais novo e sobrescrever o estado com um retrato
+  // mais antigo (achado do Grok, revisão de multi-link) — coalescido, só a
+  // última chamada agendada de fato busca, e ela reflete o catálogo atual.
   const onQueued = useCallback(() => {
-    void refetch();
-  }, [refetch]);
+    scheduleRefetch();
+  }, [scheduleRefetch]);
 
   useEffect(() => {
     return () => {
@@ -55,26 +68,32 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
     <div className="space-y-8">
       {data.hero && <HeroBanner video={data.hero} />}
 
-      {!hasContent && (
-        <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border py-20 text-center">
-          <p className="text-2xl">🎬</p>
-          <div>
-            <h2 className="text-lg font-semibold">Seu catálogo está vazio</h2>
-          </div>
-          <UrlInputDialog
-            onQueued={onQueued}
-            trigger={
-              <Button className="gap-1.5">
-                <Plus className="size-4" />
-                Adicionar vídeo
-              </Button>
-            }
-          />
-          <div className="w-full max-w-3xl px-4">
-            <Compatibilidade />
-          </div>
+      {/* `hidden`, nunca desmontar: um lote com link inválido deixa o diálogo
+          aberto pedindo correção, e o primeiro link válido já enfileirado
+          vira `hasContent`. Desmontar aqui (o `{!hasContent && ...}` de
+          antes) apagava o resumo e o texto no meio da correção, com o
+          diálogo ainda aberto (achado do Codex, revisão final). */}
+      <div
+        hidden={hasContent}
+        className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border py-20 text-center"
+      >
+        <p className="text-2xl">🎬</p>
+        <div>
+          <h2 className="text-lg font-semibold">Seu catálogo está vazio</h2>
         </div>
-      )}
+        <UrlInputDialog
+          onQueued={onQueued}
+          trigger={
+            <Button className="gap-1.5">
+              <Plus className="size-4" />
+              Adicionar vídeo
+            </Button>
+          }
+        />
+        <div className="w-full max-w-3xl px-4">
+          <Compatibilidade />
+        </div>
+      </div>
 
       {activeJobs.length > 0 && (
         <section className="space-y-2">
