@@ -63,20 +63,40 @@ function limitarTags(raw: unknown): string[] {
 }
 
 /**
- * Parse tolerante — best-effort, no mesmo espírito do resto do pipeline
- * (05-category.ts sempre teve fallback para "outros"): JSON malformado ou fora
- * do formato esperado vira `{ tags: [], title: null }` em vez de derrubar o job.
+ * Extrai o objeto JSON de dentro de texto ao redor (ex.: "Aqui está:\n{...}\n
+ * espero que ajude") — do primeiro `{` ao último `}`. Devolve null quando não
+ * há chave nenhuma (claramente não é JSON), para `parseTagsResponse` poder
+ * distinguir "não veio JSON algum" sem nem chamar `JSON.parse`.
  */
-export function parseTagsResponse(raw: string): TagsAiResult {
+function extrairJson(raw: string): string | null {
+  const inicio = raw.indexOf("{");
+  const fim = raw.lastIndexOf("}");
+  if (inicio === -1 || fim === -1 || fim < inicio) return null;
+  return raw.slice(inicio, fim + 1);
+}
+
+/**
+ * null = FALHA DE PARSING — JSON malformado, ausente, ou envolvido em texto
+ * que a extração não recuperou. Distinto de `{ tags: [], title: null }`, que é
+ * uma resposta VÁLIDA (a IA respondeu no formato certo, só não achou tag boa
+ * nem título melhor). Antes desta correção os dois casos eram idênticos, e
+ * `reclassificar-cli` imprimia falha de parsing como "✔ ... [(nenhuma)]" —
+ * sucesso, quando na verdade a resposta nem foi lida.
+ */
+export function parseTagsResponse(raw: string): TagsAiResult | null {
+  const jsonText = extrairJson(raw);
+  if (jsonText === null) return null;
+
   try {
-    const obj = JSON.parse(raw.trim()) as { tags?: unknown; title?: unknown };
+    const obj = JSON.parse(jsonText) as { tags?: unknown; title?: unknown };
     const tags = limitarTags(obj.tags);
-    const title =
-      typeof obj.title === "string" && obj.title.trim().length > 0
-        ? obj.title.trim().slice(0, 150)
-        : null;
+    const tituloBruto = typeof obj.title === "string" ? obj.title.trim() : "";
+    // A IA às vezes erra a formatação e devolve a STRING "null" em vez do
+    // valor JSON null — sem esta checagem, "null" vira o título de verdade do
+    // vídeo (via setBrutoTitle) e contamina o PDF/DOCX exportado.
+    const title = tituloBruto && tituloBruto.toLowerCase() !== "null" ? tituloBruto.slice(0, 150) : null;
     return { tags, title };
   } catch {
-    return { tags: [], title: null };
+    return null;
   }
 }

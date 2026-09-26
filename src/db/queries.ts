@@ -234,14 +234,33 @@ export function listCategories(): Category[] {
   return db.select().from(categories).orderBy(categories.sortOrder).all();
 }
 
-/** Atualiza a categoria de um vídeo (edição manual na UI). */
+/**
+ * Atualiza a categoria de um vídeo (edição manual na UI). Uma escolha humana
+ * também tira o vídeo do estado "pendente" — não é a IA que decidiu, mas
+ * também não está mais faltando decisão nenhuma.
+ */
 export function setBrutoCategory(videoId: string, categoryId: number): void {
-  db.update(brutos).set({ categoryId }).where(eq(brutos.id, videoId)).run();
+  db.update(brutos)
+    .set({ categoryId, classificacaoPendente: false })
+    .where(eq(brutos.id, videoId))
+    .run();
 }
 
 /** Renomeia o título cadastrado de um vídeo (edição manual na UI). */
 export function setBrutoTitle(videoId: string, title: string): void {
   db.update(brutos).set({ title }).where(eq(brutos.id, videoId)).run();
+}
+
+/**
+ * Quantos vídeos ainda estão com classificação pendente (nunca foi
+ * classificado com sucesso pelo passo 05, nem corrigido à mão) — o "jeito de
+ * listar" que faltava: sem isto, um vídeo cuja primeira classificação falhou
+ * ficava com categoria "outros" indistinguível de uma decisão de verdade da
+ * IA, e ninguém saberia que precisa rodar `npm run reclassificar` nele.
+ */
+export function contarBrutosComClassificacaoPendente(): number {
+  return db.select({ id: brutos.id }).from(brutos).where(eq(brutos.classificacaoPendente, true)).all()
+    .length;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -422,7 +441,10 @@ export function tagNamesInCategory(categoryId: number): string[] {
  */
 function findOrCreateTagByName(name: string): Tag {
   const trimmed = name.trim();
-  const slug = slugifyTag(trimmed) || nanoid(8);
+  // `slugifyTag` nunca devolve vazio (tem fallback de hash estável para nome
+  // sem caractere significativo nenhum) — nunca use `nanoid()` aqui: um id
+  // aleatório faria o MESMO nome degenerado criar uma tag nova a cada chamada.
+  const slug = slugifyTag(trimmed);
   const existing = db.select().from(tags).where(eq(tags.slug, slug)).get();
   if (existing) return existing;
   const row: Tag = { id: nanoid(), name: trimmed, slug, createdAt: new Date() };
@@ -463,16 +485,22 @@ export function setTagIdsForBruto(videoId: string, tagIds: string[]): void {
   const alvo = new Set(tagIds);
   const now = new Date();
 
-  for (const id of alvo) {
-    if (!atual.has(id)) {
-      db.insert(brutoTags).values({ videoId, tagId: id, addedAt: now }).run();
+  // Numa transação: sem isto, um `tagId` inválido no meio da lista (FK que não
+  // existe) derrubava o insert DELE, mas os inserts/deletes anteriores do
+  // mesmo loop já tinham sido commitados — estado parcial no banco. Com
+  // transação, ou tudo entra ou nada entra.
+  db.transaction((tx) => {
+    for (const id of alvo) {
+      if (!atual.has(id)) {
+        tx.insert(brutoTags).values({ videoId, tagId: id, addedAt: now }).run();
+      }
     }
-  }
-  for (const id of atual) {
-    if (!alvo.has(id)) {
-      db.delete(brutoTags).where(and(eq(brutoTags.videoId, videoId), eq(brutoTags.tagId, id))).run();
+    for (const id of atual) {
+      if (!alvo.has(id)) {
+        tx.delete(brutoTags).where(and(eq(brutoTags.videoId, videoId), eq(brutoTags.tagId, id))).run();
+      }
     }
-  }
+  });
 }
 
 /**

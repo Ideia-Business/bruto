@@ -1,0 +1,1 @@
+ALTER TABLE `brutos` ADD `classificacao_pendente` integer DEFAULT false NOT NULL;

@@ -66,6 +66,9 @@ export async function persistMetadata(meta: VideoMetadata): Promise<void> {
         language: meta.language,
         thumbnailPath,
         categoryId: outros?.id ?? null,
+        // A categoria acima é PROVISÓRIA — o passo 05 é quem classifica de
+        // verdade. Pendente até ele confirmar (ou até correção manual).
+        classificacaoPendente: true,
         createdAt: new Date(),
       })
       .run();

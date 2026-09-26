@@ -24,6 +24,19 @@ export const brutos = sqliteTable(
     categoryId: integer("category_id").references(() => categories.id),
     // 'manual_subs' | 'auto_subs' | 'yta' | 'whisper'
     transcriptSource: text("transcript_source"),
+    /**
+     * true entre a criação do vídeo (categoria provisória "outros", passo 01)
+     * e a primeira classificação BEM-SUCEDIDA do passo 05 — ou entre falhas
+     * repetidas dele. Sem isto, um vídeo cuja classificação falhou na
+     * primeira tentativa (timeout, IA fora do ar, resposta fora do formato)
+     * fica com categoria "outros" indistinguível de "a IA decidiu que é
+     * outros de propósito", e o job termina `done` sem sinal nenhum de que
+     * falta reclassificar. `05-category.ts` zera isto ao classificar com
+     * sucesso; correção manual da categoria (`setBrutoCategory`) também zera.
+     */
+    classificacaoPendente: integer("classificacao_pendente", { mode: "boolean" })
+      .notNull()
+      .default(false),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     lastOpenedAt: integer("last_opened_at", { mode: "timestamp" }),
   },

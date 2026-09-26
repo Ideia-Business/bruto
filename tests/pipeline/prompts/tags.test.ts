@@ -39,38 +39,81 @@ describe("tagsPrompt", () => {
 describe("parseTagsResponse", () => {
   test("caminho feliz: JSON limpo com tags e título", () => {
     const r = parseTagsResponse('{"tags": ["ia", "python"], "title": "Título melhor"}');
+    assert.ok(r, "resposta bem formada não deveria falhar o parsing");
     assert.deepEqual(r.tags, ["ia", "python"]);
     assert.equal(r.title, "Título melhor");
   });
 
   test("title null vira null (a IA decidiu não propor)", () => {
     const r = parseTagsResponse('{"tags": ["ia"], "title": null}');
+    assert.ok(r);
     assert.equal(r.title, null);
   });
 
   test("dedup: tags repetidas (mesmo após lowercase/trim) colapsam numa só", () => {
     const r = parseTagsResponse('{"tags": ["IA", " ia ", "Python"], "title": null}');
+    assert.ok(r);
     assert.deepEqual(r.tags, ["ia", "python"]);
   });
 
   test("corta em 5 tags mesmo se a IA mandar mais", () => {
     const muitas = Array.from({ length: 9 }, (_, i) => `tag${i}`);
     const r = parseTagsResponse(JSON.stringify({ tags: muitas, title: null }));
+    assert.ok(r);
     assert.equal(r.tags.length, 5);
   });
 
-  test("JSON malformado é best-effort: vira { tags: [], title: null }, nunca lança", () => {
-    const r = parseTagsResponse("isto não é JSON nenhum");
-    assert.deepEqual(r, { tags: [], title: null });
-  });
-
-  test("campos ausentes/tipo errado são tratados como vazios, sem lançar", () => {
+  test("campos ausentes/tipo errado são tratados como vazios, sem lançar (JSON válido, contrato errado)", () => {
     const r = parseTagsResponse('{"tags": "não é lista", "title": 42}');
     assert.deepEqual(r, { tags: [], title: null });
   });
 
   test("string vazia de título não vira título (evita título em branco)", () => {
     const r = parseTagsResponse('{"tags": [], "title": "   "}');
+    assert.ok(r);
     assert.equal(r.title, null);
+  });
+
+  /**
+   * REGRESSÃO (achado 3, Grok — o mais grave desta rodada): a IA às vezes
+   * erra a formatação e devolve a STRING "null" em vez do valor JSON null. Sem
+   * esta checagem, "null" vira o TÍTULO DE VERDADE do vídeo (`setBrutoTitle`)
+   * e contamina o PDF/DOCX exportado.
+   */
+  test('REGRESSÃO: title como a STRING "null" (não o valor JSON) vira null, nunca o título', () => {
+    const r = parseTagsResponse('{"tags": ["ia"], "title": "null"}');
+    assert.ok(r);
+    assert.equal(r.title, null);
+  });
+
+  test('REGRESSÃO: "NULL"/"Null" (variações de caixa) também viram null', () => {
+    assert.equal(parseTagsResponse('{"tags": [], "title": "NULL"}')?.title, null);
+    assert.equal(parseTagsResponse('{"tags": [], "title": "Null"}')?.title, null);
+  });
+
+  /**
+   * REGRESSÃO (achado 2, Grok): `JSON.parse` lançava quando a IA envolvia o
+   * JSON em texto (ex.: "Aqui está:\n{...}"), e o catch devolvia
+   * `{tags: [], title: null}` — EXATAMENTE igual a uma resposta legítima "sem
+   * tags boas". `reclassificar-cli` imprimia isso como sucesso quando na
+   * verdade foi falha de parsing. Agora: (a) texto ao redor de um JSON válido
+   * é EXTRAÍDO e interpretado normalmente; (b) texto que não tem JSON nenhum
+   * vira `null` — um valor DISTINTO de `{tags: [], title: null}` — para o
+   * chamador poder diferenciar os dois casos.
+   */
+  test("REGRESSÃO: JSON envolvido em texto é extraído e interpretado normalmente", () => {
+    const r = parseTagsResponse('Aqui está sua resposta:\n{"tags": ["ia", "python"], "title": null}\nEspero que ajude!');
+    assert.ok(r, "deveria ter extraído o JSON de dentro do texto");
+    assert.deepEqual(r.tags, ["ia", "python"]);
+  });
+
+  test("REGRESSÃO: resposta sem NENHUM JSON vira null (falha de parsing), nunca { tags: [], title: null }", () => {
+    const r = parseTagsResponse("Desculpe, não consigo ajudar com isso.");
+    assert.equal(r, null);
+  });
+
+  test("REGRESSÃO: JSON de verdade malformado (chaves presentes, sintaxe quebrada) também vira null", () => {
+    const r = parseTagsResponse('{"tags": ["ia",], "title": }');
+    assert.equal(r, null);
   });
 });

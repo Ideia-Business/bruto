@@ -16,6 +16,43 @@ describe("slugifyTag", () => {
   test("grafias diferentes do mesmo assunto colapsam no mesmo slug", () => {
     assert.equal(slugifyTag("IA"), slugifyTag(" ia "));
   });
+
+  /**
+   * REGRESSÃO (achado 4, Codex + Grok): a versão anterior removia `+` e `#`
+   * junto com todo o resto fora de `a-z0-9`, então "C++" e "C#" — dois
+   * assuntos diferentes — colapsavam ambos em "c". Símbolos que distinguem
+   * nomes de linguagem/tecnologia agora sobrevivem no slug.
+   */
+  test("REGRESSÃO: 'C++' e 'C#' não colidem mais no mesmo slug", () => {
+    const cpp = slugifyTag("C++");
+    const csharp = slugifyTag("C#");
+    assert.notEqual(cpp, csharp, `C++ e C# deveriam gerar slugs diferentes; os dois viraram "${cpp}"`);
+    assert.equal(cpp, "c++");
+    assert.equal(csharp, "c#");
+  });
+
+  test("ponto sobrevive no slug (.NET, Node.js)", () => {
+    assert.equal(slugifyTag(".NET"), ".net");
+    assert.equal(slugifyTag("Node.js"), "node.js");
+  });
+
+  /**
+   * REGRESSÃO (achado 4, Grok): nome sem NENHUM caractere significativo (ex.:
+   * "???") caía num fallback `nanoid(8)` — aleatório a cada chamada — então o
+   * MESMO nome degenerado nunca reaproveitava, sempre criava tag nova. Agora o
+   * fallback é um hash ESTÁVEL do nome original: chamar duas vezes com o
+   * mesmo nome degenerado dá o MESMO slug.
+   */
+  test("REGRESSÃO: nome sem caractere significativo nenhum vira um slug ESTÁVEL (nunca aleatório)", () => {
+    const a = slugifyTag("???");
+    const b = slugifyTag("???");
+    assert.equal(a, b, "o mesmo nome degenerado deveria sempre gerar o mesmo slug, para poder reaproveitar");
+    assert.ok(a.length > 0, "nunca pode devolver vazio (Drizzle exige NOT NULL/UNIQUE em tags.slug)");
+  });
+
+  test("nomes degenerados DIFERENTES não colidem no mesmo slug estável", () => {
+    assert.notEqual(slugifyTag("???"), slugifyTag("!!!"));
+  });
 });
 
 describe("resolveTagNames", () => {

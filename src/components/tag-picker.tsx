@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Tag as TagIcon, Plus, Check } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,17 @@ export function TagPicker({ videoId }: { videoId: string }) {
   const [marcadas, setMarcadas] = useState<Set<string>>(new Set());
   const [nova, setNova] = useState("");
   const [carregando, setCarregando] = useState(false);
+
+  // Espelha `marcadas` para leitura DEPOIS de um `await` — sem isto,
+  // `criarEIncluir` (que faz `await` no POST de criar a tag antes de compor o
+  // conjunto final) usava o `marcadas` capturado no início da chamada: se a
+  // pessoa clicasse noutra tag ENQUANTO o POST estava em voo, esse clique
+  // intermediário era perdido quando `criarEIncluir` sobrescrevia com o
+  // conjunto (desatualizado) que tinha em mãos.
+  const marcadasRef = useRef(marcadas);
+  useEffect(() => {
+    marcadasRef.current = marcadas;
+  }, [marcadas]);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -98,14 +109,16 @@ export function TagPicker({ videoId }: { videoId: string }) {
       }
       const { tag } = (await res.json()) as { tag: { id: string } };
       setNova("");
-      const proximo = new Set(marcadas);
+      // Lê o estado ATUAL (via ref), não o `marcadas` capturado antes do
+      // `await` acima — ver o comentário na declaração de `marcadasRef`.
+      const proximo = new Set(marcadasRef.current);
       proximo.add(tag.id);
       await salvar(proximo);
       await carregar();
     } catch {
       toast.error("Não deu para criar a tag.");
     }
-  }, [nova, marcadas, salvar, carregar]);
+  }, [nova, salvar, carregar]);
 
   return (
     <Dialog open={aberto} onOpenChange={mudarAbertura}>

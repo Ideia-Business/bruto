@@ -33,6 +33,13 @@ export interface CategoryStepResult {
   tags: string[];
   /** Título proposto pela IA, ou null quando o original já estava bom (ou a classificação falhou). */
   titleSuggestion: string | null;
+  /**
+   * true quando a chamada de tags/título falhou (exceção) OU respondeu em
+   * formato que não deu para interpretar — distinto de `tags: []` por decisão
+   * deliberada da IA. Sem isto, `reclassificar-cli` não tinha como diferenciar
+   * "consultei e não achei tag boa" de "não consegui nem ler a resposta".
+   */
+  tagsIndisponivel: boolean;
 }
 
 /**
@@ -77,16 +84,23 @@ export async function runCategory(
   if (slug === null) {
     // Falha de CHAMADA ou de PARSING — os dois caminhos são o mesmo caso:
     // não sabemos a categoria certa, então não tocamos na que já existe.
-    return { categorySlug: null, tags: [], titleSuggestion: null };
+    return { categorySlug: null, tags: [], titleSuggestion: null, tagsIndisponivel: true };
   }
 
   const cat = db.select().from(categories).where(eq(categories.slug, slug)).get();
   if (cat) {
-    db.update(brutos).set({ categoryId: cat.id }).where(eq(brutos.id, meta.id)).run();
+    // Classificação de verdade aconteceu — sai do estado "pendente" mesmo
+    // quando o resultado é "outros" (que aqui é uma decisão da IA, não a
+    // ausência de uma).
+    db.update(brutos)
+      .set({ categoryId: cat.id, classificacaoPendente: false })
+      .where(eq(brutos.id, meta.id))
+      .run();
   }
 
   let tagNames: string[] = [];
   let titleSuggestion: string | null = null;
+  let tagsIndisponivel = true;
   if (cat) {
     try {
       // Fresca a cada chamada — nunca cacheada entre vídeos do mesmo lote de
@@ -101,8 +115,13 @@ export async function runCategory(
         timeoutMs: 180_000,
       });
       const parsed = parseTagsResponse(raw);
-      tagNames = parsed.tags;
-      titleSuggestion = parsed.title;
+      if (parsed) {
+        tagNames = parsed.tags;
+        titleSuggestion = parsed.title;
+        tagsIndisponivel = false;
+      }
+      // `parsed === null` (falha de parsing) deixa `tagsIndisponivel` true —
+      // mesma postura de uma exceção na chamada, ver catch abaixo.
     } catch {
       // Tags/título são best-effort — mesma postura da categoria acima.
     }
@@ -115,5 +134,5 @@ export async function runCategory(
     setBrutoTitle(meta.id, titleSuggestion);
   }
 
-  return { categorySlug: slug, tags: tagNames, titleSuggestion };
+  return { categorySlug: slug, tags: tagNames, titleSuggestion, tagsIndisponivel };
 }

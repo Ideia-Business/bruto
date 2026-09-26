@@ -86,8 +86,14 @@ describe("npm run reclassificar — reprocessamento retroativo sequencial", () =
         "INSERT INTO brutos (id, url, platform, title, category_id, created_at) VALUES (?, ?, 'youtube', ?, ?, ?)",
       )
       .run(COM_ARTEFATO.id, `https://exemplo.test/${COM_ARTEFATO.id}`, COM_ARTEFATO.title, categoriaTecnologiaId, now);
+    // SEM_ARTEFATO nasce PENDENTE de verdade (como `01-metadata.ts` grava todo
+    // vídeo novo) — nunca vai ser tocado pelo passo 05 nesta suíte (falta
+    // artefato em disco), então segue pendente até o fim: é o que exercita o
+    // contador/resumo do achado 1.
     sqlite
-      .prepare("INSERT INTO brutos (id, url, platform, title, created_at) VALUES (?, ?, 'youtube', ?, ?)")
+      .prepare(
+        "INSERT INTO brutos (id, url, platform, title, classificacao_pendente, created_at) VALUES (?, ?, 'youtube', ?, 1, ?)",
+      )
       .run(SEM_ARTEFATO.id, `https://exemplo.test/${SEM_ARTEFATO.id}`, SEM_ARTEFATO.title, now);
     sqlite.close();
 
@@ -150,6 +156,21 @@ describe("npm run reclassificar — reprocessamento retroativo sequencial", () =
       "a categoria 'tecnologia' que o vídeo já tinha deveria ter sobrevivido intacta",
     );
     assert.equal(semArtefato?.category_id, null, "o vídeo pulado não deveria ter sido tocado");
+  });
+
+  /**
+   * REGRESSÃO (achado 1, Grok): antes desta correção, um vídeo cuja primeira
+   * classificação falhasse ficava com categoria "outros" indistinguível de
+   * "a IA decidiu de propósito" — sem nenhum sinal de que falta reclassificar.
+   * O campo `classificacao_pendente` e este resumo são o "jeito de listar".
+   */
+  test("REGRESSÃO: o resumo final avisa quantos vídeos seguem com classificação pendente", () => {
+    const { saida } = rodar();
+    // SEM_ARTEFATO nasce pendente e nunca é tocado (falta artefato em disco) —
+    // continua pendente ao final. COM_ARTEFATO já estava classificado antes
+    // (pendente=false) e uma falha de reclassificação não o torna pendente
+    // retroativamente (não há informação nova de que algo mudou).
+    assert.match(saida, /⚠ 1 vídeo\(s\) na biblioteca ainda com classificação pendente\./);
   });
 
   test("filtrar por um único id processa só aquele vídeo", () => {
