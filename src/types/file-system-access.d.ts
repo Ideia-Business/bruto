@@ -38,4 +38,16 @@ declare global {
   interface Window {
     showDirectoryPicker(options?: DirectoryPickerOptions): Promise<FileSystemDirectoryHandle>;
   }
+
+  /**
+   * Iteração do diretório — também ausente do lib.dom.d.ts instalado. Usada
+   * só para SONDAR se a pasta ainda existe no disco (`values().next()`,
+   * sem ler o conteúdo inteiro): `queryPermission` continua dizendo
+   * "granted" mesmo com a pasta apagada — só uma operação real revela isso.
+   */
+  interface FileSystemDirectoryHandle {
+    entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
+    keys(): AsyncIterableIterator<string>;
+    values(): AsyncIterableIterator<FileSystemHandle>;
+  }
 }

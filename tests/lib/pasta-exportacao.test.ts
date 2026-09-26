@@ -23,9 +23,10 @@ import {
   suportaPastaLocal,
 } from "@/lib/pasta-exportacao";
 import {
-  deveMarcarAposFalha,
+  deveMarcarExportado,
   idsPendentesDeExportacao,
   nomeArquivoDoCabecalho,
+  pastaAindaExisteNoDisco,
   resultadoDaCopia,
 } from "@/lib/exportar-artefatos";
 
@@ -137,14 +138,53 @@ describe("resultadoDaCopia — item 5, nunca anuncia sucesso pleno com artefato 
   });
 });
 
-describe("deveMarcarAposFalha — item 3, erro transitório não bloqueia retry pra sempre", () => {
-  test("nada escrito antes da exceção (ex.: rede caiu no GET do vídeo) → NÃO marca, tenta de novo depois", () => {
-    assert.equal(deveMarcarAposFalha(0), false);
+describe("deveMarcarExportado — item 2 da 3ª revisão, só marca em sucesso PLENO", () => {
+  test("sucesso pleno (escreveu tudo) → marca", () => {
+    assert.equal(deveMarcarExportado(5, 5), true);
+    assert.equal(deveMarcarExportado(0, 0), true); // vídeo sem artefato nenhum — trivialmente pleno
   });
 
-  test("cópia parcial que quebrou no meio (já escreveu pelo menos 1 arquivo) → marca, não martela a cada reload", () => {
-    assert.equal(deveMarcarAposFalha(1), true);
-    assert.equal(deveMarcarAposFalha(4), true);
+  test("cópia parcial (faltou pelo menos 1) → NÃO marca, mesmo já tendo escrito algo", () => {
+    assert.equal(deveMarcarExportado(3, 5), false);
+    assert.equal(deveMarcarExportado(1, 5), false);
+  });
+
+  test("nada escrito antes de uma exceção (ex.: rede caiu no GET do vídeo) → NÃO marca", () => {
+    assert.equal(deveMarcarExportado(0, 5), false);
+  });
+
+  test("exceção antes até de saber quantos artefatos existem (total no sentinela -1) → NÃO marca", () => {
+    assert.equal(deveMarcarExportado(0, -1), false);
+  });
+
+  test("mesma regra nos dois caminhos: catch com laço interrompido no meio nunca bate escritos === total", () => {
+    // Um catch só teria escritos === total se o laço tivesse terminado por
+    // completo antes da exceção — cenário legítimo, tratado igual ao sucesso.
+    assert.equal(deveMarcarExportado(5, 5), true);
+    assert.equal(deveMarcarExportado(4, 5), false);
+  });
+});
+
+describe("pastaAindaExisteNoDisco — item 4, distingue 'pasta sumiu' de erro comum", () => {
+  function duploComIterador(comportamento: "existe" | "sumiu"): FileSystemDirectoryHandle {
+    return {
+      values: () => ({
+        next: async () => {
+          if (comportamento === "sumiu") {
+            throw new DOMException("A requested file or directory could not be found", "NotFoundError");
+          }
+          return { done: true, value: undefined };
+        },
+      }),
+    } as unknown as FileSystemDirectoryHandle;
+  }
+
+  test("pasta existe (mesmo vazia) → true, sem lançar", async () => {
+    assert.equal(await pastaAindaExisteNoDisco(duploComIterador("existe")), true);
+  });
+
+  test("pasta apagada do disco → false, nunca lança", async () => {
+    assert.equal(await pastaAindaExisteNoDisco(duploComIterador("sumiu")), false);
   });
 });
 

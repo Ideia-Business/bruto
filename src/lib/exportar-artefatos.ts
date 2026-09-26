@@ -45,15 +45,17 @@ export function nomeArquivoDoCabecalho(header: string | null, fallback: string):
 }
 
 /**
- * Uma falha DEPOIS de já ter escrito pelo menos um arquivo de verdade marca
- * "já tentado" (é uma cópia parcial, não repete a cada reload). Uma falha
- * ANTES de escrever nada — rede caiu no GET dos dados do vídeo, 500
- * transitório, pasta sumiu bem no início — NÃO marca: sem isso, um erro
- * passageiro bloqueava o vídeo pra sempre, e nem reabrir a pasta nem
- * reconceder permissão recuperava (não há retry se o id já está marcado).
+ * Só marca como exportado em SUCESSO PLENO (`escritos === total`) — nunca em
+ * cópia parcial, nem no caminho normal (todo artefato pedido, mas só parte
+ * escreveu) nem no catch (onde, por definição, alguma coisa interrompeu o
+ * laço antes de completar — `total` fica no sentinela `-1` se a exceção
+ * aconteceu antes até de saber quantos artefatos existem). A mesma regra nos
+ * dois caminhos: um vídeo com cópia incompleta continua candidato no
+ * catch-up, e tenta de novo — nunca fica marcado "já tentado" com menos
+ * arquivo do que devia.
  */
-export function deveMarcarAposFalha(escritos: number): boolean {
-  return escritos > 0;
+export function deveMarcarExportado(escritos: number, total: number): boolean {
+  return total >= 0 && escritos === total;
 }
 
 /** Decide a mensagem de conclusão a partir do que realmente foi escrito — nunca "sucesso" quando faltou artefato. */
@@ -106,24 +108,31 @@ export async function exportarVideoAutomaticamente(videoId: string | null | unde
   if (emAndamento.has(videoId)) return;
   if (obterExportados().has(videoId)) return;
 
-  const handle = await obterPastaSalva();
-  if (!handle) return; // nunca configurado — nada a fazer, sem ruído (condição prévia, não falha: não marca)
-
-  const permissao = await permissaoAtual(handle);
-  if (permissao !== "granted") {
-    toast.warning("Não deu para salvar cópia na pasta escolhida: a permissão expirou.", {
-      description:
-        "O vídeo está salvo normalmente na biblioteca. Abra Configurações para reconceder o acesso.",
-    });
-    return; // condição prévia recuperável — não marca, tenta de novo quando a permissão voltar
-  }
-
+  // Marca ANTES do primeiro `await`: o SSE (onDone, ao vivo) e o timer de
+  // 60s da sincronização podem chamar para o MESMO vídeo quase ao mesmo
+  // tempo. As checagens de `emAndamento`/`obterExportados` acima sozinhas
+  // não bastam se a marca só acontece depois de dois `await` (pasta,
+  // permissão) — os dois disparos passam pela checagem antes de qualquer um
+  // marcar, e os dois abrem `createWritable` (que TRUNCA o arquivo) juntos.
+  // Como JS não interrompe um trecho síncrono no meio, tudo daqui até o
+  // primeiro `await` roda atômico — nenhuma segunda chamada consegue entrar
+  // depois deste ponto.
   emAndamento.add(videoId);
-  // Fora do try para o catch poder ver quanto já foi escrito de verdade — é o
-  // que decide se uma falha marca "já tentado" (parou o retry pra sempre) ou
-  // fica livre pro catch-up tentar de novo na próxima carga de página.
   let escritos = 0;
+  let total = -1; // -1 = ainda não sabemos — o laço nem começou (ver deveMarcarExportado)
   try {
+    const handle = await obterPastaSalva();
+    if (!handle) return; // nunca configurado — nada a fazer, sem ruído (condição prévia: não marca)
+
+    const permissao = await permissaoAtual(handle);
+    if (permissao !== "granted") {
+      toast.warning("Não deu para salvar cópia na pasta escolhida: a permissão expirou.", {
+        description:
+          "O vídeo está salvo normalmente na biblioteca. Abra Configurações para reconceder o acesso.",
+      });
+      return; // condição prévia recuperável — não marca, tenta de novo quando a permissão voltar
+    }
+
     const res = await fetchApp(`/api/videos/${videoId}`);
     if (!res.ok) throw new Error("Não foi possível ler os dados do vídeo.");
     const detalhe = (await res.json()) as DetalheVideoWire;
@@ -135,7 +144,7 @@ export async function exportarVideoAutomaticamente(videoId: string | null | unde
     const pastaCategoria = await handle.getDirectoryHandle(categoriaNome, { create: true });
     const pastaVideo = await pastaCategoria.getDirectoryHandle(pastaVideoNome, { create: true });
 
-    const total = detalhe.artifacts.length;
+    total = detalhe.artifacts.length;
     for (const artefato of detalhe.artifacts) {
       const artRes = await fetchApp(`/api/artifacts/${artefato.id}`);
       if (!artRes.ok) continue; // um artefato faltando não derruba o resto do pacote
@@ -162,20 +171,47 @@ export async function exportarVideoAutomaticamente(videoId: string | null | unde
       });
     } else {
       toast.warning(`${resultado.titulo} ${destino}.`, {
-        description: "O vídeo está salvo normalmente na biblioteca. Um ou mais arquivos não copiaram — tente de novo mais tarde, se precisar.",
+        description:
+          "O vídeo está salvo normalmente na biblioteca. Vai tentar de novo na próxima vez que a página carregar.",
       });
     }
-    marcarExportado(videoId);
+    if (deveMarcarExportado(escritos, total)) marcarExportado(videoId);
   } catch {
     toast.warning("Não deu para salvar cópia na pasta escolhida.", {
       description:
         "O vídeo está salvo normalmente na biblioteca. Se a pasta sumiu ou mudou de lugar, reabra Configurações.",
     });
-    if (deveMarcarAposFalha(escritos)) marcarExportado(videoId);
+    // Na prática esta condição quase nunca é verdadeira aqui — uma exceção
+    // significa que o laço foi interrompido (ou nem começou), então
+    // `escritos === total` só valeria se a falha tivesse acontecido DEPOIS
+    // do laço terminar por completo. É a mesma regra do caminho normal,
+    // aplicada por consistência — não uma regra nova para o catch.
+    if (deveMarcarExportado(escritos, total)) marcarExportado(videoId);
   } finally {
     emAndamento.delete(videoId);
   }
 }
+
+/**
+ * Sonda barata: a pasta escolhida ainda existe no disco? `queryPermission`
+ * NÃO sabe responder isso — o navegador continua dizendo "granted" mesmo com
+ * a pasta apagada, movida ou renomeada; só uma operação real na revela.
+ * `values().next()` de um único passo confirma sem ler o conteúdo inteiro e
+ * sem criar nada (ao contrário de sondar com `getDirectoryHandle(create:
+ * true)`, que deixaria uma pasta bruta pra trás). Resolve tanto para pasta
+ * vazia quanto com conteúdo; só lança se o diretório em si sumiu.
+ */
+export async function pastaAindaExisteNoDisco(handle: FileSystemDirectoryHandle): Promise<boolean> {
+  try {
+    await handle.values().next();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Evita duas rodadas do timer/SSE processando o mesmo lote de pendentes ao mesmo tempo (item 3 da 3ª revisão). */
+let sincronizacaoEmAndamento = false;
 
 /**
  * Catch-up: roda ao carregar qualquer página do app (ver `SincronizacaoExportacao`
@@ -187,26 +223,44 @@ export async function exportarVideoAutomaticamente(videoId: string | null | unde
  * Permissão é checada UMA vez para o lote inteiro, não por vídeo: do
  * contrário, N vídeos pendentes com a permissão expirada disparariam N
  * avisos idênticos a cada navegação. O estado de permissão já é visível, com
- * calma, em /configuracoes.
+ * calma, em /configuracoes. Pelo mesmo motivo, "a pasta sumiu do disco" é
+ * checado UMA vez antes do lote (ver `pastaAindaExisteNoDisco`) — sem isso,
+ * cada vídeo pendente cairia no próprio catch e toastaria sozinho, a cada
+ * 60s, para sempre, até alguém religar a pasta.
  */
 export async function sincronizarExportacoesPendentes(): Promise<void> {
-  if (!autoExportarAtivado()) return;
-  const handle = await obterPastaSalva();
-  if (!handle) return;
-  if ((await permissaoAtual(handle)) !== "granted") return;
-
-  let idsProntos: string[];
+  if (sincronizacaoEmAndamento) return;
+  sincronizacaoEmAndamento = true;
   try {
-    const res = await fetchApp("/api/videos/concluidos");
-    if (!res.ok) return;
-    const data = (await res.json()) as { videoIds: string[] };
-    idsProntos = data.videoIds;
-  } catch {
-    return;
-  }
+    if (!autoExportarAtivado()) return;
+    const handle = await obterPastaSalva();
+    if (!handle) return;
+    if ((await permissaoAtual(handle)) !== "granted") return;
 
-  const pendentes = idsPendentesDeExportacao(idsProntos, obterExportados());
-  for (const videoId of pendentes) {
-    await exportarVideoAutomaticamente(videoId);
+    let idsProntos: string[];
+    try {
+      const res = await fetchApp("/api/videos/concluidos");
+      if (!res.ok) return;
+      const data = (await res.json()) as { videoIds: string[] };
+      idsProntos = data.videoIds;
+    } catch {
+      return;
+    }
+
+    const pendentes = idsPendentesDeExportacao(idsProntos, obterExportados());
+    if (pendentes.length === 0) return;
+
+    if (!(await pastaAindaExisteNoDisco(handle))) {
+      toast.warning("A pasta de exportação não foi encontrada.", {
+        description: `Pode ter sido movida, renomeada ou apagada. ${pendentes.length} vídeo(s) aguardando — abra Configurações para escolher a pasta de novo.`,
+      });
+      return;
+    }
+
+    for (const videoId of pendentes) {
+      await exportarVideoAutomaticamente(videoId);
+    }
+  } finally {
+    sincronizacaoEmAndamento = false;
   }
 }
