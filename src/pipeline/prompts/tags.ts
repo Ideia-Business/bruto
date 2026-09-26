@@ -63,16 +63,51 @@ function limitarTags(raw: unknown): string[] {
 }
 
 /**
- * Extrai o objeto JSON de dentro de texto ao redor (ex.: "Aqui está:\n{...}\n
- * espero que ajude") — do primeiro `{` ao último `}`. Devolve null quando não
- * há chave nenhuma (claramente não é JSON), para `parseTagsResponse` poder
- * distinguir "não veio JSON algum" sem nem chamar `JSON.parse`.
+ * Extrai o PRIMEIRO objeto JSON balanceado de dentro de texto ao redor (ex.:
+ * "Aqui está:\n{...}\nespero que ajude"). Do primeiro `{` até a `}` que FECHA
+ * ELE (contando profundidade, ciente de string entre aspas) — nunca até a
+ * última `}` do texto inteiro.
+ *
+ * A versão anterior ia do primeiro `{` ao ÚLTIMO `}`: se a IA ecoar os dois
+ * exemplos do próprio prompt (padrão conhecido de falha de modelo — repetir
+ * instrução em vez de responder), esse recorte juntava os dois objetos num
+ * blob inválido, e `JSON.parse` falhava mesmo havendo um JSON válido ali
+ * dentro. Parar na chave que fecha a PRIMEIRA abertura resolve isso.
+ *
+ * Devolve null quando não há `{` nenhum, ou quando a abertura encontrada
+ * nunca fecha (JSON cortado no meio) — os dois casos em que não há o que
+ * tentar interpretar.
  */
 function extrairJson(raw: string): string | null {
   const inicio = raw.indexOf("{");
-  const fim = raw.lastIndexOf("}");
-  if (inicio === -1 || fim === -1 || fim < inicio) return null;
-  return raw.slice(inicio, fim + 1);
+  if (inicio === -1) return null;
+
+  let profundidade = 0;
+  let dentroDeString = false;
+  let escapando = false;
+
+  for (let i = inicio; i < raw.length; i++) {
+    const c = raw[i];
+
+    if (escapando) {
+      escapando = false;
+      continue;
+    }
+    if (dentroDeString) {
+      if (c === "\\") escapando = true;
+      else if (c === '"') dentroDeString = false;
+      continue;
+    }
+    if (c === '"') {
+      dentroDeString = true;
+    } else if (c === "{") {
+      profundidade++;
+    } else if (c === "}") {
+      profundidade--;
+      if (profundidade === 0) return raw.slice(inicio, i + 1);
+    }
+  }
+  return null;
 }
 
 /**

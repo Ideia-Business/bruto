@@ -127,7 +127,14 @@ export async function runCategory(
     }
   }
 
-  if (tagNames.length > 0) {
+  // `tagsIndisponivel === false` significa que a IA respondeu e o parsing
+  // teve sucesso — inclusive quando a decisão foi "nenhuma tag boa desta vez"
+  // (`tagNames: []`). Chamar SEMPRE que isso for verdade (não só quando há
+  // tags) é o que faz `setBrutoTagsFromNames` (substituição completa) de fato
+  // reclassificar um vídeo que já tinha tags e não deveria mais tê-las. Só
+  // pulamos quando `tagsIndisponivel` é true — aí não sabemos nada, então não
+  // tocamos no que já existe (mesma postura da categoria).
+  if (!tagsIndisponivel) {
     setBrutoTagsFromNames(meta.id, tagNames);
   }
   if (titleSuggestion) {

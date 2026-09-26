@@ -116,4 +116,26 @@ describe("parseTagsResponse", () => {
     const r = parseTagsResponse('{"tags": ["ia",], "title": }');
     assert.equal(r, null);
   });
+
+  /**
+   * REGRESSÃO (achado 3, Grok — 5ª rodada): a versão anterior ia do PRIMEIRO
+   * `{` ao ÚLTIMO `}` do texto inteiro. Se a IA ecoar os dois exemplos do
+   * próprio prompt (falha conhecida de modelo — repetir instrução em vez de
+   * responder), esse recorte juntava os dois objetos JSON num blob inválido e
+   * `JSON.parse` falhava. Agora o scanner para na chave que fecha a PRIMEIRA
+   * abertura — extrai o primeiro objeto balanceado, ignora o resto.
+   */
+  test("REGRESSÃO: dois objetos JSON colados (eco dos dois exemplos do prompt) não vira um blob inválido", () => {
+    const doisObjetosColados =
+      '{"tags": ["tag um", "tag dois"], "title": "título melhor"}\n{"tags": ["tag um", "tag dois"], "title": null}';
+    const r = parseTagsResponse(doisObjetosColados);
+    assert.ok(r, "deveria ter extraído o PRIMEIRO objeto balanceado, não falhado no blob dos dois juntos");
+    assert.deepEqual(r.tags, ["tag um", "tag dois"]);
+  });
+
+  test("chave/colchete dentro de uma STRING não confunde a contagem de profundidade", () => {
+    const r = parseTagsResponse('{"tags": ["ia"], "title": "Ep. 5: {Especial} [parte 2]"}');
+    assert.ok(r, "aspas literais dentro de valores de string não deveriam quebrar o balanceamento de chaves");
+    assert.equal(r.title, "Ep. 5: {Especial} [parte 2]");
+  });
 });

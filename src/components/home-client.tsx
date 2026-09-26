@@ -120,7 +120,11 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
 
   return (
     <div className="space-y-8">
-      {data.hero && <HeroBanner video={data.hero} />}
+      {/* Passa pelo mesmo filtro de tag do resto do catálogo — sem isto, o
+          hero "Continue de onde parou" seguia aparecendo mesmo sem a tag
+          escolhida, enquanto a lista abaixo dizia "nenhum vídeo com essa
+          tag" (achado do Grok, 5ª rodada). */}
+      {data.hero && combina(data.hero) && <HeroBanner video={data.hero} />}
 
       {/* `hidden`, nunca desmontar: um lote com link inválido deixa o diálogo
           aberto pedindo correção, e o primeiro link válido já enfileirado

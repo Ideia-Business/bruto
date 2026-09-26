@@ -39,6 +39,16 @@ export function TagPicker({ videoId }: { videoId: string }) {
     marcadasRef.current = marcadas;
   }, [marcadas]);
 
+  // Fila serial dos PUTs: cada `salvar` só DISPARA depois do anterior ter
+  // respondido — nunca dois PUTs concorrentes. Sem isto, marcar A e depois B
+  // rapidamente dispara PUT{A} e PUT{A,B} em paralelo; se a rede entregar o
+  // PUT{A} DEPOIS do PUT{A,B} (fora de ordem), o banco fica em {A} enquanto a
+  // UI (otimista) mostra {A,B} — um reload mostraria o estado errado (achado
+  // do Codex, 5ª rodada). Como cada clique já lê `marcadas` do render mais
+  // recente (React flusha entre eventos), cada `proximo` já é o alvo
+  // cumulativo certo — só faltava garantir a ORDEM de chegada ao servidor.
+  const filaRef = useRef<Promise<void>>(Promise.resolve());
+
   const carregar = useCallback(async () => {
     setCarregando(true);
     try {
@@ -66,19 +76,23 @@ export function TagPicker({ videoId }: { videoId: string }) {
   );
 
   const salvar = useCallback(
-    async (proximo: Set<string>) => {
+    (proximo: Set<string>): Promise<void> => {
       setMarcadas(proximo);
-      try {
-        const res = await fetchApp(`/api/videos/${videoId}/tags`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tagIds: [...proximo] }),
-        });
-        if (!res.ok) throw new Error("falhou");
-      } catch {
-        toast.error("A mudança não foi salva.");
-        await carregar();
-      }
+      const tarefa = filaRef.current.then(async () => {
+        try {
+          const res = await fetchApp(`/api/videos/${videoId}/tags`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tagIds: [...proximo] }),
+          });
+          if (!res.ok) throw new Error("falhou");
+        } catch {
+          toast.error("A mudança não foi salva.");
+          await carregar();
+        }
+      });
+      filaRef.current = tarefa;
+      return tarefa;
     },
     [videoId, carregar],
   );
