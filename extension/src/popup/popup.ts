@@ -13,7 +13,7 @@
 
 import { extrairVideoIdDaUrl } from "../lib/captura";
 import type { BrutoCapturado, CapturaError } from "../lib/captura";
-import { runLLM, LlmError, verModo } from "../lib/llm";
+import { runLLM, LlmError, stripFences, verModo } from "../lib/llm";
 import {
   AppLocalError,
   APP_BASE,
@@ -21,6 +21,7 @@ import {
   type FalhaDoApp,
   type ResultadoEnvio,
 } from "../lib/app-local";
+import { pedirAulaGratis, verCotaGratis, GratisError } from "../lib/gratis";
 import { guardarAula, listarBancada, esquecerAula, limparBancada } from "../lib/bancada";
 import type { AulaGuardada } from "../lib/bancada";
 import { guardarFaisca, listarFaiscas, esquecerFaisca } from "../lib/caderno";
@@ -494,6 +495,40 @@ function falhaDoApp(causa: FalhaDoApp, msg: string): Falha {
   }
 }
 
+/**
+ * Falha do modo grátis. No LIMITE, as duas saídas sempre juntas: colar uma
+ * chave nas opções (botão já existe na tela de erro) ou abrir o app local — e
+ * dizer que o limite volta amanhã, porque "tente de novo" seria falso aqui.
+ */
+function falhaDoGratis(e: GratisError): Falha {
+  switch (e.codigo) {
+    case "LIMITE": {
+      const limite = e.limite ?? 3;
+      return {
+        titulo: `O limite de ${limite} aulas grátis de hoje acabou.`,
+        saida:
+          "Ele volta amanhã. Duas saídas agora: abra as opções e cole uma chave de API, ou abra o app do Bruto nesta máquina para usar um plano que você já assina.",
+      };
+    }
+    case "PEDIDO_INVALIDO":
+      return {
+        titulo: e.message,
+        saida: "Repetir não muda — tente outro vídeo, ou cole uma chave de API nas opções.",
+      };
+    case "INDISPONIVEL":
+      return {
+        titulo: e.message,
+        saida: "Tente de novo em instantes. Se persistir, cole uma chave de API nas opções.",
+      };
+    case "FALHA":
+    default:
+      return {
+        titulo: e.message,
+        saida: "Tente de novo. Se repetir, cole uma chave de API nas opções.",
+      };
+  }
+}
+
 function falhaDoModelo(codigo: CodigoLlm, msg: string): Falha {
   switch (codigo) {
     case "SEM_CONFIG":
@@ -612,32 +647,57 @@ async function destrinchar(): Promise<void> {
     faiscaAviso.hidden = true;
 
     if (meuControle.signal.aborted) return;
-    passo(`Fala pega: ${bruto.texto.length.toLocaleString("pt-BR")} caracteres. Destrinchando…`);
 
-    // O prompt é o MESMO que o app local usa — vem de src/pipeline/prompts.
-    // É o da AULA, não o do resumo: objetivos, conceitos do zero, glossário e
-    // teste de fixação. É o que a extensão promete na Loja e o que o BRAND.md
-    // define como Aula — antes daqui saía um resumo executivo com esse nome.
-    const prompt = studyPrompt({ title: bruto.titulo, channel: bruto.canal });
+    const modoAgora = await verModo();
+    let aulaBruta: string;
+    let avisoQuota = "";
 
-    const md = await runLLM({
-      prompt,
-      input: bruto.texto,
-      tier: "balanced",
-      timeoutMs: 180_000,
-      signal: meuControle.signal,
-    });
+    if (modoAgora.qual === "gratis") {
+      passo(
+        `Fala pega: ${bruto.texto.length.toLocaleString("pt-BR")} caracteres. Destrinchando no modo grátis…`,
+      );
+      const resultado = await pedirAulaGratis({
+        titulo: bruto.titulo,
+        canal: bruto.canal,
+        transcricao: bruto.texto,
+        signal: meuControle.signal,
+      });
+      aulaBruta = resultado.aula;
+      avisoQuota = resultado.cortada
+        ? `Modo grátis: restam ${resultado.restantes} de ${resultado.limite} aulas hoje. A transcrição foi cortada em 120.000 caracteres antes de enviar.`
+        : `Modo grátis: restam ${resultado.restantes} de ${resultado.limite} aulas hoje.`;
+    } else {
+      // O prompt é o MESMO que o app local usa — vem de src/pipeline/prompts.
+      // É o da AULA, não o do resumo: objetivos, conceitos do zero, glossário e
+      // teste de fixação. É o que a extensão promete na Loja e o que o BRAND.md
+      // define como Aula — antes daqui saía um resumo executivo com esse nome.
+      passo(`Fala pega: ${bruto.texto.length.toLocaleString("pt-BR")} caracteres. Destrinchando…`);
+      const prompt = studyPrompt({ title: bruto.titulo, channel: bruto.canal });
+      aulaBruta = await runLLM({
+        prompt,
+        input: bruto.texto,
+        tier: "balanced",
+        timeoutMs: 180_000,
+        signal: meuControle.signal,
+      });
+    }
 
     if (meuControle.signal.aborted) return;
 
-    aulaMd = md.trim();
+    aulaMd = stripFences(aulaBruta).trim();
     aulaBox.innerHTML = renderMarkdown(aulaMd);
-    avisoAula.hidden = true;
+    if (avisoQuota !== "") {
+      avisoAula.hidden = false;
+      avisoAula.className = "estado ok";
+      avisoAula.textContent = avisoQuota;
+    } else {
+      avisoAula.hidden = true;
+    }
     mostrar("aula");
 
-    // Guarda ANTES de qualquer outra coisa: produzir isto consumiu o plano ou a
-    // chave da pessoa, e fechar o popup não pode significar perder o trabalho.
-    const modoAgora = await verModo();
+    // Guarda ANTES de qualquer outra coisa: produzir isto consumiu o plano, a
+    // chave ou a cota grátis da pessoa, e fechar o popup não pode significar
+    // perder o trabalho.
     void guardarAula({
       videoId: bruto.videoId,
       titulo: bruto.titulo,
@@ -645,13 +705,23 @@ async function destrinchar(): Promise<void> {
       url: `https://www.youtube.com/watch?v=${bruto.videoId}`,
       markdown: aulaMd,
       em: Date.now(),
-      // Registra de onde a aula veio: no modo app é o plano, e guardar o nome de
-      // um provedor de chave aqui seria registro falso.
-      provedor: modoAgora.qual === "app" ? "app-local" : (modoAgora.config?.provedor ?? null),
+      // Registra de onde a aula veio: no modo app é o plano, no grátis é a cota
+      // do dono da extensão, e guardar o nome de um provedor de chave aqui
+      // seria registro falso.
+      provedor:
+        modoAgora.qual === "app"
+          ? "app-local"
+          : modoAgora.qual === "gratis"
+            ? "gratis"
+            : (modoAgora.config?.provedor ?? null),
     });
   } catch (e: unknown) {
     if (meuControle.signal.aborted) {
       mostrar("pronto");
+      return;
+    }
+    if (e instanceof GratisError) {
+      mostrarFalha(falhaDoGratis(e));
       return;
     }
     if (e instanceof LlmError) {
@@ -802,14 +872,11 @@ async function iniciar(): Promise<void> {
     return;
   }
 
-  // A chave só é exigida no modo `chave`. Com o app local de pé e um provedor de
-  // plano, não há chave nenhuma para pedir — mandar alguém configurar uma seria
-  // empurrá-lo a pagar por token justamente por cima do plano que ele assina.
+  // Quem não tem app com plano nem chave configurada cai no modo grátis — não
+  // há mais "sem config" a recusar aqui: `verModo()` só devolve `chave` quando
+  // uma chave já existe (ver `llm.ts`). Sem app e sem chave, o fluxo segue
+  // normal, no modo grátis.
   const modo = await verModo();
-  if (modo.qual === "chave" && !modo.config) {
-    mostrar("semConfig");
-    return;
-  }
 
   // Caso 2: vídeo do YouTube — fluxo de sempre, intacto.
   if (ehVideoYoutube(aba.url)) {
@@ -817,8 +884,21 @@ async function iniciar(): Promise<void> {
     urlDaAba = aba.url;
     telaInicial = "pronto";
     prontoTitulo.textContent = aba.title ?? "Vídeo do YouTube";
-    prontoDado.textContent = "Clique e o Bruto pega a fala e monta a aula.";
+    prontoDado.textContent =
+      modo.qual === "gratis" ? "Modo grátis." : "Clique e o Bruto pega a fala e monta a aula.";
     mostrar("pronto");
+    if (modo.qual === "gratis") {
+      void verCotaGratis().then((cota) => {
+        // A tela pode já ter mudado (usuário clicou "Destrinchar" antes da
+        // resposta chegar) — mostrar a cota então seria escrever por cima da
+        // tela errada. `telaInicial` continua "pronto" o tempo todo aqui, mas
+        // o texto só importa enquanto a tela "pronto" ainda está visível.
+        if (telas.pronto.hidden) return;
+        prontoDado.textContent = cota
+          ? `Modo grátis: ${cota.restantes} de ${cota.limite} aulas hoje.`
+          : "Modo grátis.";
+      });
+    }
     return;
   }
 

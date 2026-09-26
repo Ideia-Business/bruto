@@ -27,16 +27,23 @@ export type Tier = "fast" | "balanced";
  * Em qual dos dois caminhos a extensão está — e por quê, porque a tela de opções
  * precisa dizer isso a quem instalou justamente para não pagar por token.
  *
- * `app`   — o app local está de pé com um provedor de plano: o consumo sai da
- *           assinatura que a pessoa já paga, e nenhuma chave é necessária.
- * `chave` — não há app (o caso comum), ou o app não tem plano disponível:
- *           volta a ser chave de API, cobrada por uso.
+ * `app`    — o app local está de pé com um provedor de plano: o consumo sai da
+ *            assinatura que a pessoa já paga, e nenhuma chave é necessária.
+ * `chave`  — não há app, mas há uma chave configurada nas opções: cobrada por
+ *            uso, no provedor que a pessoa escolheu.
+ * `gratis` — nem app com plano, nem chave: o Bruto do Ollama Cloud do dono,
+ *            limitado a 3 aulas por dia por instalação (ver `gratis.ts` e
+ *            `servidor/CONTRATO.md`). É o modo de quem só instalou a extensão.
+ *
+ * ORDEM DE ESCOLHA (nunca cai em silêncio de um modo para outro dentro de uma
+ * mesma chamada — a escolha é feita aqui, uma vez, e `runLLM` a respeita):
+ * app com plano → chave configurada → grátis.
  */
-export type QualModo = "app" | "chave";
+export type QualModo = "app" | "chave" | "gratis";
 
 export interface Modo {
   qual: QualModo;
-  /** Presente no modo `chave`; `null` quando nem chave há. */
+  /** Presente no modo `chave`; `null` nos modos `app` e `gratis`. */
   config: Config | null;
   /** O que o app respondeu, quando respondeu. `null` = app fora do ar. */
   saude: SaudeDoApp | null;
@@ -53,7 +60,8 @@ let modoEmVoo: Promise<Modo> | null = null;
 export function verModo(): Promise<Modo> {
   modoEmVoo ??= (async (): Promise<Modo> => {
     const [saude, config] = await Promise.all([verSaudeDoApp(), lerConfig()]);
-    return { qual: saude?.temPlano === true ? "app" : "chave", config, saude };
+    const qual: QualModo = saude?.temPlano === true ? "app" : config ? "chave" : "gratis";
+    return { qual, config, saude };
   })();
   return modoEmVoo;
 }
@@ -458,6 +466,20 @@ export async function runLLM(p: PedidoLlm): Promise<string> {
         timeoutMs,
         ...(p.signal === undefined ? {} : { signal: p.signal }),
       }),
+    );
+  }
+
+  if (modo.qual === "gratis") {
+    // O modo grátis fala com `bruto-gratis.vercel.app`, não com um provedor de
+    // chave — o corpo que ele espera é título/canal/transcrição, não prompt
+    // livre (o servidor monta o prompt; ver `gratis.ts`). Não há como cair
+    // aqui em silêncio: quem chama `runLLM` decide o modo ANTES, pela mesma
+    // `verModo()`, e o caminho grátis usa `pedirAulaGratis` diretamente. Uma
+    // chamada a `runLLM` com o modo já em `gratis` é engano de quem chama —
+    // falha alto, em vez de fingir que virou `SEM_CONFIG`.
+    throw new LlmError(
+      "FALHA",
+      "Modo grátis: use pedirAulaGratis() em vez de runLLM() — o servidor monta o prompt, e runLLM não fala esse contrato.",
     );
   }
 

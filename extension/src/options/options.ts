@@ -8,6 +8,7 @@
 import type { Config } from "../lib/config";
 import { PROVEDORES, lerConfig, salvarConfig, limparConfig } from "../lib/config";
 import { testarCredencial, verModo } from "../lib/llm";
+import { verCotaGratis } from "../lib/gratis";
 
 type Provedor = (typeof PROVEDORES)[number];
 type ProvedorId = Config["provedor"];
@@ -185,14 +186,25 @@ async function pintarModo(): Promise<void> {
     return;
   }
 
+  if (modo.qual === "chave") {
+    caixaModo.className = "modo";
+    modoTitulo.textContent = "Usando chave de API — você paga por uso";
+    const indisponiveis = (modo.saude?.provedores ?? []).filter((p) => p.plano && !p.disponivel);
+    const motivo = indisponiveis.find((p) => typeof p.motivo === "string")?.motivo;
+    modoPorque.textContent =
+      modo.saude === null
+        ? "O app do Bruto não está aberto nesta máquina. Com ele aberto, o consumo sairia do plano que você já assina, sem chave e sem cobrança por token."
+        : `O app do Bruto está aberto, mas nenhum provedor de plano está pronto nele${motivo ? `: ${motivo}` : "."}`;
+    return;
+  }
+
+  // modo.qual === "gratis": nem app com plano, nem chave configurada.
   caixaModo.className = "modo";
-  modoTitulo.textContent = "Usando chave de API — você paga por uso";
-  const indisponiveis = (modo.saude?.provedores ?? []).filter((p) => p.plano && !p.disponivel);
-  const motivo = indisponiveis.find((p) => typeof p.motivo === "string")?.motivo;
+  modoTitulo.textContent = "Usando o modo grátis do Bruto";
+  const cota = await verCotaGratis();
   modoPorque.textContent =
-    modo.saude === null
-      ? "O app do Bruto não está aberto nesta máquina. Com ele aberto, o consumo sairia do plano que você já assina, sem chave e sem cobrança por token."
-      : `O app do Bruto está aberto, mas nenhum provedor de plano está pronto nele${motivo ? `: ${motivo}` : "."}`;
+    (cota ? `Grátis: ${cota.restantes} de ${cota.limite} aulas hoje. ` : "") +
+    "Sem app com plano e sem chave, o Bruto usa uma cota diária grátis, paga pelo dono da extensão. Cole uma chave abaixo, ou abra o app do Bruto nesta máquina, para sair do modo grátis.";
 }
 
 async function iniciar(): Promise<void> {

@@ -23,6 +23,7 @@
   "permissions": ["storage", "scripting", "activeTab", "downloads"],
   "host_permissions": [
     "http://127.0.0.1:3000/*",
+    "https://bruto-gratis.vercel.app/*",
     "https://api.anthropic.com/*",
     "https://api.openai.com/*",
     "https://openrouter.ai/*",
