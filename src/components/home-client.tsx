@@ -39,9 +39,14 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
   }, [refetch]);
 
   // Quando um job é enfileirado pelo dialog, buscamos o novo job da API.
+  // Pelo scheduleRefetch (debounce), não refetch() direto: dois envios do
+  // multi-link em sequência rápida podiam ter a resposta do mais velho
+  // chegar depois da do mais novo e sobrescrever o estado com um retrato
+  // mais antigo (achado do Grok, revisão de multi-link) — coalescido, só a
+  // última chamada agendada de fato busca, e ela reflete o catálogo atual.
   const onQueued = useCallback(() => {
-    void refetch();
-  }, [refetch]);
+    scheduleRefetch();
+  }, [scheduleRefetch]);
 
   useEffect(() => {
     return () => {
