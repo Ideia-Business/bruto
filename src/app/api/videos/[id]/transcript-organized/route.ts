@@ -33,6 +33,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const meta = JSON.parse(fs.readFileSync(paths.infoJson, "utf8"));
+  // Mesma causa raiz do achado em study/route.ts (9ª rodada): `info.json` é a
+  // foto do título no passo 01 e nunca é reescrito — se o passo 05 melhorou o
+  // título, ele só existe no banco.
+  meta.title = video.title;
   const transcript = fs.readFileSync(paths.transcript, "utf8");
 
   try {

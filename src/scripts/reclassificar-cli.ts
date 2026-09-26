@@ -18,6 +18,7 @@ import { eq } from "drizzle-orm";
 import { artifactPaths } from "@/pipeline/lib/paths";
 import { listarBrutosComClassificacaoPendente } from "@/db/queries";
 import { runCategory } from "@/pipeline/steps/05-category";
+import { reexportarComTituloNovo } from "@/pipeline/lib/reexportar-titulo";
 
 async function main(): Promise<void> {
   const soUmId = process.argv[2];
@@ -70,7 +71,14 @@ async function main(): Promise<void> {
         : resultado.tags.length > 0
           ? resultado.tags.join(", ")
           : "(nenhuma)";
-      const tituloTexto = resultado.titleSuggestion ? ` · título novo: "${resultado.titleSuggestion}"` : "";
+      let tituloTexto = "";
+      if (resultado.titleSuggestion) {
+        // Sem isto, `setBrutoTitle` (dentro de `runCategory`) já tinha
+        // atualizado o banco/catálogo, mas o docx/pdf em `library/<id>/`
+        // continuavam com o título velho para sempre (achado do Grok).
+        await reexportarComTituloNovo(bruto, resultado.titleSuggestion, transcriptText);
+        tituloTexto = ` · título novo: "${resultado.titleSuggestion}" (docx/pdf reexportados)`;
+      }
       console.log(`  ✔ ${bruto.title} → ${resultado.categorySlug} [${tagsTexto}]${tituloTexto}`);
       ok++;
     } catch (err) {

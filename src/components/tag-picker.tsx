@@ -220,9 +220,10 @@ export function TagPicker({ videoId }: { videoId: string }) {
                   key={tag.id}
                   type="button"
                   onClick={() => alternar(tag.id)}
+                  disabled={carregando}
                   aria-pressed={ativo}
                   className={
-                    "flex w-full items-center gap-2 border px-3 py-2 text-left text-sm transition-colors " +
+                    "flex w-full items-center gap-2 border px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 " +
                     (ativo ? "border-primary bg-secondary" : "border-border hover:bg-muted")
                   }
                 >
@@ -257,8 +258,16 @@ export function TagPicker({ videoId }: { videoId: string }) {
             onChange={(e) => setNova(e.target.value)}
             placeholder="Criar uma tag nova"
             className="h-9"
+            disabled={carregando}
           />
-          <Button type="submit" size="sm" disabled={!nova.trim()} className="gap-1.5">
+          {/* REGRESSÃO (achado 1, Codex, 9ª rodada): criar uma tag ANTES da
+              primeira carga terminar usava `marcadasRef.current` ainda
+              vazio/desatualizado — o PUT saía sem as tags que o vídeo já
+              tinha, apagando-as. O contador de edição protege contra um GET
+              sobrescrever DEPOIS de uma edição, mas não contra uma edição que
+              NASCE de dado incompleto. Desabilitar enquanto `carregando` é
+              true (primeira carga OU recarregamento) fecha essa janela. */}
+          <Button type="submit" size="sm" disabled={!nova.trim() || carregando} className="gap-1.5">
             <Plus className="size-4" />
             Criar
           </Button>

@@ -40,11 +40,17 @@ export async function persistMetadata(meta: VideoMetadata): Promise<void> {
   const thumbnailPath = fs.existsSync(paths.thumb) ? paths.thumb : null;
 
   if (existing) {
+    // NUNCA `title: meta.title` aqui — reprocessar (retry) já grava esta
+    // etapa de novo em vídeo que PODE já ter um título melhor (proposto pelo
+    // passo 05 ou corrigido à mão). Gravar o título CRU do yt-dlp aqui
+    // revertia silenciosamente qualquer melhoria, mesmo se o passo 05
+    // seguinte falhasse por qualquer motivo — o job terminava `done`, sem
+    // sinal nenhum de que o título regrediu. O título só muda por
+    // `setBrutoTitle` (a IA propondo de verdade) ou correção manual.
     db.update(brutos)
       .set({
         url: meta.url,
         platform: meta.platform,
-        title: meta.title,
         channel: meta.channel,
         durationSec: meta.durationSec,
         uploadDate: meta.uploadDate,
