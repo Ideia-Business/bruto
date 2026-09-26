@@ -1,14 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Plus, Tag as TagIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { HeroBanner } from "./hero-banner";
 import { CategoryRow } from "./category-row";
 import { ProcessingCard } from "./processing-card";
 import { UrlInputDialog } from "./url-input-dialog";
 import { Compatibilidade } from "./compatibilidade";
-import type { CatalogResponse, Job } from "@/lib/api-types";
+import type { BrutoCard, CatalogResponse, Job, TagRow } from "@/lib/api-types";
 import { fetchApp } from "@/lib/fetch-app";
 
 /**
@@ -20,6 +27,32 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
   const [data, setData] = useState<CatalogResponse>(initial);
   const [activeJobs, setActiveJobs] = useState<Job[]>(initial.activeJobs);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Filtro por tag — puramente client-side sobre o catálogo já carregado (as
+  // tags de cada vídeo já vêm no payload). Sem tela própria: tag é só filtro.
+  const [tagRows, setTagRows] = useState<TagRow[]>([]);
+  const [filtroTag, setFiltroTag] = useState<string | null>(null);
+  useEffect(() => {
+    fetchApp("/api/tags")
+      .then((res) => res.json())
+      .then((d: { tags: TagRow[] }) => setTagRows(d.tags))
+      .catch(() => {
+        /* silencioso — o filtro só some, o catálogo continua funcionando */
+      });
+  }, []);
+
+  const combina = useCallback(
+    (v: BrutoCard) => !filtroTag || v.tags.some((t) => t.slug === filtroTag),
+    [filtroTag],
+  );
+  const catalogFiltrado = useMemo(
+    () =>
+      data.catalog
+        .map((row) => ({ ...row, videos: row.videos.filter(combina) }))
+        .filter((row) => row.videos.length > 0),
+    [data.catalog, combina],
+  );
+  const historicoFiltrado = useMemo(() => data.history.filter(combina), [data.history, combina]);
 
   const refetch = useCallback(async () => {
     try {
@@ -87,12 +120,40 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
         </section>
       )}
 
-      {data.catalog.map((row) => (
+      {hasContent && tagRows.length > 0 && (
+        <div className="flex items-center gap-2 px-1">
+          <TagIcon className="size-4 text-muted-foreground" />
+          <Select
+            value={filtroTag ?? "todas"}
+            onValueChange={(v) => setFiltroTag(v === "todas" ? null : v)}
+          >
+            <SelectTrigger size="sm" className="h-8 w-auto gap-1 border-border bg-secondary text-xs">
+              <SelectValue placeholder="Todas as tags" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas as tags</SelectItem>
+              {tagRows.map(({ tag, count }) => (
+                <SelectItem key={tag.id} value={tag.slug}>
+                  {tag.name} ({count})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {catalogFiltrado.map((row) => (
         <CategoryRow key={row.category.id} title={row.category.name} brutos={row.videos} />
       ))}
 
-      {data.history.length > 0 && (
-        <CategoryRow title="Histórico" brutos={data.history} />
+      {historicoFiltrado.length > 0 && (
+        <CategoryRow title="Histórico" brutos={historicoFiltrado} />
+      )}
+
+      {filtroTag && catalogFiltrado.length === 0 && historicoFiltrado.length === 0 && (
+        <p className="py-10 text-center text-sm text-muted-foreground">
+          Nenhum vídeo com essa tag ainda.
+        </p>
       )}
 
       {hasContent && <Compatibilidade />}

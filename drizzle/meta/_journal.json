@@ -15,6 +15,13 @@
       "when": 1789232131945,
       "tag": "0001_brutos_no_lugar_de_videos",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790453374233,
+      "tag": "0002_tags_de_assunto",
+      "breakpoints": true
     }
   ]
 }

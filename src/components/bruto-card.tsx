@@ -40,6 +40,20 @@ export function BrutoCard({ video }: { video: BrutoCardData }) {
         {video.channel && (
           <p className="line-clamp-1 text-[0.8rem] text-muted-foreground">{video.channel}</p>
         )}
+        {video.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-0.5">
+            {video.tags.slice(0, 2).map((t) => (
+              <Badge key={t.id} variant="secondary" className="text-[10px]">
+                {t.name}
+              </Badge>
+            ))}
+            {video.tags.length > 2 && (
+              <Badge variant="secondary" className="text-[10px] text-muted-foreground">
+                +{video.tags.length - 2}
+              </Badge>
+            )}
+          </div>
+        )}
       </div>
     </Link>
   );

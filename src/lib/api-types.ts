@@ -1,5 +1,11 @@
 /** Tipos leves usados pelos client components (sem importar código de servidor). */
 
+export interface TagLite {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 export interface BrutoCard {
   id: string;
   platform: string;
@@ -10,6 +16,7 @@ export interface BrutoCard {
   categoryId: number | null;
   transcriptSource: string | null;
   createdAt: string | number | Date;
+  tags: TagLite[];
 }
 
 export interface Category {
@@ -66,5 +73,17 @@ export interface Filao {
 
 export interface FilaoRow {
   filao: Filao;
+  count: number;
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string | number | Date;
+}
+
+export interface TagRow {
+  tag: Tag;
   count: number;
 }

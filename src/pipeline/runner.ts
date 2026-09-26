@@ -151,9 +151,9 @@ export async function processJob(jobId: string): Promise<void> {
     update(jobId, { currentStep: "mindmap", progressPct: 66 });
     const mindmapMd = await runMindmap(meta, transcript.text);
 
-    // 5) category
+    // 5) category (+ tags + título mais fiel)
     update(jobId, { currentStep: "category", progressPct: 74 });
-    await runCategory(meta, transcript.text);
+    await runCategory(meta, transcript.text, summaryMd);
 
     // 6) export — docx, pdf e imagem do mapa mental
     update(jobId, { currentStep: "export", progressPct: 80 });

@@ -2,10 +2,17 @@ import fs from "node:fs";
 import { nanoid } from "nanoid";
 import { and, desc, eq, like, or, inArray } from "drizzle-orm";
 import { db } from "./client";
-import { artifacts, categories, filaoBrutos, filoes, jobs, brutos } from "./schema";
-import type { Artifact, Category, Filao, Job, Bruto } from "./schema";
+import { artifacts, brutoTags, categories, filaoBrutos, filoes, jobs, tags, brutos } from "./schema";
+import type { Artifact, Category, Filao, Job, Bruto, Tag } from "./schema";
+import { slugifyTag } from "@/pipeline/lib/tags";
 
-export interface BrutoCard {
+export interface TagLite {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+interface CardBase {
   id: string;
   platform: string;
   title: string;
@@ -17,12 +24,16 @@ export interface BrutoCard {
   createdAt: Date;
 }
 
+export interface BrutoCard extends CardBase {
+  tags: TagLite[];
+}
+
 export interface CategoryRow {
   category: Category;
   brutos: BrutoCard[];
 }
 
-function toCard(v: Bruto): BrutoCard {
+function toCard(v: Bruto): CardBase {
   return {
     id: v.id,
     platform: v.platform,
@@ -36,6 +47,28 @@ function toCard(v: Bruto): BrutoCard {
   };
 }
 
+/**
+ * Anexa as tags de cada card num único SELECT (nunca N+1) — usado por toda
+ * função que devolve uma LISTA de brutos (catálogo, histórico, busca, filão).
+ */
+function attachTags(cards: CardBase[]): BrutoCard[] {
+  if (cards.length === 0) return [];
+  const ids = cards.map((c) => c.id);
+  const rows = db
+    .select({ videoId: brutoTags.videoId, id: tags.id, name: tags.name, slug: tags.slug })
+    .from(brutoTags)
+    .innerJoin(tags, eq(tags.id, brutoTags.tagId))
+    .where(inArray(brutoTags.videoId, ids))
+    .all();
+  const byVideo = new Map<string, TagLite[]>();
+  for (const r of rows) {
+    const arr = byVideo.get(r.videoId) ?? [];
+    arr.push({ id: r.id, name: r.name, slug: r.slug });
+    byVideo.set(r.videoId, arr);
+  }
+  return cards.map((c) => ({ ...c, tags: byVideo.get(c.id) ?? [] }));
+}
+
 /** Todas as categorias que têm ≥1 vídeo, cada uma com seus vídeos (mais recentes primeiro). */
 export function getCatalog(): CategoryRow[] {
   const cats = db.select().from(categories).orderBy(categories.sortOrder).all();
@@ -47,14 +80,16 @@ export function getCatalog(): CategoryRow[] {
       .where(eq(brutos.categoryId, category.id))
       .orderBy(desc(brutos.createdAt))
       .all();
-    if (vids.length > 0) rows.push({ category, brutos: vids.map(toCard) });
+    if (vids.length > 0) rows.push({ category, brutos: attachTags(vids.map(toCard)) });
   }
   return rows;
 }
 
 /** Histórico completo — todos os vídeos, mais recentes primeiro. */
 export function getHistory(limit = 40): BrutoCard[] {
-  return db.select().from(brutos).orderBy(desc(brutos.createdAt)).limit(limit).all().map(toCard);
+  return attachTags(
+    db.select().from(brutos).orderBy(desc(brutos.createdAt)).limit(limit).all().map(toCard),
+  );
 }
 
 /** Vídeo em destaque no hero: o mais recente concluído. */
@@ -68,7 +103,7 @@ export function getHeroBruto(): BrutoCard | null {
     .filter((id): id is string => id !== null);
   if (doneVideoIds.length === 0) {
     const any = db.select().from(brutos).orderBy(desc(brutos.createdAt)).limit(1).get();
-    return any ? toCard(any) : null;
+    return any ? attachTags([toCard(any)])[0] : null;
   }
   const v = db
     .select()
@@ -77,26 +112,29 @@ export function getHeroBruto(): BrutoCard | null {
     .orderBy(desc(brutos.createdAt))
     .limit(1)
     .get();
-  return v ? toCard(v) : null;
+  return v ? attachTags([toCard(v)])[0] : null;
 }
 
 /** Busca por título ou canal (case-insensitive via LIKE). */
 export function searchBrutos(query: string): BrutoCard[] {
   const q = `%${query.trim()}%`;
   if (!query.trim()) return [];
-  return db
-    .select()
-    .from(brutos)
-    .where(or(like(brutos.title, q), like(brutos.channel, q)))
-    .orderBy(desc(brutos.createdAt))
-    .limit(50)
-    .all()
-    .map(toCard);
+  return attachTags(
+    db
+      .select()
+      .from(brutos)
+      .where(or(like(brutos.title, q), like(brutos.channel, q)))
+      .orderBy(desc(brutos.createdAt))
+      .limit(50)
+      .all()
+      .map(toCard),
+  );
 }
 
 export interface BrutoDetail {
   bruto: Bruto;
   category: Category | null;
+  tags: TagLite[];
   artifacts: Artifact[];
   /** Job mais recente do vídeo (para status/progresso na página de detalhe). */
   latestJob: Job | null;
@@ -142,6 +180,7 @@ export function getBrutoDetail(id: string): BrutoDetail | null {
   return {
     bruto,
     category,
+    tags: getTagsForBruto(id),
     artifacts: arts,
     latestJob,
     content: {
@@ -270,10 +309,11 @@ export function getFilaoBrutos(filaoId: string): BrutoCard[] {
   const vids = db.select().from(brutos).where(inArray(brutos.id, ids)).all();
   // Preserva a ordem dos links (o inArray não garante ordem).
   const byId = new Map(vids.map((v) => [v.id, v]));
-  return links.flatMap((l) => {
+  const ordered = links.flatMap((l) => {
     const v = byId.get(l.videoId);
     return v ? [toCard(v)] : [];
   });
+  return attachTags(ordered);
 }
 
 export function createFilao(name: string): Filao {
@@ -336,4 +376,114 @@ export function setFiloesForBruto(videoId: string, filaoIds: string[]): void {
         .run();
     }
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tags — marcador plano de assunto, uma tabela global reaproveitada por slug
+// (nunca hierarquia: ver docs/decisions/0001-tags-nao-hierarquia.md).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface TagRow {
+  tag: Tag;
+  count: number;
+}
+
+/** Todas as tags, cada uma com quantos brutos tem (para o filtro do Catálogo e o seletor manual). */
+export function listTags(): TagRow[] {
+  const all = db.select().from(tags).orderBy(tags.name).all();
+  return all.map((tag) => {
+    const rows = db.select({ videoId: brutoTags.videoId }).from(brutoTags).where(eq(brutoTags.tagId, tag.id)).all();
+    return { tag, count: rows.length };
+  });
+}
+
+/**
+ * Tags já usadas por vídeos desta categoria — o sinal de reaproveitamento que
+ * alimenta o prompt de tags. SEMPRE uma consulta fresca (nunca cacheada entre
+ * vídeos de um mesmo lote): é o que garante que o segundo vídeo do lote veja a
+ * tag que o primeiro acabou de criar, em vez de duplicar o mesmo assunto.
+ */
+export function tagNamesInCategory(categoryId: number): string[] {
+  const rows = db
+    .select({ name: tags.name })
+    .from(brutoTags)
+    .innerJoin(brutos, eq(brutos.id, brutoTags.videoId))
+    .innerJoin(tags, eq(tags.id, brutoTags.tagId))
+    .where(eq(brutos.categoryId, categoryId))
+    .all();
+  return Array.from(new Set(rows.map((r) => r.name))).sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+/**
+ * Reaproveita por slug (mesmo princípio de `uniqueSlug` acima, mas invertido:
+ * ali colisão de slug ganha sufixo porque o nome é livre e dois filões podem
+ * coincidir; aqui colisão de slug É o reaproveitamento pedido pelo dono — duas
+ * grafias do mesmo assunto ("IA"/"ia") devem virar a MESMA tag).
+ */
+function findOrCreateTagByName(name: string): Tag {
+  const trimmed = name.trim();
+  const slug = slugifyTag(trimmed) || nanoid(8);
+  const existing = db.select().from(tags).where(eq(tags.slug, slug)).get();
+  if (existing) return existing;
+  const row: Tag = { id: nanoid(), name: trimmed, slug, createdAt: new Date() };
+  db.insert(tags).values(row).run();
+  return row;
+}
+
+/** Cria (ou reaproveita) uma tag pelo nome — usada pelo seletor manual da UI. */
+export function createTag(name: string): Tag {
+  return findOrCreateTagByName(name);
+}
+
+export function getTagsForBruto(videoId: string): TagLite[] {
+  return db
+    .select({ id: tags.id, name: tags.name, slug: tags.slug })
+    .from(brutoTags)
+    .innerJoin(tags, eq(tags.id, brutoTags.tagId))
+    .where(eq(brutoTags.videoId, videoId))
+    .orderBy(tags.name)
+    .all();
+}
+
+export function getTagIdsForBruto(videoId: string): string[] {
+  return db
+    .select({ tagId: brutoTags.tagId })
+    .from(brutoTags)
+    .where(eq(brutoTags.videoId, videoId))
+    .all()
+    .map((r) => r.tagId);
+}
+
+/**
+ * Define o conjunto INTEIRO de tags do vídeo por id, de uma vez (mesmo desenho
+ * idempotente de `setFiloesForBruto`) — usado pelo seletor manual da UI.
+ */
+export function setTagIdsForBruto(videoId: string, tagIds: string[]): void {
+  const atual = new Set(getTagIdsForBruto(videoId));
+  const alvo = new Set(tagIds);
+  const now = new Date();
+
+  for (const id of alvo) {
+    if (!atual.has(id)) {
+      db.insert(brutoTags).values({ videoId, tagId: id, addedAt: now }).run();
+    }
+  }
+  for (const id of atual) {
+    if (!alvo.has(id)) {
+      db.delete(brutoTags).where(and(eq(brutoTags.videoId, videoId), eq(brutoTags.tagId, id))).run();
+    }
+  }
+}
+
+/**
+ * Classificação automática do passo 05 — SUBSTITUI o conjunto de tags do vídeo
+ * pelos nomes que a IA escolheu (reprocessar não acumula, reclassifica).
+ */
+export function setBrutoTagsFromNames(videoId: string, names: string[]): TagLite[] {
+  const resolved = names.map((n) => findOrCreateTagByName(n));
+  setTagIdsForBruto(
+    videoId,
+    resolved.map((t) => t.id),
+  );
+  return resolved.map((t) => ({ id: t.id, name: t.name, slug: t.slug }));
 }
