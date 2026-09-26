@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Markdown } from "./markdown";
 import { CopyButton } from "./copy-button";
 import { fetchApp } from "@/lib/fetch-app";
+import { reexportarAposArtefatoNovo } from "@/lib/exportar-artefatos";
 
 /**
  * Chips de propósito prontos — cada um pré-preenche o campo de texto, editável
@@ -50,6 +51,10 @@ export function TranscriptAiTools({
         return;
       }
       toast.success("Transcrição organizada!");
+      // Endpoint sob demanda: não cria job novo, então a marca de exportação
+      // (chaveada por jobId) não invalidaria sozinha — sem isto, a pasta
+      // ficava pra sempre sem esta transcrição, em silêncio.
+      void reexportarAposArtefatoNovo(videoId);
       router.refresh();
     } catch {
       toast.error("Erro de rede ao organizar a transcrição.");
@@ -73,6 +78,7 @@ export function TranscriptAiTools({
       }
       toast.success("Contexto pronto!");
       setMostrarFormulario(false);
+      void reexportarAposArtefatoNovo(videoId);
       router.refresh();
     } catch {
       toast.error("Erro de rede ao gerar o contexto.");

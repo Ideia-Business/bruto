@@ -1,6 +1,11 @@
 /**
- * `videosProntosParaExportar` — a decisão de qual job (videoId, jobId)
- * representa o resultado ATUAL de cada vídeo pra exportação automática.
+ * `videosProntosParaExportar` (em `src/db/videos-prontos.ts`, um módulo sem
+ * `./client` — achado da 5ª revisão cross-vendor, Grok: `@/db/queries` abre
+ * `~/.bruto/bruto.db` de verdade em WAL ao ser importado, e testar uma
+ * função pura através dele puxava esse efeito colateral à toa) — a decisão
+ * de qual job (videoId, jobId) representa o resultado ATUAL de cada vídeo
+ * pra exportação automática.
+ *
  * Achado da 4ª revisão cross-vendor (item 2, os dois revisores, Grok deu o
  * repro exato): a marca de "já exportado" era só por `videoId`, nunca
  * invalidada — reprocessar o mesmo vídeo (retry) e chegar a `done` de novo
@@ -11,7 +16,7 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { videosProntosParaExportar, type JobResumido } from "@/db/queries";
+import { videosProntosParaExportar, type JobResumido } from "@/db/videos-prontos";
 
 function job(parcial: Partial<JobResumido> & Pick<JobResumido, "id" | "videoId" | "status">): JobResumido {
   return { createdAt: new Date(0), ...parcial };

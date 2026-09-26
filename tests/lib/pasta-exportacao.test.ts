@@ -27,8 +27,10 @@ import {
   deveMarcarExportado,
   idsPendentesDeExportacao,
   nomeArquivoDoCabecalho,
+  esquecerExportacaoDoVideo,
   obterExportados,
   pastaAindaExisteNoDisco,
+  reexportarAposArtefatoNovo,
   resultadoDaCopia,
 } from "@/lib/exportar-artefatos";
 
@@ -317,6 +319,15 @@ describe("ambiente sem File System Access API (Node/CI, Safari/Firefox)", () => 
 
   test("obterExportados() nunca lança sem localStorage/IndexedDB — volta objeto vazio", async () => {
     assert.deepEqual(await obterExportados(), {});
+  });
+
+  // Item 2 (5ª revisão, Grok): endpoints sob demanda (aula, transcrição
+  // organizada/pra IA) chamam isto depois de gerar o artefato. Nunca deve
+  // travar a UI mesmo sem suporte à API — a pessoa continua vendo o toast de
+  // sucesso do endpoint normalmente.
+  test("esquecerExportacaoDoVideo()/reexportarAposArtefatoNovo() nunca lançam sem suporte", async () => {
+    await assert.doesNotReject(esquecerExportacaoDoVideo("algum-video-id"));
+    await assert.doesNotReject(reexportarAposArtefatoNovo("algum-video-id"));
   });
 });
 

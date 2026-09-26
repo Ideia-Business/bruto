@@ -1,7 +1,10 @@
 /**
- * `comLimiteDeNome` e `cabecalhoContentDisposition` — o nome de arquivo de
- * download e o cabeçalho HTTP que o carrega. Duas rodadas de achado da
- * revisão cross-vendor aqui:
+ * `comLimiteDeNome` e `cabecalhoContentDisposition` (em `src/lib/nome-download.ts`)
+ * — o nome de arquivo de download e o cabeçalho HTTP que o carrega. Vivem num
+ * módulo próprio, puro, sem `@/db/queries` (que abre `~/.bruto/bruto.db` de
+ * verdade em WAL ao ser importado) — achado da 5ª revisão cross-vendor
+ * (Grok): testar estas funções puras através da rota puxava esse efeito
+ * colateral à toa. Três rodadas de achado nas funções em si:
  *
  * 1. A versão original cortava a STRING FINAL já com sufixo (`.docx` etc.)
  *    em 120 CHARS; com título de 111+ chars (comum em vídeo do TikTok, ou
@@ -19,7 +22,7 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { cabecalhoContentDisposition, comLimiteDeNome } from "@/app/api/artifacts/[id]/route";
+import { cabecalhoContentDisposition, comLimiteDeNome } from "@/lib/nome-download";
 
 describe("comLimiteDeNome", () => {
   test("nome curto passa direto, extensão intacta", () => {

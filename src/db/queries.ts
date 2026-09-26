@@ -4,6 +4,7 @@ import { and, desc, eq, like, or, inArray } from "drizzle-orm";
 import { db } from "./client";
 import { artifacts, categories, filaoBrutos, filoes, jobs, brutos } from "./schema";
 import type { Artifact, Category, Filao, Job, Bruto } from "./schema";
+import { videosProntosParaExportar, type VideoProntoParaExportar } from "./videos-prontos";
 
 export interface BrutoCard {
   id: string;
@@ -180,44 +181,8 @@ export function getBrutoById(id: string): Bruto | null {
   return db.select().from(brutos).where(eq(brutos.id, id)).get() ?? null;
 }
 
-export interface VideoProntoParaExportar {
-  videoId: string;
-  /** O job DONE mais recente daquele vídeo — a chave que invalida a marca de "já exportado" quando o vídeo é reprocessado. */
-  jobId: string;
-}
-
-export interface JobResumido {
-  id: string;
-  videoId: string | null;
-  status: string;
-  createdAt: Date;
-}
-
-/**
- * Pura: dado um conjunto de jobs (qualquer status), decide o par
- * (videoId, jobId) do job DONE mais recente de cada vídeo. Exclui vídeo com
- * job `queued`/`running` EM ANDAMENTO agora — sem isso, o catch-up pegaria o
- * resultado "done" antigo enquanto um job novo pro mesmo vídeo (retry) ainda
- * está rodando, e exportaria o conteúdo desatualizado no meio do reprocesso.
- * Extraída como função pura (não bate no banco) para ser testável sem uma
- * instância de SQLite.
- */
-export function videosProntosParaExportar(jobsTodos: JobResumido[]): VideoProntoParaExportar[] {
-  const emAndamento = new Set(
-    jobsTodos
-      .filter((j) => j.videoId && (j.status === "queued" || j.status === "running"))
-      .map((j) => j.videoId as string),
-  );
-  const done = jobsTodos
-    .filter((j) => j.videoId && j.status === "done" && !emAndamento.has(j.videoId))
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  const jobIdPorVideo = new Map<string, string>();
-  for (const j of done) {
-    const videoId = j.videoId as string;
-    if (!jobIdPorVideo.has(videoId)) jobIdPorVideo.set(videoId, j.id);
-  }
-  return Array.from(jobIdPorVideo, ([videoId, jobId]) => ({ videoId, jobId }));
-}
+export type { VideoProntoParaExportar, JobResumido } from "./videos-prontos";
+export { videosProntosParaExportar } from "./videos-prontos";
 
 /**
  * Vídeos prontos para a exportação automática recuperar — usado quando a

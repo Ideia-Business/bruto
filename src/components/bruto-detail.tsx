@@ -40,6 +40,7 @@ import { TranscriptView } from "./transcript-view";
 import { TranscriptAiTools } from "./transcript-ai-tools";
 import { JobProgressBar, useJobProgress } from "./job-progress";
 import { fetchApp } from "@/lib/fetch-app";
+import { reexportarAposArtefatoNovo } from "@/lib/exportar-artefatos";
 import {
   formatDuration,
   formatUploadDate,
@@ -143,6 +144,10 @@ export function BrutoDetail({
         return;
       }
       toast.success("Aula pronta!");
+      // O POST não cria job novo — o jobId do vídeo continua o mesmo, e a
+      // marca de exportação (chaveada por jobId) não invalidaria sozinha.
+      // Sem isto, a pasta escolhida ficava pra sempre sem a aula, em silêncio.
+      void reexportarAposArtefatoNovo(data.bruto.id);
       router.refresh();
     } catch {
       toast.error("Erro de rede ao montar a aula.");

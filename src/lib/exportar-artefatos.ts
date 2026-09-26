@@ -88,17 +88,19 @@ function chaveExportados(pastaId: string | null): string {
 }
 
 /**
- * Mapa `videoId -> jobId` já exportado com sucesso pleno, ESCOPADO pela pasta
- * atualmente escolhida (`obterPastaId`). Escopar por pasta é o que faz trocar
- * de pasta A para uma pasta B vazia voltar a exportar tudo em B — sem isso, a
- * marca de A "vazava" para B e o catch-up pulava todo vídeo já marcado, numa
- * pasta que nunca tinha recebido nada. Guardar o `jobId` (não só o `videoId`)
- * é o que faz reprocessar o vídeo (retry) disparar exportação de novo: o job
- * novo tem um id diferente do que está marcado, então não bate mais.
+ * Mapa `videoId -> jobId` já exportado com sucesso pleno, DA PASTA cujo id é
+ * passado — nunca relê a pasta atual. Escopar por pasta é o que faz trocar de
+ * pasta A para uma pasta B vazia voltar a exportar tudo em B (a marca de A
+ * não "vaza" pra B). Tomar o `pastaId` como parâmetro, em vez de reler
+ * `obterPastaId()` aqui dentro, é o que fecha a corrida do item 1 da 5ª
+ * revisão: se a leitura e a escrita relessem a pasta atual cada uma na sua
+ * vez, uma troca de pasta no MEIO de uma exportação gravaria a marca de
+ * sucesso na pasta NOVA mesmo com os bytes tendo ido pra pasta ANTIGA — quem
+ * chama precisa capturar o `pastaId` UMA vez, junto com o handle, e usar o
+ * mesmo valor do início ao fim (ver `exportarVideoAutomaticamente`).
  */
-export async function obterExportados(): Promise<Record<string, string>> {
+async function obterExportadosDaPasta(pastaId: string | null): Promise<Record<string, string>> {
   try {
-    const pastaId = await obterPastaId();
     const bruto = localStorage.getItem(chaveExportados(pastaId));
     return bruto ? (JSON.parse(bruto) as Record<string, string>) : {};
   } catch {
@@ -106,15 +108,73 @@ export async function obterExportados(): Promise<Record<string, string>> {
   }
 }
 
-async function marcarExportado(videoId: string, jobId: string): Promise<void> {
+/** Mesmo mapa, mas sempre da pasta ATUAL — para quem não está no meio de uma exportação (o catch-up, a tela de configurações). */
+export async function obterExportados(): Promise<Record<string, string>> {
+  return obterExportadosDaPasta(await obterPastaId());
+}
+
+async function marcarExportadoNaPasta(videoId: string, jobId: string, pastaId: string | null): Promise<void> {
   try {
-    const pastaId = await obterPastaId();
-    const atual = await obterExportados();
+    const atual = await obterExportadosDaPasta(pastaId);
     atual[videoId] = jobId;
     localStorage.setItem(chaveExportados(pastaId), JSON.stringify(atual));
   } catch {
     /* modo privado ou storage bloqueado — a marca só não persiste, tenta de novo na próxima carga */
   }
+}
+
+/**
+ * Só marca (sucesso pleno, `deveMarcarExportado`) se a pasta ATUAL ainda for
+ * a mesma capturada no INÍCIO desta exportação (`pastaCapturada`). Item 1 da
+ * 5ª revisão: se a pessoa trocou de pasta A→B enquanto esta exportação
+ * estava no meio do caminho, os bytes foram pra A (o handle que foi
+ * capturado junto com `pastaCapturada`), mas o mundo já é B agora — marcar
+ * em qualquer uma das duas mentiria (A não é mais "a pasta atual" pra
+ * ninguém checar essa marca de novo; B nunca recebeu esses bytes). Fica sem
+ * marca, e quem decide o que fazer na pasta nova é o próximo catch-up.
+ */
+async function marcarSeAPastaNaoMudou(
+  videoId: string,
+  jobId: string,
+  pastaCapturada: string | null,
+  escritos: number,
+  total: number,
+): Promise<void> {
+  if (!deveMarcarExportado(escritos, total)) return;
+  if ((await obterPastaId()) !== pastaCapturada) return;
+  await marcarExportadoNaPasta(videoId, jobId, pastaCapturada);
+}
+
+/**
+ * Esquece a marca de exportação de um vídeo NA PASTA ATUAL. Usado quando um
+ * artefato novo é gerado SOB DEMANDA (aula, transcrição organizada, contexto
+ * pra IA) depois que o vídeo já tinha sido exportado: esses três endpoints
+ * não criam job novo — não tocam a tabela `jobs` — então o `jobId` do vídeo
+ * continua o mesmo de antes, e a marca (chaveada por jobId) nunca invalidava
+ * sozinha. Sem isto, a pasta ficava pra sempre sem o artefato novo, em
+ * silêncio (ver `reexportarAposArtefatoNovo`, chamado pela UI que gera esses
+ * artefatos).
+ */
+export async function esquecerExportacaoDoVideo(videoId: string): Promise<void> {
+  try {
+    const pastaId = await obterPastaId();
+    const atual = await obterExportadosDaPasta(pastaId);
+    if (!(videoId in atual)) return;
+    delete atual[videoId];
+    localStorage.setItem(chaveExportados(pastaId), JSON.stringify(atual));
+  } catch {
+    /* modo privado ou storage bloqueado — nada a desfazer */
+  }
+}
+
+/**
+ * Esquece a marca e tenta exportar de novo na hora — a pessoa que acabou de
+ * gerar a aula/transcrição organizada/contexto pra IA não devia precisar
+ * navegar pra outra página só pra a cópia pegar o artefato novo.
+ */
+export async function reexportarAposArtefatoNovo(videoId: string): Promise<void> {
+  await esquecerExportacaoDoVideo(videoId);
+  void sincronizarExportacoesPendentes();
 }
 
 /**
@@ -152,12 +212,25 @@ export async function exportarVideoAutomaticamente(
   emAndamento.add(videoId);
   let escritos = 0;
   let total = -1; // -1 = ainda não sabemos — o laço nem começou (ver deveMarcarExportado)
+  // Capturado junto com o handle, logo abaixo, e usado do início ao fim desta
+  // chamada — nunca relido no meio. Ver o comentário perto de
+  // `marcarExportadoNaPasta` pra o porquê.
+  let pastaId: string | null = null;
   try {
-    const exportados = await obterExportados();
-    if (exportados[videoId] === jobId) return; // já exportado ESTE job — nada a fazer
-
     const handle = await obterPastaSalva();
     if (!handle) return; // nunca configurado — nada a fazer, sem ruído (condição prévia: não marca)
+    // Handle e pastaId capturados no MESMO instante — é o que garante que os
+    // bytes (escritos no `handle` capturado aqui) e a marca de sucesso (no
+    // fim, gravada só se `pastaId` ainda bater) sempre se refiram à MESMA
+    // pasta. Sem isto: pessoa troca de pasta A→B no meio da exportação, os
+    // bytes vão pra A (handle já capturado), mas a marca seria gravada na
+    // chave de B (lida de novo, fresca, no fim) — B "acharia" que já tinha
+    // esse vídeo sem nunca ter recebido nada, e o catch-up nunca mais
+    // tentaria esse vídeo em B.
+    pastaId = await obterPastaId();
+
+    const exportados = await obterExportadosDaPasta(pastaId);
+    if (exportados[videoId] === jobId) return; // já exportado ESTE job nesta pasta — nada a fazer
 
     const permissao = await permissaoAtual(handle);
     if (permissao !== "granted") {
@@ -210,7 +283,7 @@ export async function exportarVideoAutomaticamente(
           "O vídeo está salvo normalmente na biblioteca. Vai tentar de novo na próxima vez que a página carregar.",
       });
     }
-    if (deveMarcarExportado(escritos, total)) await marcarExportado(videoId, jobId);
+    await marcarSeAPastaNaoMudou(videoId, jobId, pastaId, escritos, total);
   } catch {
     toast.warning("Não deu para salvar cópia na pasta escolhida.", {
       description:
@@ -221,7 +294,7 @@ export async function exportarVideoAutomaticamente(
     // `escritos === total` só valeria se a falha tivesse acontecido DEPOIS
     // do laço terminar por completo. É a mesma regra do caminho normal,
     // aplicada por consistência — não uma regra nova para o catch.
-    if (deveMarcarExportado(escritos, total)) await marcarExportado(videoId, jobId);
+    await marcarSeAPastaNaoMudou(videoId, jobId, pastaId, escritos, total);
   } finally {
     emAndamento.delete(videoId);
   }
