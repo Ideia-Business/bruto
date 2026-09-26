@@ -497,17 +497,38 @@ function falhaDoApp(causa: FalhaDoApp, msg: string): Falha {
 
 /**
  * Falha do modo grátis. No LIMITE, as duas saídas sempre juntas: colar uma
- * chave nas opções (botão já existe na tela de erro) ou abrir o app local — e
- * dizer que o limite volta amanhã, porque "tente de novo" seria falso aqui.
+ * chave nas opções (botão já existe na tela de erro) ou abrir o app local.
+ *
+ * O MOTIVO decide o título — e é o que evita afirmar algo que não é verdade.
+ * Só `motivo === "instalacao"` é a COTA DESTA PESSOA (as 3 do dia dela); ali
+ * "volta amanhã" fala da cota dela mesma, e é o único caso onde isso é
+ * verdade. `rede` e `geral` são tetos coletivos (por IP, ou de todo mundo) —
+ * a cota da pessoa está intacta (o servidor desfaz o incremento dela), e
+ * dizer "suas aulas acabaram" nesses dois seria inventar um fato.
  */
 function falhaDoGratis(e: GratisError): Falha {
   switch (e.codigo) {
     case "LIMITE": {
       const limite = e.limite ?? 3;
+      const duasSaidas =
+        "Duas saídas agora: abra as opções e cole uma chave de API, ou abra o app do Bruto nesta máquina para usar um plano que você já assina.";
+
+      if (e.motivo === "rede") {
+        return {
+          titulo: "Muitas aulas grátis saíram desta rede hoje.",
+          saida: duasSaidas,
+        };
+      }
+      if (e.motivo === "geral") {
+        return {
+          titulo: "As aulas grátis de hoje esgotaram para todo mundo.",
+          saida: duasSaidas,
+        };
+      }
+      // motivo "instalacao" (ou ausente, se o servidor não mandar o campo).
       return {
         titulo: `O limite de ${limite} aulas grátis de hoje acabou.`,
-        saida:
-          "Ele volta amanhã. Duas saídas agora: abra as opções e cole uma chave de API, ou abra o app do Bruto nesta máquina para usar um plano que você já assina.",
+        saida: `Ele volta amanhã. ${duasSaidas}`,
       };
     }
     case "PEDIDO_INVALIDO":

@@ -55,17 +55,54 @@ function contentTypeEhJson(req: Request): boolean {
   return tipo === "application/json";
 }
 
-function primeiroIp(cabecalho: string | null): string | null {
+/** Último valor de uma lista separada por vírgula — nunca o primeiro (ver `ipConfiavelDoPedido`). */
+function ultimoValor(cabecalho: string | null): string | null {
   if (!cabecalho) return null;
-  const primeiro = cabecalho.split(",")[0]?.trim();
-  return primeiro || null;
+  const partes = cabecalho.split(",");
+  const ultimo = partes[partes.length - 1]?.trim();
+  return ultimo || null;
 }
 
-/** IP do cliente, na forma como a Vercel o expõe — nunca gravado como está (só o hash). */
-function ipDoPedido(req: Request): string {
+/**
+ * IP do cliente, só de cabeçalhos que a PRÓPRIA VERCEL calcula na borda —
+ * nunca do primeiro item de um `X-Forwarded-For` cru, que o cliente controla.
+ *
+ * Achado da revisão do Grok 4.7 (26/09/2026): `X-Forwarded-For: 203.0.113.7`
+ * mandado pelo cliente, com um UUID de instalação novo a cada pedido, furava
+ * o limite POR REDE (o hash do "IP" nunca repetia) até só sobrar o teto geral
+ * do dia inteiro — o próprio controle que existe para conter isso virava
+ * decorativo.
+ *
+ * Fonte (doc oficial da Vercel, consultada em 26/09/2026):
+ * https://vercel.com/docs/headers/request-headers
+ *
+ *   x-forwarded-for: "The public IP address of the client that made the
+ *   request. If you are trying to use Vercel behind a proxy, we currently
+ *   overwrite the X-Forwarded-For header and do not forward external IPs.
+ *   This restriction is in place to prevent IP spoofing." — só clientes
+ *   Enterprise com "Trusted Proxy" habilitado mudam esse comportamento
+ *   ("Custom X-Forwarded-For IP").
+ *
+ *   x-vercel-forwarded-for: "This header is identical to the x-forwarded-for
+ *   header. However, x-forwarded-for could be overwritten if you're using a
+ *   proxy on top of Vercel." — é o valor que a Vercel computou na própria
+ *   borda, estável mesmo que outra camada (um proxy do próprio projeto, um
+ *   framework, um middleware) reescreva `x-forwarded-for` depois.
+ *
+ *   x-real-ip: "This header is identical to the x-forwarded-for header." —
+ *   mesma garantia do `x-forwarded-for` calculado pela Vercel.
+ *
+ * Ordem de confiança, do mais estável ao mais cru: `x-vercel-forwarded-for` →
+ * `x-real-ip` → `x-forwarded-for` como último recurso — e mesmo este último
+ * nunca pelo primeiro item (o hop mais perto do cliente, o único que ele
+ * poderia ter injetado antes de chegar à borda), sempre pelo ÚLTIMO (o hop
+ * mais perto da borda que terminou a conexão TCP).
+ */
+function ipConfiavelDoPedido(req: Request): string {
   return (
-    primeiroIp(req.headers.get("x-forwarded-for")) ??
-    req.headers.get("x-real-ip") ??
+    ultimoValor(req.headers.get("x-vercel-forwarded-for")) ??
+    ultimoValor(req.headers.get("x-real-ip")) ??
+    ultimoValor(req.headers.get("x-forwarded-for")) ??
     "desconhecido"
   );
 }
@@ -97,8 +134,13 @@ export async function tratarAula(req: Request, deps: DependenciasAula): Promise<
     );
   }
 
-  // 2) configuração do servidor — sem chave ou sem Redis, nada mais roda.
-  if (!deps.chaveOllama || !deps.contador) {
+  // 2) configuração do servidor — sem chave, sem Redis ou sem SAL, nada roda.
+  // Achado do Grok 4.7 (26/09/2026): sem `BRUTO_SAL`, `hashIp` vira
+  // sha256(ip) puro — reversível por força bruta no espaço de IPv4 inteiro
+  // (~4,3 bilhões de tentativas, trivial hoje). Tratado como a mesma classe
+  // de "servidor não configurado" que a falta de OLLAMA_API_KEY, nunca como
+  // "sal vazio, segue o jogo".
+  if (!deps.chaveOllama || !deps.contador || !deps.sal) {
     return erroJson(503, "Servidor do modo grátis não está configurado.", origem);
   }
   const contador = deps.contador;
@@ -130,7 +172,7 @@ export async function tratarAula(req: Request, deps: DependenciasAula): Promise<
   // CONTADOR (Redis) falhar no meio da reserva, `verificarLimite` também já
   // desfez o que tinha aplicado e relança — aqui isso vira 503, nunca 429:
   // o pedido não foi recusado por limite, foi a infraestrutura que quebrou.
-  const ipHash = hashIp(ipDoPedido(req), deps.sal);
+  const ipHash = hashIp(ipConfiavelDoPedido(req), deps.sal);
   let decisao: ResultadoLimite;
   try {
     decisao = await verificarLimite(contador, { instalacao, ipHash, limites: deps.limites });

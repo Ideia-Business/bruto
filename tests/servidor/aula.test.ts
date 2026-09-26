@@ -101,6 +101,7 @@ function depsBase(overrides: Partial<DependenciasAula> = {}): DependenciasAula {
 }
 
 const UUID_A = "11111111-1111-4111-8111-111111111111";
+const UUID_B = "22222222-2222-4222-8222-222222222222";
 
 function corpoValido(overrides: Record<string, unknown> = {}) {
   return {
@@ -137,6 +138,29 @@ function pedidoCru(corpo: unknown, headers: Record<string, string>): Request {
     method: "POST",
     headers,
     body: JSON.stringify(corpo),
+  });
+}
+
+/** Pedido de cliente conhecido, mas com controle explícito sobre os cabeçalhos de IP. */
+function pedidoComIps(opts: {
+  corpo: unknown;
+  xff?: string;
+  realIp?: string;
+  vercelForwardedFor?: string;
+}): Request {
+  const headers = new Headers({
+    "content-type": "application/json",
+    "x-bruto-cliente": "extensao",
+  });
+  if (opts.xff !== undefined) headers.set("x-forwarded-for", opts.xff);
+  if (opts.realIp !== undefined) headers.set("x-real-ip", opts.realIp);
+  if (opts.vercelForwardedFor !== undefined) {
+    headers.set("x-vercel-forwarded-for", opts.vercelForwardedFor);
+  }
+  return new Request("https://bruto-gratis.vercel.app/api/aula", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(opts.corpo),
   });
 }
 
@@ -204,6 +228,84 @@ describe("POST /api/aula — 503 sem configuração", () => {
   test("sem Redis configurado (contador nulo) dá 503", async () => {
     const resp = await tratarAula(pedido({ corpo: corpoValido() }), depsBase({ contador: null }));
     assert.equal(resp.status, 503);
+  });
+
+  test("sem BRUTO_SAL (string vazia) dá 503 — igual à falta de OLLAMA_API_KEY", async () => {
+    // Achado do Grok 4.7 (26/09/2026): sem sal, hashIp(ip, "") vira sha256(ip)
+    // puro — reversível por força bruta no espaço inteiro de IPv4.
+    const resp = await tratarAula(pedido({ corpo: corpoValido() }), depsBase({ sal: "" }));
+    assert.equal(resp.status, 503);
+  });
+});
+
+// --- IP confiável (achado do Grok 4.7, 26/09/2026) --------------------------
+
+describe("POST /api/aula — o IP usado no limite de rede vem de cabeçalho confiável", () => {
+  test("X-Forwarded-For forjado pelo cliente não engana o limite de rede: o real (x-real-ip) é quem conta", async () => {
+    // Duas instalações DIFERENTES, mesma rede REAL (x-real-ip), cada uma
+    // mandando um X-Forwarded-For FORJADO diferente — se o código confiasse
+    // no primeiro item do XFF (o que o cliente controla), cada uma cairia num
+    // "IP" diferente e o teto de rede (1) nunca seria atingido.
+    const deps = depsBase({ limites: { diario: 100, rede: 1, geral: 100 } });
+
+    const r1 = await tratarAula(
+      pedidoComIps({ corpo: corpoValido({ instalacao: UUID_A }), xff: "203.0.113.1", realIp: "198.51.100.9" }),
+      deps,
+    );
+    assert.equal(r1.status, 200);
+
+    const r2 = await tratarAula(
+      pedidoComIps({ corpo: corpoValido({ instalacao: UUID_B }), xff: "203.0.113.2", realIp: "198.51.100.9" }),
+      deps,
+    );
+    assert.equal(r2.status, 429);
+    const json = await r2.json();
+    assert.equal(json.motivo, "rede");
+  });
+
+  test("controle positivo: x-real-ip DIFERENTE não compartilha o teto de rede", async () => {
+    // Prova que o teste acima mede o que diz medir — sem isso, um bug que
+    // sempre desse 429 por rede passaria despercebido no teste anterior.
+    const deps = depsBase({ limites: { diario: 100, rede: 1, geral: 100 } });
+
+    const r1 = await tratarAula(
+      pedidoComIps({ corpo: corpoValido({ instalacao: UUID_A }), realIp: "198.51.100.9" }),
+      deps,
+    );
+    assert.equal(r1.status, 200);
+
+    const r2 = await tratarAula(
+      pedidoComIps({ corpo: corpoValido({ instalacao: UUID_B }), realIp: "198.51.100.42" }),
+      deps,
+    );
+    assert.equal(r2.status, 200, "redes diferentes não devem compartilhar o teto");
+  });
+
+  test("x-vercel-forwarded-for tem prioridade sobre x-real-ip quando os dois existem", async () => {
+    // Mesmo x-real-ip nas duas, mas x-vercel-forwarded-for diferente — se o
+    // código ignorasse x-vercel-forwarded-for, as duas cairiam na mesma rede
+    // e a segunda levaria 429; a prioridade certa faz as duas passarem.
+    const deps = depsBase({ limites: { diario: 100, rede: 1, geral: 100 } });
+
+    const r1 = await tratarAula(
+      pedidoComIps({
+        corpo: corpoValido({ instalacao: UUID_A }),
+        realIp: "198.51.100.9",
+        vercelForwardedFor: "203.0.113.10",
+      }),
+      deps,
+    );
+    assert.equal(r1.status, 200);
+
+    const r2 = await tratarAula(
+      pedidoComIps({
+        corpo: corpoValido({ instalacao: UUID_B }),
+        realIp: "198.51.100.9",
+        vercelForwardedFor: "203.0.113.20",
+      }),
+      deps,
+    );
+    assert.equal(r2.status, 200, "x-vercel-forwarded-for diferente prova que ele foi usado, não ignorado");
   });
 });
 

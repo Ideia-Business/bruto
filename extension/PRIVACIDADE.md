@@ -7,8 +7,7 @@ aula**, publicada pela [Ideia Business](https://ideiabusiness.com.br).
 
 A extensão roda inteira no seu navegador e fala com um de três destinos: o **app do Bruto na sua própria máquina**, quando você o está rodando — e aí o consumo sai da assinatura de IA que você já paga —; **direto com o provedor de IA** que você escolheu, com a chave que você forneceu; ou o **servidor grátis da Ideia Business**, se você não configurou nada. No primeiro e no segundo, não há servidor nosso: nós não recebemos, não armazenamos e não temos como ver nada do que você faz. No terceiro, leia a seção **O modo grátis** abaixo.
 
-Isso não é promessa de boa conduta: é consequência da arquitetura. Não há para onde seus dados
-irem, porque não há nada nosso no caminho. O código é aberto e auditável
+Isso não é promessa de boa conduta: é consequência da arquitetura. **Nos modos plano e chave**, não há para onde seus dados irem, porque não há nada nosso no caminho. **No modo grátis**, a transcrição vai ao servidor — leia a seção 2c para os detalhes. O código é aberto e auditável
 ([MIT](../LICENSE), [repositório](https://github.com/Ideia-Business/bruto)).
 
 ## O que fica guardado, e onde
@@ -24,7 +23,7 @@ Tudo em `chrome.storage.local` — **neste navegador, neste perfil**. Nunca em
 | **Caderno de Ideias** — as suas faíscas | é a única coisa aqui que nasce de você | quando você apaga a faísca, ou desinstala a extensão |
 | **Preferências** (provedor, modelo) | para não reconfigurar a cada uso | ao desinstalar |
 
-Desinstalar a extensão apaga tudo isso, e não guardamos cópia em lugar nenhum — não temos onde.
+Desinstalar a extensão apaga tudo isso. **No modo plano e no modo chave**, não guardamos cópia em lugar nenhum — não temos onde. **No modo grátis**, o identificador aleatório da sua instalação e o hash do seu IP continuam no servidor da Ideia Business por até 36 horas, depois são descartados automaticamente — é só para contar as 3 aulas do dia e proteger contra abuso de reinstalação.
 
 O que **sobrevive** à desinstalação é só o que você mesmo tirou daqui, de propósito: a aula que
 você salvou com **Baixar .md** continua no seu computador, como qualquer arquivo seu, e o que
@@ -58,8 +57,8 @@ A partir daí, quem fala com a IA é o app, pela assinatura configurada **na sua
 ele faz está descrito no repositório dele.
 
 Se o app não estiver aberto — o caso mais comum, de quem só instalou a extensão — nada disso
-acontece: a extensão nem chega a alcançá-lo, e volta para o caminho da chave, descrito abaixo.
-A tela de opções diz, em letras, em qual dos dois modos você está.
+acontece: a extensão nem chega a alcançá-lo. Aí, a extensão entra em um de dois modos: **modo grátis** (se você não configurou chave nenhuma — seção 2c abaixo) ou **modo chave** (se você colocou uma chave — seção 1 abaixo).
+A tela de opções diz, em letras, em qual dos três modos você está.
 
 ### 1. O provedor de IA que você escolheu — quando não há app
 
@@ -70,7 +69,7 @@ você escolheu:
 `api.anthropic.com` · `api.openai.com` · `openrouter.ai` · `ollama.com` ·
 `generativelanguage.googleapis.com`
 
-Esses endereços, mais o `127.0.0.1` do item anterior, são os **únicos de onde a extensão busca ou
+Esses endereços, mais o `127.0.0.1` do item anterior e `bruto-gratis.vercel.app` (modo grátis, item 2c), são os **únicos de onde a extensão busca ou
 para onde ela envia dados por conta própria** (declarados em `host_permissions` no manifesto; o
 navegador bloqueia qualquer outro). Há um destino a mais, que não entra nessa lista porque não é
 busca nem envio automático: o **Lapid.ai**, que só é aberto — como uma aba nova, igual a clicar
@@ -98,7 +97,7 @@ não envia nada.
 Sem configurar uma chave de API e sem o app local aberto, você cai no modo grátis: a extensão
 envia a transcrição, título e canal do vídeo ao servidor `bruto-gratis.vercel.app`
 (hospedado na Vercel, da Ideia Business). O servidor recebe essas três coisas, **monta o prompt
-da aula ele mesmo**, e pede o resultado ao Ollama Cloud **com a assinatura anual de IA do dono**
+da aula ele mesmo**, e pede o resultado ao Ollama Cloud **com a conta da Ideia Business**
 — não é sua chave, é a dele. O Ollama processa e declara não usar o que recebe para treinar modelos.
 
 **O que o servidor faz:**
@@ -142,7 +141,7 @@ faísca. Só a anotação daquela faísca.
 ## O que a extensão não faz
 
 - **Não tem analytics, telemetria, rastreador, pixel ou cookie.** Nenhum.
-- **Não vende, aluga nem compartilha dados** — não teria como: não os possui.
+- **Não vende, aluga nem compartilha dados** — com uma exceção. **No modo grátis**, a transcrição, o título e o canal são enviados ao Ollama Cloud, o serviço de IA da Ollama, **pela conta da Ideia Business** (a chave é da Ideia Business, não sua). A Ollama processa o pedido para responder e declara não usar o que recebe para treinar modelos. **Nos modos plano e chave**, nós não recebemos os dados: eles vão do seu computador direto ao app local ou ao provedor que você escolheu.
 - **Não usa seus dados para treinar modelo.** O que o provedor que você escolheu faz com o que
   recebe é decidido na conta que é sua, com ele.
 - **Não carrega código remoto.** Tudo o que executa vem dentro do pacote, auditável.
@@ -156,12 +155,11 @@ faísca. Só a anotação daquela faísca.
 | `activeTab` | ler a transcrição da aba que você está vendo, quando você clica no ícone |
 | `scripting` | injetar o leitor de transcrição nessa aba — é ele que lê o painel do YouTube |
 | `downloads` | salvar uma aula em arquivo, quando você pede |
-| `host_permissions` | falar com o app do Bruto na sua máquina (`127.0.0.1`) e com o provedor de IA que você escolheu — e **só** com eles |
+| `host_permissions` | falar com o app do Bruto na sua máquina (`127.0.0.1`), com o servidor grátis da Ideia Business (`https://bruto-gratis.vercel.app`, modo grátis), e com o provedor de IA que você escolheu — e **só** com eles |
 
 ## Crianças
 
-A extensão não é direcionada a menores de 13 anos e não coleta dados de ninguém — portanto
-tampouco deles.
+A extensão não é direcionada a menores de 13 anos. Ela não coleta dados de identificação pessoal. **No modo plano e no modo chave**, não coleta dados de ninguém. **No modo grátis**, a extensão envia ao servidor da Ideia Business: transcrição, título, canal e um identificador aleatório de instalação (UUID gerado localmente, sem nenhuma ligação com você). O servidor guarda um hash do seu IP — nunca o IP em si — com sal secreto, por até 36 horas, só para contar a cota diária e proteger contra reinstalação abusiva de forma anônima. Nenhum desses dados identifica você; a escolha do modo grátis é sua e pode ser trocada a qualquer momento.
 
 ## Mudanças nesta política
 
