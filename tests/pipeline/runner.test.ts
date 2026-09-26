@@ -24,9 +24,13 @@ const RAIZ = process.cwd();
 
 let dataRoot: string;
 let ehDuplicataTardia: typeof import("@/pipeline/runner").ehDuplicataTardia;
+let processJob: typeof import("@/pipeline/runner").processJob;
 let db: typeof import("@/db/client").db;
 let brutos: typeof import("@/db/schema").brutos;
 let jobsTable: typeof import("@/db/schema").jobs;
+let artifacts: typeof import("@/db/schema").artifacts;
+let eq: typeof import("drizzle-orm").eq;
+let artifactPaths: typeof import("@/pipeline/lib/paths").artifactPaths;
 
 before(async () => {
   // Mesmo padrão de tests/db/migrate.test.ts: banco real, num diretório
@@ -43,9 +47,11 @@ before(async () => {
     stdio: "pipe",
   });
 
-  ({ ehDuplicataTardia } = await import("@/pipeline/runner"));
+  ({ ehDuplicataTardia, processJob } = await import("@/pipeline/runner"));
   ({ db } = await import("@/db/client"));
-  ({ brutos, jobs: jobsTable } = await import("@/db/schema"));
+  ({ brutos, jobs: jobsTable, artifacts } = await import("@/db/schema"));
+  ({ eq } = await import("drizzle-orm"));
+  ({ artifactPaths } = await import("@/pipeline/lib/paths"));
 });
 
 after(() => {
@@ -144,5 +150,83 @@ describe("ehDuplicataTardia — deps injetadas (sem banco)", () => {
       isBrutoDone: () => true,
     });
     assert.equal(eh, false);
+  });
+});
+
+describe("processJob — o atalho de duplicata tardia não persiste metadata", () => {
+  /**
+   * Achado do Grok (revisão cross-vendor): `runMetadata` fazia o --dump-json
+   * E o upsert em `brutos` (título, thumbnail, info.json) numa função só. O
+   * atalho pulava transcript/summary/etc, mas o UPDATE do metadado já tinha
+   * rodado e sobrescrito silenciosamente o que já estava salvo. Corrigido
+   * separando `fetchMetadata` (só busca) de `persistMetadata` (só grava) —
+   * este teste prova que, no caminho da duplicata tardia, `persistMetadata`
+   * NUNCA roda: nem o `brutos.title`, nem `artifacts`, nem `info.json`/thumb
+   * em disco são tocados além da própria atualização do job.
+   */
+  test("link curto cujo ID real já está done → banco e disco intocados, só o job muda", async () => {
+    const id = "7666666666666666666";
+    const urlCanonica = `https://www.tiktok.com/@perfil/video/${id}`;
+    semearVideoDone(id, urlCanonica);
+    const tituloOriginal = db.select().from(brutos).where(eq(brutos.id, id)).get()?.title;
+
+    const jobId = "job-teste-duplicata-tardia";
+    db.insert(jobsTable)
+      .values({
+        id: jobId,
+        videoId: null,
+        url: "https://vm.tiktok.com/ZMduplicado/",
+        status: "queued",
+        progressPct: 0,
+        createdAt: new Date(),
+      })
+      .run();
+
+    let persistMetadataChamado = false;
+    await processJob(jobId, {
+      // `fetchMetadata` fake: simula o yt-dlp revelando que o link curto é,
+      // na verdade, o vídeo `id` (já `done`) — com um título diferente do
+      // salvo, para provar que ele NÃO sobrescreve o que já está no banco.
+      fetchMetadata: async () => ({
+        id,
+        url: urlCanonica,
+        platform: "tiktok",
+        title: "Título vindo do yt-dlp — NÃO deveria substituir o salvo",
+        channel: null,
+        durationSec: null,
+        uploadDate: null,
+        language: null,
+        description: null,
+        chapters: [],
+        tags: [],
+        subtitleLangs: [],
+        autoCaptionLangs: [],
+        thumbnailUrl: null,
+      }),
+      persistMetadata: async () => {
+        persistMetadataChamado = true;
+      },
+    });
+
+    assert.equal(
+      persistMetadataChamado,
+      false,
+      "persistMetadata não deveria rodar no atalho de duplicata tardia",
+    );
+
+    const brutoDepois = db.select().from(brutos).where(eq(brutos.id, id)).get();
+    assert.equal(brutoDepois?.title, tituloOriginal, "o título salvo não pode ter sido sobrescrito");
+
+    const artifactsDoId = db.select().from(artifacts).where(eq(artifacts.videoId, id)).all();
+    assert.equal(artifactsDoId.length, 0, "nenhum artifact deveria ter sido gravado para esse ID");
+
+    const paths = artifactPaths(id);
+    assert.equal(fs.existsSync(paths.infoJson), false, "info.json não deveria ter sido gravado");
+    assert.equal(fs.existsSync(paths.thumb), false, "thumbnail não deveria ter sido baixada");
+
+    const jobDepois = db.select().from(jobsTable).where(eq(jobsTable.id, jobId)).get();
+    assert.equal(jobDepois?.status, "done");
+    assert.equal(jobDepois?.videoId, id);
+    assert.equal(jobDepois?.progressPct, 100);
   });
 });

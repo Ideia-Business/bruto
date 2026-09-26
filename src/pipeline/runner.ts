@@ -5,7 +5,7 @@ import { db } from "@/db/client";
 import { jobs } from "@/db/schema";
 import { isBrutoDone } from "@/db/queries";
 import { emitProgress } from "./bus";
-import { runMetadata } from "./steps/01-metadata";
+import { fetchMetadata, persistMetadata } from "./steps/01-metadata";
 import { runTranscript } from "./steps/02-transcript";
 import { runTranslate } from "./steps/06-translate";
 import { runSummary } from "./steps/03-summary";
@@ -140,17 +140,34 @@ export function ehDuplicataTardia(
   return !idJaEraConhecidoNoEnqueue && deps.isBrutoDone(metaId);
 }
 
-/** Executa o pipeline completo de um job. Erros viram estado `error` tipado. */
-export async function processJob(jobId: string): Promise<void> {
+export interface DepsProcessJob {
+  fetchMetadata: (url: string) => Promise<VideoMetadata>;
+  persistMetadata: (meta: VideoMetadata) => Promise<void>;
+}
+
+/**
+ * Executa o pipeline completo de um job. Erros viram estado `error` tipado.
+ *
+ * `deps` tem default de produção (`fetchMetadata`/`persistMetadata` reais) e
+ * só existe para o teste conseguir provar, sem indireção, que o atalho de
+ * duplicata tardia NUNCA chama `persistMetadata` — sem isso não dava para
+ * verificar "o banco não foi tocado" sem depender de um yt-dlp de verdade.
+ */
+export async function processJob(
+  jobId: string,
+  deps: DepsProcessJob = { fetchMetadata, persistMetadata },
+): Promise<void> {
   const job = db.select().from(jobs).where(eq(jobs.id, jobId)).get();
   if (!job) return;
 
   update(jobId, { status: "running", startedAt: new Date(), progressPct: 2 });
 
   try {
-    // 1) metadata
+    // 1) metadata — só a BUSCA (--dump-json); nada de disco/banco ainda. É a
+    // checagem de duplicata tardia logo abaixo que decide se vale a pena
+    // persistir (ver comentário de `persistMetadata` em `01-metadata.ts`).
     update(jobId, { currentStep: "metadata", progressPct: 5 });
-    const meta: VideoMetadata = await runMetadata(job.url);
+    const meta: VideoMetadata = await deps.fetchMetadata(job.url);
 
     if (ehDuplicataTardia(job.url, meta.id)) {
       update(jobId, {
@@ -164,6 +181,8 @@ export async function processJob(jobId: string): Promise<void> {
       });
       return;
     }
+
+    await deps.persistMetadata(meta);
     update(jobId, { videoId: meta.id });
 
     // 2) transcript
