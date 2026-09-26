@@ -16,7 +16,7 @@ Cole um link de YouTube, Instagram ou TikTok e receba resumo, transcrição, map
 
 ### Modo grátis — servidor público da Ideia Business
 
-Quem instala a extensão sem chave nem app local recebe 3 aulas grátis por dia. O servidor `bruto-gratis` vive na Vercel (time ideia-business), recebe transcrição e metadados do vídeo, monta a aula com o Ollama Cloud (assinatura anual do dono) e não guarda nem transcrição nem aula — tudo some em 36 h. Limite por rede (IP) é 6 por dia; limite geral é 150. Redeploy e reinstalação gera novo UUID da instalação.
+No YouTube, quem não tem chave nem app local com plano recebe 3 aulas grátis por dia. O servidor `bruto-gratis` vive na Vercel (time ideia-business), recebe transcrição e metadados do vídeo, monta a aula com o Ollama Cloud (assinatura anual do dono) e não guarda nem transcrição nem aula — tudo some em 36 h. Limite por rede (IP) é 6 por dia; limite geral é 150. O identificador da instalação fica em `chrome.storage.local`, no navegador — reinstalar a extensão (ou limpar o storage) gera um novo; publicar de novo o servidor não tem efeito nenhum sobre ele.
 
 **Publicado em 26/09/2026 (PR #13), revisado por Codex + Grok 4.7, em produção.** Dívida aceita documentada em `servidor/lib/redis-contador.ts` (`// debt: resposta do EVAL perdida no meio de falha rara de rede consome 1 aula sem gerar`): o trade-off entre resolver (timeout complexo, retry não-trivial) e deixar aberto (risco <1 aula perdida em ano) foi decidido como "deixar" por custo desproporcional ao benefício. Teste da reserva compensada (falha no meio da sequência de incrementos desfaz o que já foi contado) em `tests/servidor/limites.test.ts`. Extensão mostra quantas aulas restam hoje e, no limite, oferece as duas saídas: chave ou app local.
 
@@ -100,7 +100,7 @@ Falta o que exige conta e cartão: conta de desenvolvedor (US$ 5, taxa única), 
 
 | O quê | Por quê |
 |---|---|
-| A extensão destrincha sozinha só no YouTube | Instagram e TikTok não expõem transcrição na página. Em ambas, a extensão encaminha ao app local (que precisa estar aberto) para transcrever o áudio. Sem app e sem chave, a extensão oferece o modo grátis (servidor público) como terceira opção |
+| A extensão destrincha sozinha só no YouTube | Instagram e TikTok não expõem transcrição na página. Em ambas, a extensão sempre encaminha ao app local (que precisa estar aberto) para transcrever o áudio — o modo grátis não se aplica a elas, só ao YouTube, onde a extensão já tem a transcrição e só falta a IA que escreve a aula |
 | A extensão precisa que o vídeo tenha o botão "Mostrar transcrição" | É de lá que ela lê. Sem transcrição publicada, não há o que capturar |
 | O endpoint `/api/timedtext` do YouTube está fechado | Desde ~09/2026 devolve resposta vazia com status de sucesso para requisição feita de dentro do navegador. Não afeta o app local, que usa `yt-dlp` |
 | Não está na Chrome Web Store | Exige conta de desenvolvedor, política de privacidade e revisão. Por ora, carrega-se sem compactação |
