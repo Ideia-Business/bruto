@@ -23,6 +23,26 @@ export function avaliarLoteDeLinks(texto: string): LinhaDoLote[] {
     .map((linha) => ({ linha, referencia: reconhecerLink(linha) }));
 }
 
+/**
+ * Chave estável para agrupar a mesma mídia entre grafias diferentes de
+ * link (`youtu.be/X` e `youtube.com/watch?v=X` viram a mesma chave).
+ * `null` para linha inválida OU sem id extraível (link curto do TikTok) —
+ * essas nunca agrupam entre si, nem consigo mesmas.
+ */
+export function chaveDeAgrupamento(item: LinhaDoLote): string | null {
+  if (item.referencia === null || !item.referencia.id) return null;
+  return `${item.referencia.plataforma}:${item.referencia.id}`;
+}
+
+/**
+ * Chave para lembrar "esta linha já foi enviada" entre um submit e o
+ * próximo (`filtrarNaoEnviados`). Cai no texto cru quando não há id
+ * extraível — é o único sinal disponível antes do yt-dlp resolver.
+ */
+export function chaveDeRastreio(item: LinhaDoLote): string {
+  return chaveDeAgrupamento(item) ?? `linha:${item.linha}`;
+}
+
 /** Uma linha que dispara chamada de rede própria — líder de um grupo, ou sem id. */
 export interface TarefaDoLote {
   readonly index: number;
@@ -63,9 +83,8 @@ export function planejarEnvioDoLote(lote: readonly LinhaDoLote[]): PlanoDeEnvioD
   const liderPorChave = new Map<string, number>();
 
   lote.forEach((item, index) => {
+    const chave = chaveDeAgrupamento(item);
     if (item.referencia === null) return;
-    const { plataforma, id } = item.referencia;
-    const chave = id ? `${plataforma}:${id}` : null;
     if (chave === null) {
       tarefas.push({ index, linha: item.linha });
       return;
@@ -80,4 +99,46 @@ export function planejarEnvioDoLote(lote: readonly LinhaDoLote[]): PlanoDeEnvioD
   });
 
   return { tarefas, seguidores };
+}
+
+/**
+ * Tira do lote as linhas cuja chave de rastreio já está em `jaEnviados` —
+ * usado ao reenviar depois de editar o textarea, para uma linha que já
+ * voltou `fila`/`duplicado` numa rodada anterior não virar um segundo job
+ * do mesmo vídeo só porque ainda não é `done` (`isBrutoDone` não barra
+ * `queued`/`running`).
+ */
+export function filtrarNaoEnviados(
+  lote: readonly LinhaDoLote[],
+  jaEnviados: ReadonlySet<string>,
+): LinhaDoLote[] {
+  return lote.filter((item) => !jaEnviados.has(chaveDeRastreio(item)));
+}
+
+/** O necessário de um item do resumo para contar o lote — sem acoplar ao tipo completo do diálogo. */
+export interface ItemContavel {
+  readonly status: "invalido" | "fila" | "duplicado" | "erro";
+  readonly jobId?: string;
+}
+
+export interface ContagemDoLote {
+  readonly naFila: number;
+  readonly duplicados: number;
+  readonly falhas: number;
+}
+
+/**
+ * Conta o resumo do lote — `naFila` por JOB ÚNICO, não por linha: duas
+ * linhas que colapsaram para o mesmo id (`planejarEnvioDoLote`) têm o
+ * mesmo `jobId` e contam como 1 vídeo na fila, não 2.
+ */
+export function contarEnvioDoLote(itens: readonly ItemContavel[]): ContagemDoLote {
+  const jobsUnicos = new Set(
+    itens.filter((item) => item.status === "fila" && item.jobId).map((item) => item.jobId!),
+  );
+  return {
+    naFila: jobsUnicos.size,
+    duplicados: itens.filter((item) => item.status === "duplicado").length,
+    falhas: itens.filter((item) => item.status === "erro" || item.status === "invalido").length,
+  };
 }

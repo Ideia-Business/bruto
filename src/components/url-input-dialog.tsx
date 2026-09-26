@@ -17,7 +17,13 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Compatibilidade } from "./compatibilidade";
 import { fetchApp } from "@/lib/fetch-app";
-import { avaliarLoteDeLinks, planejarEnvioDoLote } from "@/lib/lote-de-links";
+import {
+  avaliarLoteDeLinks,
+  chaveDeRastreio,
+  contarEnvioDoLote,
+  filtrarNaoEnviados,
+  planejarEnvioDoLote,
+} from "@/lib/lote-de-links";
 
 /** Um item do resumo, na ordem em que a linha apareceu no textarea. */
 interface ResultadoDoLote {
@@ -71,12 +77,17 @@ export function UrlInputDialog({
   const [resultados, setResultados] = useState<ResultadoDoLote[] | null>(null);
   // Cada submit ganha um número; se um envio mais novo começar antes de um
   // mais velho terminar (ou o diálogo fechar/reabrir no meio do caminho), a
-  // resposta atrasada do mais velho é descartada em vez de sobrescrever o
-  // estado do mais novo.
+  // EXIBIÇÃO da resposta atrasada do mais velho é descartada — mas os
+  // efeitos de rede (job já criado no servidor) sempre propagam, ver submit().
   const envioAtualRef = useRef(0);
+  // Chaves (id, ou texto cru sem id) das linhas que já voltaram fila/duplicado
+  // nesta sessão do diálogo — para reenviar depois de editar não duplicar um
+  // vídeo que já está queued/running (isBrutoDone só barra o que é done).
+  const enviadosAnteriormenteRef = useRef<Set<string>>(new Set());
 
   function fecharEResetar() {
     envioAtualRef.current += 1;
+    enviadosAnteriormenteRef.current = new Set();
     setOpen(false);
     setTexto("");
     setResultados(null);
@@ -84,8 +95,14 @@ export function UrlInputDialog({
   }
 
   async function submit() {
-    const lote = avaliarLoteDeLinks(texto);
-    if (lote.length === 0) return;
+    const loteCompleto = avaliarLoteDeLinks(texto);
+    if (loteCompleto.length === 0) return;
+
+    const lote = filtrarNaoEnviados(loteCompleto, enviadosAnteriormenteRef.current);
+    if (lote.length === 0) {
+      toast.info("Nada novo para enviar — esses links já foram processados.");
+      return;
+    }
 
     const meuEnvio = ++envioAtualRef.current;
     setLoading(true);
@@ -118,20 +135,30 @@ export function UrlInputDialog({
       resultado[s.index] = { ...resultado[s.liderIndex], linha: lote[s.index].linha };
     });
 
-    if (meuEnvio !== envioAtualRef.current) return; // envio superado — não aplica
+    // Registra o que o servidor de fato confirmou — vale mesmo se este
+    // envio for superado a seguir: é fato do servidor, não da exibição.
+    lote.forEach((item, i) => {
+      if (resultado[i].status === "fila" || resultado[i].status === "duplicado") {
+        enviadosAnteriormenteRef.current.add(chaveDeRastreio(item));
+      }
+    });
 
-    setResultados(resultado);
-    setLoading(false);
+    const { naFila, duplicados, falhas } = contarEnvioDoLote(resultado);
 
-    const naFila = resultado.filter((r) => r.status === "fila").length;
-    const duplicados = resultado.filter((r) => r.status === "duplicado").length;
-    const falhas = resultado.filter((r) => r.status === "erro" || r.status === "invalido").length;
-
+    // Efeitos de rede propagam mesmo se este envio foi superado (diálogo
+    // fechado, ou um novo envio disparado no meio do caminho): o job já
+    // existe no servidor, quem está olhando a home precisa saber — só a
+    // exibição do resumo é que não faz mais sentido.
     if (naFila > 0) {
       const primeiro = resultado.find((r) => r.status === "fila" && r.jobId);
       if (primeiro?.jobId) onQueued?.(primeiro.jobId);
       router.refresh();
     }
+
+    if (meuEnvio !== envioAtualRef.current) return; // envio superado — exibição para aqui
+
+    setResultados(resultado);
+    setLoading(false);
 
     if (falhas === 0 && duplicados === 0) {
       toast.success(naFila === 1 ? "Vídeo na fila! Acompanhe o progresso abaixo." : `${naFila} vídeos na fila!`);

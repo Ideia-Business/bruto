@@ -6,7 +6,13 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { avaliarLoteDeLinks, planejarEnvioDoLote } from "@/lib/lote-de-links";
+import {
+  avaliarLoteDeLinks,
+  chaveDeRastreio,
+  contarEnvioDoLote,
+  filtrarNaoEnviados,
+  planejarEnvioDoLote,
+} from "@/lib/lote-de-links";
 
 describe("avaliarLoteDeLinks", () => {
   test("string vazia → lote vazio", () => {
@@ -108,5 +114,79 @@ describe("planejarEnvioDoLote — agrupa por id, nunca por texto", () => {
     assert.equal(tarefas.length, 1);
     assert.equal(tarefas[0].index, 0);
     assert.equal(seguidores.length, 0);
+  });
+});
+
+describe("filtrarNaoEnviados — não reenvia o que já voltou fila/duplicado", () => {
+  test("linha cujo id já está em jaEnviados some do lote; a outra fica", () => {
+    // Simula: 1ª rodada mandou youtu.be/X pra fila; a pessoa edita e
+    // adiciona uma linha nova, mas a linha do X (mesmo em outra grafia)
+    // continua no textarea — não pode virar um 2º job do mesmo vídeo.
+    const lote = avaliarLoteDeLinks(
+      ["https://www.youtube.com/watch?v=dQw4w9WgXcQ", "https://youtu.be/AAAAAAAAAAA"].join("\n"),
+    );
+    const jaEnviados = new Set([chaveDeRastreio(lote[0])]);
+
+    const restante = filtrarNaoEnviados(lote, jaEnviados);
+
+    assert.equal(restante.length, 1);
+    assert.equal(restante[0].linha, "https://youtu.be/AAAAAAAAAAA");
+  });
+
+  test("chave por id barra a mesma mídia mesmo em grafia diferente da que gerou a chave", () => {
+    const jaEnviados = new Set([chaveDeRastreio(avaliarLoteDeLinks("https://youtu.be/dQw4w9WgXcQ")[0])]);
+    const loteComOutraGrafia = avaliarLoteDeLinks("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+
+    assert.deepEqual(filtrarNaoEnviados(loteComOutraGrafia, jaEnviados), []);
+  });
+
+  test("sem id (link curto do TikTok), a chave cai no texto cru — só barra o texto idêntico", () => {
+    const linhaOriginal = avaliarLoteDeLinks("https://vm.tiktok.com/ZMabc123/")[0];
+    const jaEnviados = new Set([chaveDeRastreio(linhaOriginal)]);
+
+    const mesmoTexto = avaliarLoteDeLinks("https://vm.tiktok.com/ZMabc123/");
+    const textoDiferente = avaliarLoteDeLinks("https://vm.tiktok.com/ZMoutro9/");
+
+    assert.deepEqual(filtrarNaoEnviados(mesmoTexto, jaEnviados), []);
+    assert.equal(filtrarNaoEnviados(textoDiferente, jaEnviados).length, 1);
+  });
+
+  test("jaEnviados vazio não filtra nada", () => {
+    const lote = avaliarLoteDeLinks("https://youtu.be/dQw4w9WgXcQ\nisto não é um link");
+    assert.deepEqual(filtrarNaoEnviados(lote, new Set()), lote);
+  });
+});
+
+describe("contarEnvioDoLote — na fila conta por jobId único", () => {
+  test("duas linhas com o mesmo jobId (mesma mídia, agrupada) contam como 1 na fila", () => {
+    const contagem = contarEnvioDoLote([
+      { status: "fila", jobId: "job-1" },
+      { status: "fila", jobId: "job-1" },
+    ]);
+    assert.equal(contagem.naFila, 1);
+  });
+
+  test("duas linhas com jobId diferente contam como 2", () => {
+    const contagem = contarEnvioDoLote([
+      { status: "fila", jobId: "job-1" },
+      { status: "fila", jobId: "job-2" },
+    ]);
+    assert.equal(contagem.naFila, 2);
+  });
+
+  test("duplicados e falhas (erro + inválido) contam por linha, não por jobId", () => {
+    const contagem = contarEnvioDoLote([
+      { status: "duplicado" },
+      { status: "duplicado" },
+      { status: "erro" },
+      { status: "invalido" },
+    ]);
+    assert.equal(contagem.naFila, 0);
+    assert.equal(contagem.duplicados, 2);
+    assert.equal(contagem.falhas, 2);
+  });
+
+  test("lote vazio conta tudo zero", () => {
+    assert.deepEqual(contarEnvioDoLote([]), { naFila: 0, duplicados: 0, falhas: 0 });
   });
 });
