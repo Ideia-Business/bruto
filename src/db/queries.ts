@@ -180,20 +180,58 @@ export function getBrutoById(id: string): Bruto | null {
   return db.select().from(brutos).where(eq(brutos.id, id)).get() ?? null;
 }
 
+export interface VideoProntoParaExportar {
+  videoId: string;
+  /** O job DONE mais recente daquele vídeo — a chave que invalida a marca de "já exportado" quando o vídeo é reprocessado. */
+  jobId: string;
+}
+
+export interface JobResumido {
+  id: string;
+  videoId: string | null;
+  status: string;
+  createdAt: Date;
+}
+
 /**
- * IDs de vídeos com pelo menos um job concluído — usado para "recuperar" a
- * exportação automática quando a pessoa não estava numa página que assina o
- * SSE do job no momento em que ele terminou (ver `sincronizarExportacoesPendentes`
- * em `src/lib/exportar-artefatos.ts`).
+ * Pura: dado um conjunto de jobs (qualquer status), decide o par
+ * (videoId, jobId) do job DONE mais recente de cada vídeo. Exclui vídeo com
+ * job `queued`/`running` EM ANDAMENTO agora — sem isso, o catch-up pegaria o
+ * resultado "done" antigo enquanto um job novo pro mesmo vídeo (retry) ainda
+ * está rodando, e exportaria o conteúdo desatualizado no meio do reprocesso.
+ * Extraída como função pura (não bate no banco) para ser testável sem uma
+ * instância de SQLite.
  */
-export function getDoneVideoIds(): string[] {
-  const linhas = db
-    .select({ id: jobs.videoId })
+export function videosProntosParaExportar(jobsTodos: JobResumido[]): VideoProntoParaExportar[] {
+  const emAndamento = new Set(
+    jobsTodos
+      .filter((j) => j.videoId && (j.status === "queued" || j.status === "running"))
+      .map((j) => j.videoId as string),
+  );
+  const done = jobsTodos
+    .filter((j) => j.videoId && j.status === "done" && !emAndamento.has(j.videoId))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const jobIdPorVideo = new Map<string, string>();
+  for (const j of done) {
+    const videoId = j.videoId as string;
+    if (!jobIdPorVideo.has(videoId)) jobIdPorVideo.set(videoId, j.id);
+  }
+  return Array.from(jobIdPorVideo, ([videoId, jobId]) => ({ videoId, jobId }));
+}
+
+/**
+ * Vídeos prontos para a exportação automática recuperar — usado quando a
+ * pessoa não estava numa página que assina o SSE do job no momento em que
+ * ele terminou (ver `sincronizarExportacoesPendentes` em
+ * `src/lib/exportar-artefatos.ts`). O `jobId` de cada item é o que permite
+ * ao cliente saber se já exportou ESTE resultado ou um anterior (retry).
+ */
+export function getVideosProntosParaExportar(): VideoProntoParaExportar[] {
+  const todos = db
+    .select({ id: jobs.id, videoId: jobs.videoId, status: jobs.status, createdAt: jobs.createdAt })
     .from(jobs)
-    .where(eq(jobs.status, "done"))
     .all();
-  const ids = linhas.map((r) => r.id).filter((id): id is string => id !== null);
-  return Array.from(new Set(ids));
+  return videosProntosParaExportar(todos);
 }
 
 /** Vídeo já processado com sucesso? (dedupe do POST de nova URL). */

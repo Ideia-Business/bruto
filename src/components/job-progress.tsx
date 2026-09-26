@@ -26,7 +26,7 @@ export function useJobProgress(
         if (data.status === "done") {
           es.close();
           handlers?.onDone?.(data.videoId);
-          void exportarVideoAutomaticamente(data.videoId);
+          void exportarVideoAutomaticamente(data.videoId, data.jobId);
         } else if (data.status === "error") {
           es.close();
           handlers?.onError?.();

@@ -12,10 +12,16 @@ import { fetchApp } from "@/lib/fetch-app";
 import {
   autoExportarAtivado,
   nomeDaPastaDoVideo,
+  obterPastaId,
   obterPastaSalva,
   permissaoAtual,
   sanitizarNomeArquivo,
 } from "@/lib/pasta-exportacao";
+
+export interface VideoProntoParaExportar {
+  videoId: string;
+  jobId: string;
+}
 
 interface ArtefatoWire {
   id: string;
@@ -29,15 +35,22 @@ interface DetalheVideoWire {
 }
 
 /**
- * Extrai o `filename` do `Content-Disposition`. Tenta primeiro a forma com
- * aspas, pegando TUDO entre elas — inclusive `;` — porque `filename="Aula;
- * parte 2.docx"` é um nome legítimo com ponto-e-vírgula, e um regex que para
- * no primeiro `;` (mesmo dentro das aspas) cortava o nome e fazia PDF/DOCX do
- * mesmo vídeo colidirem no mesmo arquivo truncado. Cai para a forma sem aspas
- * só quando não há par de aspas no cabeçalho.
+ * Extrai o `filename` do `Content-Disposition`. Prioridade:
+ *
+ * 1. `filename*=UTF-8''...` (RFC 6266) — a fonte confiável, sempre em UTF-8.
+ *    O servidor manda essa forma desde que o `filename=` cru passou a
+ *    quebrar com 500 para título com aspas curvas, emoji ou CJK (code point
+ *    > 255, fora do ByteString que o cabeçalho aceita cru).
+ * 2. `filename="..."` com aspas — pegando TUDO entre elas, inclusive `;`,
+ *    porque `filename="Aula; parte 2.docx"` é nome legítimo e um regex que
+ *    para no primeiro `;` (mesmo dentro das aspas) cortava o nome e fazia
+ *    PDF/DOCX do mesmo vídeo colidirem no mesmo arquivo truncado.
+ * 3. `filename=` sem aspas, só como último recurso.
  */
 export function nomeArquivoDoCabecalho(header: string | null, fallback: string): string {
   if (!header) return fallback;
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (utf8?.[1]) return sanitizarNomeArquivo(decodeURIComponent(utf8[1]));
   const comAspas = /filename="([^"]*)"/i.exec(header);
   if (comAspas?.[1]) return sanitizarNomeArquivo(decodeURIComponent(comAspas[1]));
   const semAspas = /filename=([^;]+)/i.exec(header);
@@ -67,23 +80,38 @@ export function resultadoDaCopia(
   return { tipo: "parcial", titulo: `Cópia incompleta: ${escritos} de ${total} arquivos salvos em` };
 }
 
-const CHAVE_LOCALSTORAGE_EXPORTADOS = "bruto:videos-exportados";
+const PREFIXO_LOCALSTORAGE_EXPORTADOS = "bruto:videos-exportados";
 
-/** IDs já exportados com sucesso ou falha definitiva — para o catch-up nunca repetir a cada carga de página. */
-export function obterExportados(): Set<string> {
+/** Chave de localStorage escopada pela pasta atual — sem pasta escolhida (ou nunca escolhida) cai num escopo "default" próprio. */
+function chaveExportados(pastaId: string | null): string {
+  return `${PREFIXO_LOCALSTORAGE_EXPORTADOS}:${pastaId ?? "default"}`;
+}
+
+/**
+ * Mapa `videoId -> jobId` já exportado com sucesso pleno, ESCOPADO pela pasta
+ * atualmente escolhida (`obterPastaId`). Escopar por pasta é o que faz trocar
+ * de pasta A para uma pasta B vazia voltar a exportar tudo em B — sem isso, a
+ * marca de A "vazava" para B e o catch-up pulava todo vídeo já marcado, numa
+ * pasta que nunca tinha recebido nada. Guardar o `jobId` (não só o `videoId`)
+ * é o que faz reprocessar o vídeo (retry) disparar exportação de novo: o job
+ * novo tem um id diferente do que está marcado, então não bate mais.
+ */
+export async function obterExportados(): Promise<Record<string, string>> {
   try {
-    const bruto = localStorage.getItem(CHAVE_LOCALSTORAGE_EXPORTADOS);
-    return new Set(bruto ? (JSON.parse(bruto) as string[]) : []);
+    const pastaId = await obterPastaId();
+    const bruto = localStorage.getItem(chaveExportados(pastaId));
+    return bruto ? (JSON.parse(bruto) as Record<string, string>) : {};
   } catch {
-    return new Set();
+    return {};
   }
 }
 
-function marcarExportado(videoId: string): void {
+async function marcarExportado(videoId: string, jobId: string): Promise<void> {
   try {
-    const atual = obterExportados();
-    atual.add(videoId);
-    localStorage.setItem(CHAVE_LOCALSTORAGE_EXPORTADOS, JSON.stringify(Array.from(atual)));
+    const pastaId = await obterPastaId();
+    const atual = await obterExportados();
+    atual[videoId] = jobId;
+    localStorage.setItem(chaveExportados(pastaId), JSON.stringify(atual));
   } catch {
     /* modo privado ou storage bloqueado — a marca só não persiste, tenta de novo na próxima carga */
   }
@@ -91,36 +119,43 @@ function marcarExportado(videoId: string): void {
 
 /**
  * Dos vídeos prontos no servidor, quais ainda não têm marca de exportação
- * neste navegador. Função pura — é o coração do catch-up (item ligar
- * automático depois de vídeos antigos existirem também cai aqui: `done` sem
- * marca é candidato, não importa há quanto tempo terminou).
+ * (deste JOB, não só deste vídeo) neste navegador/pasta. Função pura — é o
+ * coração do catch-up: `done` sem marca é candidato, não importa há quanto
+ * tempo terminou (vídeo antigo, ligar o interruptor depois, cai aqui do
+ * mesmo jeito), e job novo (retry) com jobId diferente do marcado também.
  */
-export function idsPendentesDeExportacao(idsProntos: string[], jaExportados: Set<string>): string[] {
-  return idsProntos.filter((id) => !jaExportados.has(id));
+export function idsPendentesDeExportacao(
+  prontos: VideoProntoParaExportar[],
+  jaExportados: Record<string, string>,
+): VideoProntoParaExportar[] {
+  return prontos.filter((v) => jaExportados[v.videoId] !== v.jobId);
 }
 
 /** Evita disparo concorrente do mesmo vídeo (ex.: heartbeat/evento duplicado, ou catch-up cruzando com o SSE ao vivo). */
 const emAndamento = new Set<string>();
 
-export async function exportarVideoAutomaticamente(videoId: string | null | undefined): Promise<void> {
-  if (!videoId) return;
+export async function exportarVideoAutomaticamente(
+  videoId: string | null | undefined,
+  jobId: string | null | undefined,
+): Promise<void> {
+  if (!videoId || !jobId) return;
   if (!autoExportarAtivado()) return;
   if (emAndamento.has(videoId)) return;
-  if (obterExportados().has(videoId)) return;
 
   // Marca ANTES do primeiro `await`: o SSE (onDone, ao vivo) e o timer de
   // 60s da sincronização podem chamar para o MESMO vídeo quase ao mesmo
-  // tempo. As checagens de `emAndamento`/`obterExportados` acima sozinhas
-  // não bastam se a marca só acontece depois de dois `await` (pasta,
-  // permissão) — os dois disparos passam pela checagem antes de qualquer um
-  // marcar, e os dois abrem `createWritable` (que TRUNCA o arquivo) juntos.
-  // Como JS não interrompe um trecho síncrono no meio, tudo daqui até o
-  // primeiro `await` roda atômico — nenhuma segunda chamada consegue entrar
-  // depois deste ponto.
+  // tempo. Como JS não interrompe um trecho síncrono no meio, tudo daqui até
+  // o primeiro `await` roda atômico — nenhuma segunda chamada consegue
+  // entrar depois deste ponto. A checagem de "já exportado" (precisa ler a
+  // pasta atual no IndexedDB, logo é assíncrona) fica DEPOIS do lock, não
+  // antes — senão reabriria a mesma janela de corrida que ele fecha.
   emAndamento.add(videoId);
   let escritos = 0;
   let total = -1; // -1 = ainda não sabemos — o laço nem começou (ver deveMarcarExportado)
   try {
+    const exportados = await obterExportados();
+    if (exportados[videoId] === jobId) return; // já exportado ESTE job — nada a fazer
+
     const handle = await obterPastaSalva();
     if (!handle) return; // nunca configurado — nada a fazer, sem ruído (condição prévia: não marca)
 
@@ -175,7 +210,7 @@ export async function exportarVideoAutomaticamente(videoId: string | null | unde
           "O vídeo está salvo normalmente na biblioteca. Vai tentar de novo na próxima vez que a página carregar.",
       });
     }
-    if (deveMarcarExportado(escritos, total)) marcarExportado(videoId);
+    if (deveMarcarExportado(escritos, total)) await marcarExportado(videoId, jobId);
   } catch {
     toast.warning("Não deu para salvar cópia na pasta escolhida.", {
       description:
@@ -186,7 +221,7 @@ export async function exportarVideoAutomaticamente(videoId: string | null | unde
     // `escritos === total` só valeria se a falha tivesse acontecido DEPOIS
     // do laço terminar por completo. É a mesma regra do caminho normal,
     // aplicada por consistência — não uma regra nova para o catch.
-    if (deveMarcarExportado(escritos, total)) marcarExportado(videoId);
+    if (deveMarcarExportado(escritos, total)) await marcarExportado(videoId, jobId);
   } finally {
     emAndamento.delete(videoId);
   }
@@ -237,17 +272,18 @@ export async function sincronizarExportacoesPendentes(): Promise<void> {
     if (!handle) return;
     if ((await permissaoAtual(handle)) !== "granted") return;
 
-    let idsProntos: string[];
+    let prontos: VideoProntoParaExportar[];
     try {
       const res = await fetchApp("/api/videos/concluidos");
       if (!res.ok) return;
-      const data = (await res.json()) as { videoIds: string[] };
-      idsProntos = data.videoIds;
+      const data = (await res.json()) as { videos: VideoProntoParaExportar[] };
+      prontos = data.videos;
     } catch {
       return;
     }
 
-    const pendentes = idsPendentesDeExportacao(idsProntos, obterExportados());
+    const exportados = await obterExportados();
+    const pendentes = idsPendentesDeExportacao(prontos, exportados);
     if (pendentes.length === 0) return;
 
     if (!(await pastaAindaExisteNoDisco(handle))) {
@@ -257,8 +293,8 @@ export async function sincronizarExportacoesPendentes(): Promise<void> {
       return;
     }
 
-    for (const videoId of pendentes) {
-      await exportarVideoAutomaticamente(videoId);
+    for (const { videoId, jobId } of pendentes) {
+      await exportarVideoAutomaticamente(videoId, jobId);
     }
   } finally {
     sincronizacaoEmAndamento = false;

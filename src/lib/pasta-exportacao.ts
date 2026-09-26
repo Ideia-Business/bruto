@@ -13,6 +13,7 @@ const DB_NAME = "bruto-exportacao";
 const DB_VERSION = 1;
 const STORE = "config";
 const CHAVE_PASTA = "pastaHandle";
+const CHAVE_PASTA_ID = "pastaId";
 const CHAVE_LOCALSTORAGE_AUTO = "bruto:exportar-automaticamente";
 
 function abrirDB(): Promise<IDBDatabase> {
@@ -88,6 +89,24 @@ export async function obterPastaSalva(): Promise<FileSystemDirectoryHandle | nul
 
 export async function esquecerPastaEscolhida(): Promise<void> {
   await idbDelete(CHAVE_PASTA);
+  await idbDelete(CHAVE_PASTA_ID);
+}
+
+/**
+ * Identidade opaca da pasta ATUALMENTE escolhida — gerada de novo a cada
+ * `escolherPasta()` bem-sucedida. Escopa as marcas de "já exportado"
+ * (`src/lib/exportar-artefatos.ts`) por pasta: sem isto, trocar de A para uma
+ * pasta B vazia mantinha as marcas de A, e o catch-up pulava todo vídeo já
+ * marcado — B nunca recebia cópia nenhuma. `null` = nenhuma pasta escolhida
+ * ainda (ou navegador sem suporte).
+ */
+export async function obterPastaId(): Promise<string | null> {
+  if (!suportaPastaLocal()) return null;
+  try {
+    return (await idbGet<string>(CHAVE_PASTA_ID)) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -98,7 +117,13 @@ export async function escolherPasta(): Promise<FileSystemDirectoryHandle | null>
   if (!suportaPastaLocal()) return null;
   try {
     const handle = await window.showDirectoryPicker({ mode: "readwrite" });
+    // Toda escolha bem-sucedida — inclusive escolher a "mesma" pasta de novo
+    // pelo botão "Trocar" — gera uma identidade nova. As marcas de exportado
+    // da pasta anterior ficam órfãs (não apagadas, só fora de escopo): o
+    // catch-up parte de zero para a pasta atual, sem precisar comparar
+    // identidade de pasta (que a API nem expõe de forma confiável).
     await idbSet(CHAVE_PASTA, handle);
+    await idbSet(CHAVE_PASTA_ID, crypto.randomUUID());
     return handle;
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") return null;
@@ -140,8 +165,40 @@ export function definirAutoExportar(ativo: boolean): void {
   }
 }
 
-/** Teto de tamanho de um componente de caminho (pasta ou arquivo) — bem abaixo do limite dos SOs comuns. */
-const LIMITE_NOME = 150;
+/**
+ * Trunca por BYTES UTF-8, nunca no meio de um caractere multi-byte (emoji,
+ * CJK, acentos). É a mesma técnica de `truncarUtf8SemPartirCaractere` em
+ * `servidor/lib/ollama.ts` (modo grátis) — reimplementada aqui, e não
+ * importada de lá, para não acoplar o app Next.js ao servidor separado do
+ * modo grátis (deploy independente, sem dependência entre os dois).
+ *
+ * Por que por bytes e não por `.length`: `.length` conta unidades UTF-16, não
+ * bytes. Um título de 150 "caracteres" JS passa folgado num `.slice(0, 150)`,
+ * mas se for muito CJK (3 bytes cada em UTF-8) ou emoji (4 bytes) pode
+ * estourar bem os 255 bytes que é o teto real de um componente de caminho em
+ * APFS/ext4/NTFS — `getDirectoryHandle`/`getFileHandle` rejeita, o catch
+ * confunde com "pasta sumiu", e o catch-up repete pra sempre sem nunca
+ * marcar (a mesma classe de bug do item 3, causa diferente).
+ */
+function truncarPorBytesUtf8(texto: string, limiteBytes: number): string {
+  const bytes = new TextEncoder().encode(texto);
+  if (bytes.length <= limiteBytes) return texto;
+  let fim = limiteBytes;
+  // O byte na fronteira é de continuação (`10xxxxxx`) → o corte caiu no meio
+  // de uma sequência multi-byte. Recua até o byte de abertura dessa
+  // sequência e exclui o caractere inteiro.
+  if ((bytes[fim] & 0xc0) === 0x80) {
+    while (fim > 0 && (bytes[fim] & 0xc0) === 0x80) fim--;
+  }
+  return new TextDecoder("utf-8").decode(bytes.subarray(0, fim));
+}
+
+/**
+ * Teto de um componente de caminho (pasta ou arquivo) em BYTES UTF-8 — 255 é
+ * o limite real de APFS, ext4 e NTFS. Fica bem abaixo dele: o nome sanitizado
+ * sozinho ainda vai ganhar o sufixo `(videoId)` em `nomeDaPastaDoVideo`.
+ */
+const LIMITE_BYTES_NOME = 200;
 
 /**
  * Remove o que os três SOs comuns rejeitam num nome de pasta/arquivo (Windows
@@ -160,7 +217,7 @@ export function sanitizarNomeArquivo(nome: string): string {
     .replace(/[/\\?%*:|"<>]/g, "-")
     .trim();
   limpo = limpo.replace(/\.+$/, "").trim();
-  limpo = limpo.slice(0, LIMITE_NOME).replace(/\.+$/, "").trim();
+  limpo = truncarPorBytesUtf8(limpo, LIMITE_BYTES_NOME).replace(/\.+$/, "").trim();
   if (limpo === "" || limpo === "." || limpo === "..") return "Sem título";
   return limpo;
 }
@@ -169,10 +226,13 @@ export function sanitizarNomeArquivo(nome: string): string {
  * Nome de pasta do vídeo — título + `(videoId)`. Dois vídeos DIFERENTES podem
  * ter o mesmo título (mesmo dentro da mesma categoria); sem o id, o segundo
  * sobrescreveria os arquivos do primeiro em silêncio. O id nunca é cortado
- * pelo teto de tamanho: o título é que cede espaço para ele caber inteiro.
+ * pelo teto de tamanho: o título é que cede espaço para ele caber inteiro —
+ * por BYTES (`videoId` é sempre ASCII, então o cálculo do sufixo é honesto
+ * tanto em bytes quanto em chars, mas o título não é).
  */
 export function nomeDaPastaDoVideo(tituloSanitizado: string, videoId: string): string {
   const sufixo = ` (${videoId})`;
-  const disponivelParaTitulo = Math.max(LIMITE_NOME - sufixo.length, 1);
-  return `${tituloSanitizado.slice(0, disponivelParaTitulo)}${sufixo}`;
+  const bytesSufixo = new TextEncoder().encode(sufixo).length;
+  const disponivelParaTitulo = Math.max(LIMITE_BYTES_NOME - bytesSufixo, 1);
+  return `${truncarPorBytesUtf8(tituloSanitizado, disponivelParaTitulo)}${sufixo}`;
 }

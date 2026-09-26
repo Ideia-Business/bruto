@@ -16,6 +16,7 @@ import {
   autoExportarAtivado,
   definirAutoExportar,
   nomeDaPastaDoVideo,
+  obterPastaId,
   obterPastaSalva,
   pedirPermissao,
   permissaoAtual,
@@ -26,6 +27,7 @@ import {
   deveMarcarExportado,
   idsPendentesDeExportacao,
   nomeArquivoDoCabecalho,
+  obterExportados,
   pastaAindaExisteNoDisco,
   resultadoDaCopia,
 } from "@/lib/exportar-artefatos";
@@ -44,9 +46,42 @@ describe("sanitizarNomeArquivo", () => {
     assert.equal(sanitizarNomeArquivo("   "), "Sem título");
   });
 
-  test("trunca em 150 caracteres", () => {
+  test("trunca em 200 BYTES (ASCII: bytes == chars)", () => {
     const longo = "x".repeat(300);
-    assert.equal(sanitizarNomeArquivo(longo).length, 150);
+    const resultado = sanitizarNomeArquivo(longo);
+    assert.equal(resultado.length, 200);
+    assert.equal(new TextEncoder().encode(resultado).length, 200);
+  });
+
+  // Item 4 (4ª revisão, Grok): truncar por `.length` (UTF-16) deixava passar
+  // título muito CJK/emoji que cabia em 150/200 "caracteres" JS mas estourava
+  // os 255 BYTES reais do sistema de arquivos — getDirectoryHandle rejeitava
+  // na hora de exportar, e como a marca de "já exportado" agora exige
+  // sucesso pleno, o vídeo nunca marcava: retry pra sempre.
+  test("título muito emoji: o corte é por BYTES, nunca separa um emoji ao meio", () => {
+    const emoji = "🔥"; // 2 unidades UTF-16 (par substituto), 4 bytes UTF-8
+    const titulo = emoji.repeat(60); // 240 bytes UTF-8 — acima do teto de 200
+    const resultado = sanitizarNomeArquivo(titulo);
+    const bytes = new TextEncoder().encode(resultado).length;
+    assert.ok(bytes <= 200, `deveria caber em 200 bytes: ${bytes}`);
+    // Nenhum caractere de substituição (U+FFFD) nem meio-par-substituto —
+    // só emoji inteiros, do início ao fim.
+    assert.ok(!resultado.includes("�"), "não deveria haver caractere de substituição");
+    assert.ok(
+      [...resultado].every((c) => c === emoji),
+      `todo caractere deveria ser o emoji inteiro: ${JSON.stringify(resultado)}`,
+    );
+  });
+
+  test("título CJK: o corte é por BYTES (3 bytes cada), não por unidade UTF-16", () => {
+    const titulo = "字".repeat(100); // 1 unidade UTF-16 cada, mas 3 bytes UTF-8 cada = 300 bytes
+    const resultado = sanitizarNomeArquivo(titulo);
+    const bytes = new TextEncoder().encode(resultado).length;
+    assert.ok(bytes <= 200, `deveria caber em 200 bytes: ${bytes}`);
+    assert.ok(
+      [...resultado].every((c) => c === "字"),
+      "todo caractere deveria ser o CJK inteiro, nunca um byte solto decodificado errado",
+    );
   });
 
   // Item 3 — achado do Grok: ponto final, "."/".." puros e caracteres de
@@ -85,10 +120,20 @@ describe("nomeDaPastaDoVideo — item 1, evita colisão entre vídeos de mesmo t
   });
 
   test("título muito longo cede espaço, mas o id NUNCA é cortado", () => {
-    const tituloLongo = "x".repeat(200);
+    const tituloLongo = "x".repeat(300);
     const resultado = nomeDaPastaDoVideo(tituloLongo, "id-completo-123");
     assert.ok(resultado.endsWith("(id-completo-123)"), `deveria terminar com o id inteiro: ${resultado}`);
-    assert.ok(resultado.length <= 150, `deveria caber no teto de 150: ${resultado.length}`);
+    const bytes = new TextEncoder().encode(resultado).length;
+    assert.ok(bytes <= 200, `deveria caber no teto de 200 bytes: ${bytes}`);
+  });
+
+  test("título muito emoji: o corte pro sufixo caber é por BYTES, nunca separa um emoji ao meio", () => {
+    const titulo = "🔥".repeat(60);
+    const resultado = nomeDaPastaDoVideo(titulo, "abc123");
+    assert.ok(resultado.endsWith("(abc123)"), `deveria terminar com o id inteiro: ${resultado}`);
+    const bytes = new TextEncoder().encode(resultado).length;
+    assert.ok(bytes <= 200, `deveria caber no teto de 200 bytes: ${bytes}`);
+    assert.ok(!resultado.includes("�"), "não deveria haver caractere de substituição");
   });
 });
 
@@ -119,6 +164,22 @@ describe("nomeArquivoDoCabecalho", () => {
 
   test("forma sem aspas (fallback do RFC) ainda funciona", () => {
     assert.equal(nomeArquivoDoCabecalho("attachment; filename=simples.txt", "fallback"), "simples.txt");
+  });
+
+  // Item 1 (4ª revisão): o servidor manda filename* (RFC 6266) pra título com
+  // aspas curvas/emoji/CJK, que quebrava o filename= cru com 500. O parser
+  // prefere essa forma quando presente.
+  test("prefere filename*=UTF-8'' (RFC 6266) quando presente — é a fonte confiável", () => {
+    const titulo = "Comenta “IA” que eu te mando o passo a passo"; // aspas curvas — o título real que derrubava o 500
+    const codificado = encodeURIComponent(titulo);
+    const header = `attachment; filename="Comenta _IA_ que eu te mando o passo a passo.docx"; filename*=UTF-8''${codificado}.docx`;
+    assert.equal(nomeArquivoDoCabecalho(header, "fallback"), `${titulo}.docx`);
+  });
+
+  test("emoji no filename* chega intacto", () => {
+    const titulo = "Aula 🔥 de verdade";
+    const header = `attachment; filename="Aula _ de verdade.docx"; filename*=UTF-8''${encodeURIComponent(titulo)}.docx`;
+    assert.equal(nomeArquivoDoCabecalho(header, "fallback"), `${titulo}.docx`);
   });
 });
 
@@ -188,30 +249,51 @@ describe("pastaAindaExisteNoDisco — item 4, distingue 'pasta sumiu' de erro co
   });
 });
 
-describe("idsPendentesDeExportacao — item 4, lógica pura do catch-up", () => {
+describe("idsPendentesDeExportacao — lógica pura do catch-up (chave por videoId+jobId)", () => {
   test("vídeo done sem marca de exportado é pendente", () => {
-    assert.deepEqual(idsPendentesDeExportacao(["a", "b"], new Set()), ["a", "b"]);
+    const prontos = [{ videoId: "a", jobId: "job-a1" }, { videoId: "b", jobId: "job-b1" }];
+    assert.deepEqual(idsPendentesDeExportacao(prontos, {}), prontos);
   });
 
-  test("vídeo já exportado (marca no localStorage) não volta como pendente", () => {
-    assert.deepEqual(idsPendentesDeExportacao(["a", "b"], new Set(["a"])), ["b"]);
+  test("vídeo já exportado (mesmo jobId marcado) não volta como pendente", () => {
+    const prontos = [{ videoId: "a", jobId: "job-a1" }, { videoId: "b", jobId: "job-b1" }];
+    const jaExportados = { a: "job-a1" };
+    assert.deepEqual(idsPendentesDeExportacao(prontos, jaExportados), [{ videoId: "b", jobId: "job-b1" }]);
   });
 
-  test("todos já exportados → nenhum pendente", () => {
-    assert.deepEqual(idsPendentesDeExportacao(["a", "b"], new Set(["a", "b"])), []);
+  test("todos já exportados (mesmo job) → nenhum pendente", () => {
+    const prontos = [{ videoId: "a", jobId: "job-a1" }, { videoId: "b", jobId: "job-b1" }];
+    const jaExportados = { a: "job-a1", b: "job-b1" };
+    assert.deepEqual(idsPendentesDeExportacao(prontos, jaExportados), []);
   });
 
   test("nenhum vídeo pronto no servidor → nenhum pendente, mesmo com marcas antigas", () => {
-    assert.deepEqual(idsPendentesDeExportacao([], new Set(["a"])), []);
+    assert.deepEqual(idsPendentesDeExportacao([], { a: "job-antigo" }), []);
   });
 
   test("vídeo antigo (done antes de a pessoa ligar o interruptor) também é pendente — sem data de corte", () => {
     // O catch-up não distingue "terminou agora" de "terminou há uma semana":
-    // done sem marca de exportado é sempre candidato (decisão consciente do item 4).
-    assert.deepEqual(idsPendentesDeExportacao(["antigo-1", "antigo-2", "novo"], new Set(["novo"])), [
-      "antigo-1",
-      "antigo-2",
+    // done sem marca de exportado é sempre candidato.
+    const prontos = [
+      { videoId: "antigo-1", jobId: "j1" },
+      { videoId: "antigo-2", jobId: "j2" },
+      { videoId: "novo", jobId: "j3" },
+    ];
+    const jaExportados = { novo: "j3" };
+    assert.deepEqual(idsPendentesDeExportacao(prontos, jaExportados), [
+      { videoId: "antigo-1", jobId: "j1" },
+      { videoId: "antigo-2", jobId: "j2" },
     ]);
+  });
+
+  // Item 2 (4ª revisão, os dois revisores) — o achado central desta rodada:
+  // reprocessar o vídeo (retry) gera um jobId NOVO. A marca do job antigo
+  // não bate mais com o job novo, então o vídeo volta a ser pendente — sem
+  // isso, a transcrição/tradução nova do retry nunca chegava na pasta.
+  test("mesmo vídeo com jobId DIFERENTE do marcado (retry) volta a ser pendente", () => {
+    const prontos = [{ videoId: "a", jobId: "job-novo-do-retry" }];
+    const jaExportados = { a: "job-antigo-ja-exportado" };
+    assert.deepEqual(idsPendentesDeExportacao(prontos, jaExportados), prontos);
   });
 });
 
@@ -227,6 +309,14 @@ describe("ambiente sem File System Access API (Node/CI, Safari/Firefox)", () => 
   test("autoExportarAtivado()/definirAutoExportar() nunca lançam sem localStorage", () => {
     assert.doesNotThrow(() => definirAutoExportar(true));
     assert.equal(autoExportarAtivado(), false);
+  });
+
+  test("obterPastaId() nunca lança — volta null quando não há suporte", async () => {
+    assert.equal(await obterPastaId(), null);
+  });
+
+  test("obterExportados() nunca lança sem localStorage/IndexedDB — volta objeto vazio", async () => {
+    assert.deepEqual(await obterExportados(), {});
   });
 });
 
