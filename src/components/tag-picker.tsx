@@ -90,13 +90,19 @@ export function TagPicker({ videoId }: { videoId: string }) {
         fetchApp("/api/tags"),
         fetchApp(`/api/videos/${videoId}/tags`),
       ]);
-      const t = (await tRes.json()) as { tags: TagRow[] };
-      const v = (await vRes.json()) as { tagIds: string[] };
-      setRows(t.tags);
+      // Resposta de erro também resolve o fetch. Sem checar, `tagIds` vinha
+      // `undefined` → `new Set(undefined)` = vazio marcado como SUCESSO, e a
+      // próxima edição apagava as tags reais no PUT (mesma classe do achado 1
+      // da 10ª rodada, pelo caminho de erro HTTP — P2 do Codex, 30/09).
+      if (!tRes.ok || !vRes.ok) throw new Error("falhou");
+      const t = (await tRes.json()) as { tags?: unknown };
+      const v = (await vRes.json()) as { tagIds?: unknown };
+      if (!Array.isArray(t.tags) || !Array.isArray(v.tagIds)) throw new Error("resposta inválida");
+      setRows(t.tags as TagRow[]);
       // Só aplica o conjunto do servidor se nada mudou localmente enquanto
       // este GET estava em voo — uma edição mais nova é sempre quem manda.
       if (edicaoRef.current === edicaoAntes) {
-        setMarcadas(new Set(v.tagIds));
+        setMarcadas(new Set(v.tagIds as string[]));
       }
       setCarregadoComSucesso(true);
     } catch {

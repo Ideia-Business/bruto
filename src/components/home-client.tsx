@@ -51,8 +51,11 @@ export function HomeClient({ initial }: { initial: CatalogResponse }) {
   const refetchTags = useCallback(async () => {
     try {
       const res = await fetchApp("/api/tags");
-      const d = (await res.json()) as { tags: TagRow[] };
-      setTagRows(d.tags);
+      // Erro HTTP ainda resolve o fetch: sem esta checagem, `d.tags` vinha
+      // `undefined` e o `tagRows.length` derrubava a home inteira (P2, Codex).
+      if (!res.ok) return;
+      const d = (await res.json()) as { tags?: unknown };
+      if (Array.isArray(d.tags)) setTagRows(d.tags as TagRow[]);
     } catch {
       /* silencioso — o filtro só some, o catálogo continua funcionando */
     }
