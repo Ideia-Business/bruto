@@ -1,35 +1,153 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { categories, brutos } from "@/db/schema";
+import { setBrutoTagsFromNames, setBrutoTitle, tagNamesInCategory } from "@/db/queries";
 import { runLLMText } from "@/pipeline/lib/llm";
-import { categoryPrompt, parseCategorySlug, type CategorySlug } from "@/pipeline/prompts/category";
+import {
+  categoryPrompt,
+  conteudoParaClassificacao,
+  parseCategorySlug,
+  type CategorySlug,
+  type MetaParaCategoria,
+} from "@/pipeline/prompts/category";
+import { tagsPrompt, parseTagsResponse } from "@/pipeline/prompts/tags";
 import type { VideoMetadata } from "@/pipeline/types";
 
+/** O mínimo que este passo precisa — no reprocessamento retroativo (script de
+ *  lote) `tags` (as do yt-dlp, sinal auxiliar) não está disponível e vai vazia. */
+export type CategoryStepInput = Pick<VideoMetadata, "id" | "title" | "channel" | "tags">;
+
+export interface CategoryStepResult {
+  /**
+   * null quando a classificação FALHOU — por CHAMADA (timeout, IA fora do ar)
+   * ou por PARSING (a resposta não bateu exatamente com nenhum slug válido,
+   * ex.: preâmbulo tipo "Categoria: tecnologia"). Nos dois casos o vídeo
+   * mantém a categoria que já tinha, NADA é gravado, e o chamador deve contar
+   * isto como FALHA, não sucesso. Antes desta correção, os dois caminhos
+   * gravavam "outros" por cima da categoria existente; rodar
+   * `npm run reclassificar` com a IA indisponível OU respondendo fora do
+   * formato apagava a organização do catálogo inteiro reportando sucesso.
+   */
+  categorySlug: CategorySlug | null;
+  /** Nomes das tags aplicadas ao bruto — [] quando a IA não sugeriu nenhuma (ou a classificação falhou). */
+  tags: string[];
+  /** Título proposto pela IA, ou null quando o original já estava bom (ou a classificação falhou). */
+  titleSuggestion: string | null;
+  /**
+   * true quando a chamada de tags/título falhou (exceção) OU respondeu em
+   * formato que não deu para interpretar — distinto de `tags: []` por decisão
+   * deliberada da IA. Sem isto, `reclassificar-cli` não tinha como diferenciar
+   * "consultei e não achei tag boa" de "não consegui nem ler a resposta".
+   */
+  tagsIndisponivel: boolean;
+}
+
 /**
- * Etapa 5 — classificação de categoria via `claude -p` (haiku, chamada leve).
- * Atualiza brutos.categoryId. Resposta fora da lista → "outros".
+ * Etapa 5 — classificação de categoria, tags e título via IA.
+ *
+ * Sequencial de propósito, em duas chamadas: só depois de saber a categoria
+ * (chamada 1) é que faz sentido perguntar "quais tags já existem NESTA
+ * categoria" (chamada 2, que também avalia o título). As duas processam a
+ * transcrição INTEIRA sem corte — por isso o timeout é o mesmo piso de
+ * `03-summary.ts` (180s), não o de uma classificação rasa.
+ *
+ * A categoria NUNCA é best-effort no sentido de "adivinhar": falha de CHAMADA
+ * (exception) e falha de PARSING (resposta que não bate exatamente com nenhum
+ * slug válido — `parseCategorySlug` devolve null, nunca "outros" por
+ * adivinhação) são tratadas de forma IDÊNTICA — nada é gravado, e o vídeo
+ * mantém a categoria que já tinha; ver `CategoryStepResult.categorySlug`.
+ * Tags e título continuam best-effort de verdade: falha ali só deixa o vídeo
+ * sem tag/com o título de antes, nunca reverte algo que já existia.
  */
 export async function runCategory(
-  meta: VideoMetadata,
+  meta: CategoryStepInput,
   transcriptText: string,
-): Promise<CategorySlug> {
-  let slug: CategorySlug = "outros";
+  summaryMd: string,
+): Promise<CategoryStepResult> {
+  const conteudo = conteudoParaClassificacao(summaryMd, transcriptText);
+  const metaCategoria: MetaParaCategoria = { title: meta.title, channel: meta.channel, tags: meta.tags };
+
+  let slug: CategorySlug | null;
   try {
     const raw = await runLLMText({
       task: "category",
-      prompt: categoryPrompt(meta, transcriptText),
+      prompt: categoryPrompt(metaCategoria),
+      input: conteudo,
       tier: "fast",
-      timeoutMs: 60_000,
+      timeoutMs: 180_000,
     });
     slug = parseCategorySlug(raw);
   } catch {
-    // Classificação é best-effort: falha não derruba o job, fica "outros".
-    slug = "outros";
+    slug = null;
   }
 
-  const cat = db.select({ id: categories.id }).from(categories).where(eq(categories.slug, slug)).get();
-  if (cat) {
-    db.update(brutos).set({ categoryId: cat.id }).where(eq(brutos.id, meta.id)).run();
+  if (slug === null) {
+    // Falha de CHAMADA ou de PARSING — os dois caminhos são o mesmo caso:
+    // não sabemos a categoria certa, então não tocamos na que já existe.
+    return { categorySlug: null, tags: [], titleSuggestion: null, tagsIndisponivel: true };
   }
-  return slug;
+
+  const cat = db.select().from(categories).where(eq(categories.slug, slug)).get();
+  if (cat) {
+    // Classificação de verdade aconteceu — sai do estado "pendente" mesmo
+    // quando o resultado é "outros" (que aqui é uma decisão da IA, não a
+    // ausência de uma).
+    db.update(brutos)
+      .set({ categoryId: cat.id, classificacaoPendente: false })
+      .where(eq(brutos.id, meta.id))
+      .run();
+  }
+
+  let tagNames: string[] = [];
+  let titleSuggestion: string | null = null;
+  let tagsIndisponivel = true;
+  if (cat) {
+    try {
+      // Fresca a cada chamada — nunca cacheada entre vídeos do mesmo lote de
+      // reprocessamento, senão o segundo vídeo nunca veria a tag que o
+      // primeiro acabou de criar (e duplicaria o mesmo assunto).
+      const existentes = tagNamesInCategory(cat.id, meta.id);
+      const raw = await runLLMText({
+        task: "tags",
+        prompt: tagsPrompt({ title: meta.title }, cat.name, existentes),
+        input: conteudo,
+        tier: "balanced",
+        timeoutMs: 180_000,
+      });
+      const parsed = parseTagsResponse(raw);
+      if (parsed) {
+        tagNames = parsed.tags;
+        titleSuggestion = parsed.title;
+        tagsIndisponivel = false;
+      }
+      // `parsed === null` (falha de parsing) deixa `tagsIndisponivel` true —
+      // mesma postura de uma exceção na chamada, ver catch abaixo.
+    } catch {
+      // Tags/título são best-effort — mesma postura da categoria acima.
+    }
+  }
+
+  // `tagsIndisponivel === false` significa que a IA respondeu e o parsing
+  // teve sucesso — inclusive quando a decisão foi "nenhuma tag boa desta vez"
+  // (`tagNames: []`). Chamar SEMPRE que isso for verdade (não só quando há
+  // tags) é o que faz `setBrutoTagsFromNames` (substituição completa) de fato
+  // reclassificar um vídeo que já tinha tags e não deveria mais tê-las. Só
+  // pulamos quando `tagsIndisponivel` é true — aí não sabemos nada, então não
+  // tocamos no que já existe (mesma postura da categoria).
+  if (!tagsIndisponivel) {
+    setBrutoTagsFromNames(meta.id, tagNames);
+  }
+  // Só grava/reporta se a sugestão for DE VERDADE diferente do título que já
+  // entrou nesta chamada (`meta.title` — o chamador é quem garante que isto
+  // já é o título ATUAL do banco, não o cru do yt-dlp; ver runner.ts e
+  // reclassificar-cli.ts). Uma "sugestão" idêntica ao que já está não é uma
+  // melhoria — regravar seria só ruído, e reportar como sugestão faria o
+  // chamador reexportar docx/pdf à toa (achado do Grok, 10ª rodada).
+  if (titleSuggestion === meta.title) {
+    titleSuggestion = null;
+  } else if (titleSuggestion) {
+    setBrutoTitle(meta.id, titleSuggestion);
+  }
+
+  return { categorySlug: slug, tags: tagNames, titleSuggestion, tagsIndisponivel };
 }

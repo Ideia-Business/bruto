@@ -37,6 +37,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const meta = JSON.parse(fs.readFileSync(paths.infoJson, "utf8"));
+  // `info.json` é a foto do título no momento do passo 01 (yt-dlp cru) e
+  // NUNCA é reescrito depois — se o passo 05 (ou correção manual) melhorou o
+  // título, ele só existe no banco. Sem isto, a aula e o re-export abaixo
+  // saíam com o título velho, divergindo do catálogo (achado do Codex, 9ª
+  // rodada).
+  meta.title = video.title;
   const transcript = fs.readFileSync(paths.transcript, "utf8");
 
   try {

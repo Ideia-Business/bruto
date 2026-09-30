@@ -31,6 +31,19 @@ export function BrutoCard({ video }: { video: BrutoCardData }) {
               {TRANSCRIPT_SOURCE_LABEL.whisper}
             </span>
           )}
+          {/* Sem isto (achado do Grok, 10ª rodada), um vídeo que caiu em
+              "Outros" por FALHA de classificação ficava indistinguível na
+              tela de um vídeo que a IA classificou como "Outros" de
+              propósito — a única forma de saber era rodar reclassificar-cli
+              e ler a lista no terminal. */}
+          {video.classificacaoPendente && (
+            <span
+              title="Classificação pendente — a IA ainda não confirmou categoria/tags deste vídeo"
+              className="rounded border border-amber-500/40 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              Pendente
+            </span>
+          )}
         </div>
       </div>
       <div className="space-y-1 p-3">
@@ -39,6 +52,20 @@ export function BrutoCard({ video }: { video: BrutoCardData }) {
         </p>
         {video.channel && (
           <p className="line-clamp-1 text-[0.8rem] text-muted-foreground">{video.channel}</p>
+        )}
+        {video.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-0.5">
+            {video.tags.slice(0, 2).map((t) => (
+              <Badge key={t.id} variant="secondary" className="text-[10px]">
+                {t.name}
+              </Badge>
+            ))}
+            {video.tags.length > 2 && (
+              <Badge variant="secondary" className="text-[10px] text-muted-foreground">
+                +{video.tags.length - 2}
+              </Badge>
+            )}
+          </div>
         )}
       </div>
     </Link>

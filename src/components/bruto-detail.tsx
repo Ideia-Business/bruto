@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/select";
 import { Markdown } from "./markdown";
 import { FilaoPicker } from "./filao-picker";
+import { TagPicker } from "./tag-picker";
 import { CopyButton } from "./copy-button";
 import { TranscriptView } from "./transcript-view";
 import { TranscriptAiTools } from "./transcript-ai-tools";
@@ -308,6 +309,7 @@ export function BrutoDetail({
             </SelectContent>
           </Select>
           <FilaoPicker videoId={data.bruto.id} />
+          <TagPicker videoId={data.bruto.id} />
           <Badge variant="secondary">
             {PLATFORM_LABEL[data.bruto.platform] ?? data.bruto.platform}
           </Badge>
