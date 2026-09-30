@@ -247,8 +247,9 @@ async function verificarModoCompleto(): Promise<void> {
   btnVerificarModoCompleto.textContent = "Verificar de novo";
 }
 
+// Aberta pelo cabeçalho, como Caderno e Bancada: NÃO troca `telaInicial` — a tela
+// do contexto (YouTube, Instagram…) continua sendo o destino do "Voltar" de todas.
 function abrirTelaModoCompleto(): void {
-  telaInicial = "modoCompleto";
   mostrar("modoCompleto");
   void verificarModoCompleto();
 }
@@ -880,6 +881,10 @@ el<HTMLButtonElement>("btn-modo-completo").addEventListener("click", abrirTelaMo
 
 btnVerificarModoCompleto.addEventListener("click", () => {
   void verificarModoCompleto();
+});
+
+el<HTMLButtonElement>("btn-voltar-modo-completo").addEventListener("click", () => {
+  mostrar(telaInicial);
 });
 
 btnAbrirApp.addEventListener("click", () => {

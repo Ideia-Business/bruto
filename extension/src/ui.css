@@ -81,23 +81,6 @@ body {
   font-size: 11px;
 }
 
-.link-topo {
-  padding: 4px 0;
-  border: 0;
-  background: transparent;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.link-topo:hover {
-  color: var(--acento);
-  background: transparent;
-}
-
-.destaque-topo {
-  color: var(--acento);
-}
-
 .corpo {
   padding: 14px;
 }
@@ -398,6 +381,13 @@ a {
   cursor: pointer;
 }
 .link-topo:hover {
+  color: var(--acento);
+  border-color: var(--acento);
+}
+
+/* Destaque do atalho "Modo completo": depois do bloco base, senão a cor --texto2
+   de .link-topo (mesma especificidade, declarada depois) apagava o acento. */
+.link-topo.destaque-topo {
   color: var(--acento);
   border-color: var(--acento);
 }
