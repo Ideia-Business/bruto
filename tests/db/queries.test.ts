@@ -116,3 +116,25 @@ describe("setTagIdsForBruto — transação", () => {
     assert.deepEqual(nomes, ["válida"]);
   });
 });
+
+describe("tagNamesInCategory — vídeo em reclassificação", () => {
+  // P2 do Codex (30/09): 05-category move o vídeo para a categoria nova ANTES de
+  // perguntar as tags já usadas nela — sem excluí-lo, as tags ANTIGAS dele
+  // voltavam como se fossem da categoria nova. Controle nos dois sentidos.
+  test("sem excetoVideoId a tag do próprio vídeo aparece; com ele, não", async () => {
+    const { tagNamesInCategory } = await import("@/db/queries");
+    const { categories } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+    let cat = db.select().from(categories).get();
+    if (!cat) {
+      db.insert(categories).values({ slug: "teste-cat", name: "Teste" } as never).run();
+      cat = db.select().from(categories).get();
+    }
+    const id = "RECLASS001";
+    semearBruto(id);
+    setBrutoTagsFromNames(id, ["tag-da-categoria-antiga"]);
+    db.update(brutos).set({ categoryId: cat!.id }).where(eq(brutos.id, id)).run();
+    assert.ok(tagNamesInCategory(cat!.id).includes("tag-da-categoria-antiga"));
+    assert.ok(!tagNamesInCategory(cat!.id, id).includes("tag-da-categoria-antiga"));
+  });
+});

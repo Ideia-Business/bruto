@@ -106,7 +106,7 @@ export async function runCategory(
       // Fresca a cada chamada — nunca cacheada entre vídeos do mesmo lote de
       // reprocessamento, senão o segundo vídeo nunca veria a tag que o
       // primeiro acabou de criar (e duplicaria o mesmo assunto).
-      const existentes = tagNamesInCategory(cat.id);
+      const existentes = tagNamesInCategory(cat.id, meta.id);
       const raw = await runLLMText({
         task: "tags",
         prompt: tagsPrompt({ title: meta.title }, cat.name, existentes),

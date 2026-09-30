@@ -132,6 +132,10 @@ export function TagPicker({ videoId }: { videoId: string }) {
     (proximo: Set<string>): Promise<void> => {
       const minhaEdicao = ++edicaoRef.current;
       setMarcadas(proximo);
+      // Atualiza o espelho NA HORA, não só no próximo render: duas criações de
+      // tag em voo liam o conjunto anterior à primeira e o PUT da segunda
+      // omitia a tag recém-associada (P2, Codex, 30/09). A fila já ordena os PUTs.
+      marcadasRef.current = proximo;
       return filaRef.current.enfileirar(async () => {
         try {
           const res = await fetchApp(`/api/videos/${videoId}/tags`, {

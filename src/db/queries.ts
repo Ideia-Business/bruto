@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { nanoid } from "nanoid";
-import { and, desc, eq, like, or, inArray } from "drizzle-orm";
+import { and, desc, eq, like, ne, or, inArray } from "drizzle-orm";
 import { db } from "./client";
 import { artifacts, brutoTags, categories, filaoBrutos, filoes, jobs, tags, brutos } from "./schema";
 import type { Artifact, Category, Filao, Job, Bruto, Tag } from "./schema";
@@ -434,13 +434,17 @@ export function listTags(): TagRow[] {
  * vídeos de um mesmo lote): é o que garante que o segundo vídeo do lote veja a
  * tag que o primeiro acabou de criar, em vez de duplicar o mesmo assunto.
  */
-export function tagNamesInCategory(categoryId: number): string[] {
+export function tagNamesInCategory(categoryId: number, excetoVideoId?: string): string[] {
+  // `excetoVideoId`: o vídeo sendo reclassificado já foi movido para esta
+  // categoria — sem excluí-lo, as tags ANTIGAS dele entravam como "já usadas
+  // aqui" e o prompt priorizava tag de outra categoria (P2, Codex, 30/09).
+  const naCategoria = eq(brutos.categoryId, categoryId);
   const rows = db
     .select({ name: tags.name })
     .from(brutoTags)
     .innerJoin(brutos, eq(brutos.id, brutoTags.videoId))
     .innerJoin(tags, eq(tags.id, brutoTags.tagId))
-    .where(eq(brutos.categoryId, categoryId))
+    .where(excetoVideoId ? and(naCategoria, ne(brutoTags.videoId, excetoVideoId)) : naCategoria)
     .all();
   return Array.from(new Set(rows.map((r) => r.name))).sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
