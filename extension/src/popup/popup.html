@@ -28,6 +28,9 @@
       <button id="btn-caderno" class="link-topo" type="button" title="Suas faíscas">
         Caderno
       </button>
+      <button id="btn-modo-completo" class="link-topo destaque-topo" type="button">
+        Modo completo
+      </button>
     </header>
 
     <main class="corpo">
@@ -69,6 +72,42 @@
           <button id="btn-app-local" class="principal" type="button">
             Destrinchar no app local
           </button>
+        </div>
+      </section>
+
+      <!-- O app local é uma segunda instalação; sem esta tela, o caminho
+           principal ficava implícito para quem só conheceu a extensão. -->
+      <section id="tela-modo-completo" class="tela pilha" hidden>
+        <div class="linha">
+          <button id="btn-voltar-modo-completo" type="button">Voltar</button>
+        </div>
+        <div>
+          <h2>Use o Bruto completo</h2>
+          <p class="secundario">
+            Para Instagram, TikTok, vídeos sem legenda e sua biblioteca de aulas,
+            use o aplicativo Bruto neste computador.
+          </p>
+        </div>
+        <ol class="passos">
+          <li>Instale o aplicativo Bruto neste computador.</li>
+          <li>Abra-o pelo ícone <strong>Bruto</strong>.</li>
+          <li>Volte aqui e confirme que ele está pronto.</li>
+        </ol>
+        <p class="ajuda">
+          Se você instalou pelo código do projeto, abra com <code>npm run app</code>.
+        </p>
+        <p id="modo-completo-estado" class="estado" role="status" aria-live="polite"></p>
+        <div class="linha">
+          <a
+            class="botao"
+            href="https://github.com/Ideia-Business/bruto#instalação"
+            target="_blank"
+            rel="noreferrer"
+          >Como instalar o Bruto</a>
+          <button id="btn-verificar-modo-completo" class="principal" type="button">
+            Verificar de novo
+          </button>
+          <button id="btn-abrir-app" type="button" hidden>Abrir Bruto</button>
         </div>
       </section>
 

@@ -89,6 +89,13 @@ body {
   display: none !important;
 }
 
+/* O atributo `hidden` só esconde pelo estilo do navegador, e qualquer regra de autor
+   com `display` (ex.: `button { display: inline-block }`) o vence. Achado no ensaio
+   visual de 29/09: "Abrir Bruto" aparecia com o app fechado. Vale para todo elemento. */
+[hidden] {
+  display: none !important;
+}
+
 .pilha {
   display: flex;
   flex-direction: column;
@@ -99,6 +106,15 @@ body {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.passos {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.passos li + li {
+  margin-top: 4px;
 }
 
 h2 {
@@ -372,6 +388,13 @@ a {
   cursor: pointer;
 }
 .link-topo:hover {
+  color: var(--acento);
+  border-color: var(--acento);
+}
+
+/* Destaque do atalho "Modo completo": depois do bloco base, senão a cor --texto2
+   de .link-topo (mesma especificidade, declarada depois) apagava o acento. */
+.link-topo.destaque-topo {
   color: var(--acento);
   border-color: var(--acento);
 }
