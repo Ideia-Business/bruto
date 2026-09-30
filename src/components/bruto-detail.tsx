@@ -178,6 +178,10 @@ export function BrutoDetail({
     if (res.ok) {
       toast.success("Título atualizado.");
       setEditingTitle(false);
+      // O PATCH regenera DOCX/PDF com o título novo sem criar job novo — a marca
+      // de exportação (por jobId) seguiria "em dia" e a pasta ficava com o
+      // documento velho para sempre (P2, Codex, 30/09, costura #19 × #20).
+      void reexportarAposArtefatoNovo(data.bruto.id);
       router.refresh();
     } else {
       const d = await res.json().catch(() => ({}));
@@ -193,6 +197,9 @@ export function BrutoDetail({
     });
     if (res.ok) {
       toast.success("Categoria atualizada.");
+      // A exportação grava em categoria/vídeo — mesma classe do título acima:
+      // sem invalidar, o vídeo nunca aparecia na pasta da categoria nova.
+      void reexportarAposArtefatoNovo(data.bruto.id);
       router.refresh();
     } else {
       toast.error("Não foi possível mudar a categoria.");
