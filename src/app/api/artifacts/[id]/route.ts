@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getArtifactById, getBrutoById } from "@/db/queries";
+import { cabecalhoContentDisposition, comLimiteDeNome } from "@/lib/nome-download";
 
 /** Nome amigável do arquivo para download, por tipo de artefato. */
 const DOWNLOAD_LABEL: Record<string, (title: string) => string> = {
@@ -28,7 +29,7 @@ const MIME: Record<string, string> = {
 };
 
 function sanitize(name: string): string {
-  return name.replace(/[/\\?%*:|"<>]/g, "-").slice(0, 120);
+  return name.replace(/[/\\?%*:|"<>]/g, "-");
 }
 
 /** GET /api/artifacts/[id] → download do arquivo com nome amigável. */
@@ -41,14 +42,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const video = getBrutoById(art.videoId);
   const title = sanitize(video?.title ?? art.videoId);
   const labelFn = DOWNLOAD_LABEL[art.kind];
-  const filename = sanitize(labelFn ? labelFn(title) : path.basename(art.filePath));
+  const filename = comLimiteDeNome(sanitize(labelFn ? labelFn(title) : path.basename(art.filePath)));
   const ext = path.extname(art.filePath).toLowerCase();
 
   const data = fs.readFileSync(art.filePath);
   return new Response(new Uint8Array(data), {
     headers: {
       "Content-Type": MIME[ext] ?? "application/octet-stream",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": cabecalhoContentDisposition(filename),
       "Content-Length": String(data.length),
     },
   });

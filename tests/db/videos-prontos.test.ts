@@ -1,0 +1,151 @@
+/**
+ * `videosProntosParaExportar` (em `src/db/videos-prontos.ts`, um módulo sem
+ * `./client` — achado da 5ª revisão cross-vendor, Grok: `@/db/queries` abre
+ * `~/.bruto/bruto.db` de verdade em WAL ao ser importado, e testar uma
+ * função pura através dele puxava esse efeito colateral à toa) — a decisão
+ * de qual job (videoId, jobId) representa o resultado ATUAL de cada vídeo
+ * pra exportação automática.
+ *
+ * Achado da 4ª revisão cross-vendor (item 2, os dois revisores, Grok deu o
+ * repro exato): a marca de "já exportado" era só por `videoId`, nunca
+ * invalidada — reprocessar o mesmo vídeo (retry) e chegar a `done` de novo
+ * não disparava nova cópia, porque a função via o id já marcado. A correção
+ * chaveia por (videoId, jobId): esta função decide QUAL jobId é o "atual" de
+ * cada vídeo, e exclui vídeo com job em andamento agora (evita pegar o
+ * resultado done antigo no meio de um reprocesso).
+ */
+import { test, describe } from "node:test";
+import assert from "node:assert/strict";
+import { videosProntosParaExportar, type JobResumido } from "@/db/videos-prontos";
+
+function job(parcial: Partial<JobResumido> & Pick<JobResumido, "id" | "videoId" | "status">): JobResumido {
+  return { createdAt: new Date(0), finishedAt: null, ...parcial };
+}
+
+describe("videosProntosParaExportar", () => {
+  test("vídeo com um único job done aparece com esse jobId", () => {
+    const resultado = videosProntosParaExportar([job({ id: "j1", videoId: "v1", status: "done" })]);
+    assert.deepEqual(resultado, [{ videoId: "v1", jobId: "j1" }]);
+  });
+
+  test("job queued/running (sem done ainda) não aparece", () => {
+    const resultado = videosProntosParaExportar([
+      job({ id: "j1", videoId: "v1", status: "queued" }),
+      job({ id: "j2", videoId: "v2", status: "running" }),
+    ]);
+    assert.deepEqual(resultado, []);
+  });
+
+  test("job error não aparece", () => {
+    const resultado = videosProntosParaExportar([job({ id: "j1", videoId: "v1", status: "error" })]);
+    assert.deepEqual(resultado, []);
+  });
+
+  // O caso central do item 2: reprocessar (retry) cria um job NOVO. Entre
+  // dois jobs done do MESMO vídeo, o mais recente (createdAt maior) é quem
+  // representa o resultado atual — é o jobId que precisa exportar de novo.
+  test("dois jobs done do MESMO vídeo (reprocesso) → só o mais recente conta", () => {
+    const resultado = videosProntosParaExportar([
+      job({ id: "job-antigo", videoId: "v1", status: "done", createdAt: new Date(1000) }),
+      job({ id: "job-novo-do-retry", videoId: "v1", status: "done", createdAt: new Date(2000) }),
+    ]);
+    assert.deepEqual(resultado, [{ videoId: "v1", jobId: "job-novo-do-retry" }]);
+  });
+
+  test("ordem de entrada não importa — só o createdAt decide qual é o mais recente", () => {
+    const resultado = videosProntosParaExportar([
+      job({ id: "job-novo", videoId: "v1", status: "done", createdAt: new Date(2000) }),
+      job({ id: "job-antigo", videoId: "v1", status: "done", createdAt: new Date(1000) }),
+    ]);
+    assert.deepEqual(resultado, [{ videoId: "v1", jobId: "job-novo" }]);
+  });
+
+  // Item 2 (7ª revisão, Grok): createdAt grava em SEGUNDOS — dois jobs do
+  // MESMO vídeo criados dentro do mesmo segundo (reprocessar rápido, corrida
+  // de duplo POST) empatavam ali, e o desempate caía na ordem não
+  // especificada do SELECT — podia escolher o job MAIS VELHO. finishedAt é
+  // o critério primário agora: a fila do pipeline é serial, então dois jobs
+  // do mesmo vídeo praticamente nunca terminam no mesmo instante, mesmo
+  // tendo sido CRIADOS no mesmo segundo.
+  test("createdAt empatado (mesmo segundo) → finishedAt desempata, escolhe o que terminou depois", () => {
+    const resultado = videosProntosParaExportar([
+      job({
+        id: "job-antigo",
+        videoId: "v1",
+        status: "done",
+        createdAt: new Date(1000),
+        finishedAt: new Date(1500),
+      }),
+      job({
+        id: "job-novo-do-retry",
+        videoId: "v1",
+        status: "done",
+        createdAt: new Date(1000), // MESMO segundo do job antigo — createdAt sozinho empataria
+        finishedAt: new Date(9000), // mas terminou bem depois
+      }),
+    ]);
+    assert.deepEqual(resultado, [{ videoId: "v1", jobId: "job-novo-do-retry" }]);
+  });
+
+  test("ordem de entrada não importa pro desempate por finishedAt também", () => {
+    const resultado = videosProntosParaExportar([
+      job({ id: "job-novo", videoId: "v1", status: "done", createdAt: new Date(1000), finishedAt: new Date(9000) }),
+      job({ id: "job-antigo", videoId: "v1", status: "done", createdAt: new Date(1000), finishedAt: new Date(1500) }),
+    ]);
+    assert.deepEqual(resultado, [{ videoId: "v1", jobId: "job-novo" }]);
+  });
+
+  test("finishedAt ausente (job done sem finishedAt, caso defensivo) cai pro createdAt", () => {
+    const resultado = videosProntosParaExportar([
+      job({ id: "job-antigo", videoId: "v1", status: "done", createdAt: new Date(1000), finishedAt: null }),
+      job({ id: "job-novo", videoId: "v1", status: "done", createdAt: new Date(2000), finishedAt: null }),
+    ]);
+    assert.deepEqual(resultado, [{ videoId: "v1", jobId: "job-novo" }]);
+  });
+
+  test("os dois critérios de tempo também empatados → desempate final por id é determinístico (não some, não lança)", () => {
+    const resultado = videosProntosParaExportar([
+      job({ id: "a", videoId: "v1", status: "done", createdAt: new Date(1000), finishedAt: new Date(1500) }),
+      job({ id: "b", videoId: "v1", status: "done", createdAt: new Date(1000), finishedAt: new Date(1500) }),
+    ]);
+    assert.equal(resultado.length, 1);
+    assert.equal(resultado[0].videoId, "v1");
+    assert.ok(["a", "b"].includes(resultado[0].jobId));
+  });
+
+  // Segunda metade do item 2: vídeo com um job done ANTIGO e um job novo
+  // AINDA EM ANDAMENTO (retry disparado, não terminou) não deve aparecer —
+  // senão o catch-up pegaria o resultado done antigo bem no meio do
+  // reprocesso, exportando conteúdo que está prestes a ficar desatualizado.
+  test("job done antigo + job novo queued/running pro MESMO vídeo → vídeo inteiro fica de fora", () => {
+    const resultado = videosProntosParaExportar([
+      job({ id: "job-antigo-done", videoId: "v1", status: "done", createdAt: new Date(1000) }),
+      job({ id: "job-retry-rodando", videoId: "v1", status: "running", createdAt: new Date(2000) }),
+    ]);
+    assert.deepEqual(resultado, []);
+  });
+
+  test("vários vídeos independentes — cada um com o próprio jobId mais recente", () => {
+    const resultado = videosProntosParaExportar([
+      job({ id: "a1", videoId: "a", status: "done", createdAt: new Date(1000) }),
+      job({ id: "b1", videoId: "b", status: "done", createdAt: new Date(1000) }),
+      job({ id: "b2", videoId: "b", status: "done", createdAt: new Date(2000) }),
+    ]);
+    assert.deepEqual(
+      [...resultado].sort((x, y) => x.videoId.localeCompare(y.videoId)),
+      [
+        { videoId: "a", jobId: "a1" },
+        { videoId: "b", jobId: "b2" },
+      ],
+    );
+  });
+
+  test("job sem videoId (job muito cedo, metadata ainda não rodou) é ignorado, nunca quebra", () => {
+    const resultado = videosProntosParaExportar([job({ id: "j1", videoId: null, status: "done" })]);
+    assert.deepEqual(resultado, []);
+  });
+
+  test("lista vazia → lista vazia", () => {
+    assert.deepEqual(videosProntosParaExportar([]), []);
+  });
+});

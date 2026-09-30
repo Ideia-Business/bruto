@@ -5,6 +5,7 @@ import { db } from "./client";
 import { artifacts, brutoTags, categories, filaoBrutos, filoes, jobs, tags, brutos } from "./schema";
 import type { Artifact, Category, Filao, Job, Bruto, Tag } from "./schema";
 import { slugifyTag } from "@/pipeline/lib/tags";
+import { videosProntosParaExportar, type VideoProntoParaExportar } from "./videos-prontos";
 
 export interface TagLite {
   id: string;
@@ -219,6 +220,30 @@ export function getArtifactById(id: string): Artifact | null {
 
 export function getBrutoById(id: string): Bruto | null {
   return db.select().from(brutos).where(eq(brutos.id, id)).get() ?? null;
+}
+
+export type { VideoProntoParaExportar, JobResumido } from "./videos-prontos";
+export { videosProntosParaExportar } from "./videos-prontos";
+
+/**
+ * Vídeos prontos para a exportação automática recuperar — usado quando a
+ * pessoa não estava numa página que assina o SSE do job no momento em que
+ * ele terminou (ver `sincronizarExportacoesPendentes` em
+ * `src/lib/exportar-artefatos.ts`). O `jobId` de cada item é o que permite
+ * ao cliente saber se já exportou ESTE resultado ou um anterior (retry).
+ */
+export function getVideosProntosParaExportar(): VideoProntoParaExportar[] {
+  const todos = db
+    .select({
+      id: jobs.id,
+      videoId: jobs.videoId,
+      status: jobs.status,
+      createdAt: jobs.createdAt,
+      finishedAt: jobs.finishedAt,
+    })
+    .from(jobs)
+    .all();
+  return videosProntosParaExportar(todos);
 }
 
 /** Vídeo já processado com sucesso? (dedupe do POST de nova URL). */
