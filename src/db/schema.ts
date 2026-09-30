@@ -24,6 +24,19 @@ export const brutos = sqliteTable(
     categoryId: integer("category_id").references(() => categories.id),
     // 'manual_subs' | 'auto_subs' | 'yta' | 'whisper'
     transcriptSource: text("transcript_source"),
+    /**
+     * true entre a criação do vídeo (categoria provisória "outros", passo 01)
+     * e a primeira classificação BEM-SUCEDIDA do passo 05 — ou entre falhas
+     * repetidas dele. Sem isto, um vídeo cuja classificação falhou na
+     * primeira tentativa (timeout, IA fora do ar, resposta fora do formato)
+     * fica com categoria "outros" indistinguível de "a IA decidiu que é
+     * outros de propósito", e o job termina `done` sem sinal nenhum de que
+     * falta reclassificar. `05-category.ts` zera isto ao classificar com
+     * sucesso; correção manual da categoria (`setBrutoCategory`) também zera.
+     */
+    classificacaoPendente: integer("classificacao_pendente", { mode: "boolean" })
+      .notNull()
+      .default(false),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     lastOpenedAt: integer("last_opened_at", { mode: "timestamp" }),
   },
@@ -106,8 +119,40 @@ export const filaoBrutos = sqliteTable(
   ],
 );
 
+/**
+ * Tag — marcador plano de assunto, escolhido pela IA no passo 05 (reaproveitado
+ * por slug quando já existe) e ajustável à mão. Distinto de `filoes` (agrupa
+ * por decisão da pessoa, tela própria) e de `categories` (uma por bruto, os 9
+ * valores fixos): tag é MÚLTIPLA por vídeo e não tem hierarquia nem tela
+ * própria — só filtra o Catálogo. Ver docs/decisions/0001-tags-nao-hierarquia.md.
+ */
+export const tags = sqliteTable("tags", {
+  id: text("id").primaryKey(), // nanoid
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+export const brutoTags = sqliteTable(
+  "bruto_tags",
+  {
+    videoId: text("video_id")
+      .notNull()
+      .references(() => brutos.id, { onDelete: "cascade" }),
+    tagId: text("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+    addedAt: integer("added_at", { mode: "timestamp" }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.videoId, t.tagId] }),
+    index("bruto_tags_tag_idx").on(t.tagId),
+  ],
+);
+
 export type Category = typeof categories.$inferSelect;
 export type Bruto = typeof brutos.$inferSelect;
 export type Job = typeof jobs.$inferSelect;
 export type Artifact = typeof artifacts.$inferSelect;
 export type Filao = typeof filoes.$inferSelect;
+export type Tag = typeof tags.$inferSelect;

@@ -34,6 +34,7 @@ export interface LlmRequest {
     | "summary"
     | "mindmap"
     | "category"
+    | "tags"
     | "translate"
     | "study"
     | "references"

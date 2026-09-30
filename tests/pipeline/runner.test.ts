@@ -25,12 +25,33 @@ const RAIZ = process.cwd();
 let dataRoot: string;
 let ehDuplicataTardia: typeof import("@/pipeline/runner").ehDuplicataTardia;
 let processJob: typeof import("@/pipeline/runner").processJob;
+let sincronizarTituloComBanco: typeof import("@/pipeline/runner").sincronizarTituloComBanco;
 let db: typeof import("@/db/client").db;
 let brutos: typeof import("@/db/schema").brutos;
 let jobsTable: typeof import("@/db/schema").jobs;
 let artifacts: typeof import("@/db/schema").artifacts;
 let eq: typeof import("drizzle-orm").eq;
 let artifactPaths: typeof import("@/pipeline/lib/paths").artifactPaths;
+type VideoMetadata = import("@/pipeline/types").VideoMetadata;
+
+function metaFake(id: string, title: string): VideoMetadata {
+  return {
+    id,
+    url: `https://exemplo.test/${id}`,
+    platform: "youtube",
+    title,
+    channel: null,
+    durationSec: null,
+    uploadDate: null,
+    language: null,
+    description: null,
+    chapters: [],
+    tags: [],
+    subtitleLangs: [],
+    autoCaptionLangs: [],
+    thumbnailUrl: null,
+  };
+}
 
 before(async () => {
   // Mesmo padrão de tests/db/migrate.test.ts: banco real, num diretório
@@ -47,7 +68,7 @@ before(async () => {
     stdio: "pipe",
   });
 
-  ({ ehDuplicataTardia, processJob } = await import("@/pipeline/runner"));
+  ({ ehDuplicataTardia, processJob, sincronizarTituloComBanco } = await import("@/pipeline/runner"));
   ({ db } = await import("@/db/client"));
   ({ brutos, jobs: jobsTable, artifacts } = await import("@/db/schema"));
   ({ eq } = await import("drizzle-orm"));
@@ -228,5 +249,53 @@ describe("processJob — o atalho de duplicata tardia não persiste metadata", (
     assert.equal(jobDepois?.status, "done");
     assert.equal(jobDepois?.videoId, id);
     assert.equal(jobDepois?.progressPct, 100);
+  });
+});
+
+/**
+ * REGRESSÃO (achado 2, Codex + Grok, 10ª rodada): `persistMetadata` nunca
+ * toca no título num reprocessamento (achado da 9ª rodada), mas `meta.title`
+ * (a variável local que segue pro resto do pipeline) continuava com o título
+ * CRU do yt-dlp. Os prompts de categoria/tags desta passada avaliariam o
+ * título CRU como "o original", e a IA podia então SOBRESCREVER um título bom
+ * já confirmado com uma reescrita do texto cru.
+ */
+describe("sincronizarTituloComBanco — deps de produção (banco real)", () => {
+  test("REGRESSÃO: repõe meta.title com o título ATUAL do banco antes do resto do pipeline rodar", () => {
+    const id = "SINCTITULO01";
+    db.insert(brutos)
+      .values({
+        id,
+        url: `https://exemplo.test/${id}`,
+        platform: "youtube",
+        title: "Título Bom Já Confirmado Antes",
+        createdAt: new Date(),
+      })
+      .run();
+
+    const meta = metaFake(id, "titulo cru que o yt-dlp devolveu nesta passada");
+    sincronizarTituloComBanco(meta);
+
+    assert.equal(meta.title, "Título Bom Já Confirmado Antes");
+  });
+
+  test("vídeo NOVO (ainda não existe no banco) não mexe em meta.title — nada para sincronizar ainda", () => {
+    const meta = metaFake("SINCTITULONOVO01", "Título Cru De Um Vídeo Novo");
+    sincronizarTituloComBanco(meta);
+    assert.equal(meta.title, "Título Cru De Um Vídeo Novo");
+  });
+});
+
+describe("sincronizarTituloComBanco — deps injetadas (sem banco)", () => {
+  test("aplica o título devolvido pela dep", () => {
+    const meta = metaFake("x", "cru");
+    sincronizarTituloComBanco(meta, { getBrutoById: () => ({ title: "bom" }) });
+    assert.equal(meta.title, "bom");
+  });
+
+  test("dep devolvendo null (vídeo novo) não mexe no título", () => {
+    const meta = metaFake("x", "cru");
+    sincronizarTituloComBanco(meta, { getBrutoById: () => null });
+    assert.equal(meta.title, "cru");
   });
 });
