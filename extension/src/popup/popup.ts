@@ -18,6 +18,7 @@ import {
   AppLocalError,
   APP_BASE,
   enviarLinkAoApp,
+  verSaudeDoApp,
   type FalhaDoApp,
   type ResultadoEnvio,
 } from "../lib/app-local";
@@ -60,6 +61,7 @@ const telas = {
   semConfig: el<HTMLElement>("tela-sem-config"),
   naoYoutube: el<HTMLElement>("tela-nao-youtube"),
   appLocal: el<HTMLElement>("tela-app-local"),
+  modoCompleto: el<HTMLElement>("tela-modo-completo"),
   pronto: el<HTMLElement>("tela-pronto"),
   rodando: el<HTMLElement>("tela-rodando"),
   aula: el<HTMLElement>("tela-aula"),
@@ -100,6 +102,9 @@ const appLocalNota = el<HTMLParagraphElement>("app-local-nota");
 const appLocalLista = el<HTMLUListElement>("app-local-lista");
 const appLocalEstado = el<HTMLParagraphElement>("app-local-estado");
 const btnAppLocal = el<HTMLButtonElement>("btn-app-local");
+const modoCompletoEstado = el<HTMLParagraphElement>("modo-completo-estado");
+const btnVerificarModoCompleto = el<HTMLButtonElement>("btn-verificar-modo-completo");
+const btnAbrirApp = el<HTMLButtonElement>("btn-abrir-app");
 
 // --- estado -----------------------------------------------------------
 
@@ -208,6 +213,45 @@ function prepararTelaAppLocal(plataforma: "instagram" | "tiktok"): void {
   btnAppLocal.disabled = false;
   telaInicial = "appLocal";
   mostrar("appLocal");
+}
+
+/**
+ * A extensão não pode iniciar um programa local por conta própria. Esta tela
+ * torna o caminho explícito e confirma quando o aplicativo já está pronto.
+ */
+async function verificarModoCompleto(): Promise<void> {
+  btnVerificarModoCompleto.disabled = true;
+  btnVerificarModoCompleto.textContent = "Verificando…";
+  btnAbrirApp.hidden = true;
+  modoCompletoEstado.className = "estado";
+  modoCompletoEstado.textContent = "Procurando o Bruto neste computador…";
+
+  const saude = await verSaudeDoApp();
+  const plano = saude?.provedores.find((p) => p.plano && p.disponivel);
+  if (plano) {
+    modoCompletoEstado.className = "estado ok";
+    modoCompletoEstado.textContent = `Pronto: o Bruto está aberto e vai usar seu plano ${plano.label}.`;
+    btnAbrirApp.hidden = false;
+  } else if (saude === null) {
+    modoCompletoEstado.className = "estado atencao";
+    modoCompletoEstado.textContent = "Ainda não encontrei o aplicativo aberto. Abra o Bruto e clique em “Verificar de novo”.";
+  } else {
+    const motivo = saude.provedores.find((p) => p.plano && !p.disponivel)?.motivo;
+    modoCompletoEstado.className = "estado atencao";
+    modoCompletoEstado.textContent = motivo
+      ? `O Bruto está aberto, mas o plano ainda não está pronto: ${motivo}`
+      : "O Bruto está aberto, mas falta entrar no Claude Code ou Codex com seu plano.";
+  }
+
+  btnVerificarModoCompleto.disabled = false;
+  btnVerificarModoCompleto.textContent = "Verificar de novo";
+}
+
+// Aberta pelo cabeçalho, como Caderno e Bancada: NÃO troca `telaInicial` — a tela
+// do contexto (YouTube, Instagram…) continua sendo o destino do "Voltar" de todas.
+function abrirTelaModoCompleto(): void {
+  mostrar("modoCompleto");
+  void verificarModoCompleto();
 }
 
 function mostrarResultadoDoEnvio(resultado: ResultadoEnvio): void {
@@ -833,6 +877,20 @@ el<HTMLButtonElement>("btn-caderno").addEventListener("click", () => {
   void pintarCaderno().then(() => mostrar("caderno"));
 });
 
+el<HTMLButtonElement>("btn-modo-completo").addEventListener("click", abrirTelaModoCompleto);
+
+btnVerificarModoCompleto.addEventListener("click", () => {
+  void verificarModoCompleto();
+});
+
+el<HTMLButtonElement>("btn-voltar-modo-completo").addEventListener("click", () => {
+  mostrar(telaInicial);
+});
+
+btnAbrirApp.addEventListener("click", () => {
+  void chrome.tabs.create({ url: APP_BASE });
+});
+
 el<HTMLButtonElement>("btn-voltar-caderno").addEventListener("click", () => {
   mostrar(telaInicial);
 });
@@ -943,4 +1001,3 @@ void iniciar().catch(() => {
     saida: "Feche e abra o popup de novo.",
   });
 });
-
