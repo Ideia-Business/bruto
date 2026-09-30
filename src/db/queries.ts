@@ -464,8 +464,11 @@ function findOrCreateTagByName(name: string): Tag {
   const existing = db.select().from(tags).where(eq(tags.slug, slug)).get();
   if (existing) return existing;
   const row: Tag = { id: nanoid(), name: trimmed, slug, createdAt: new Date() };
-  db.insert(tags).values(row).run();
-  return row;
+  // Outro PROCESSO (o CLI `reclassificar`) pode criar o mesmo slug entre o
+  // SELECT acima e este INSERT — sem o `onConflictDoNothing`, o segundo
+  // estourava `tags_slug_unique` com 500 em vez de reaproveitar (P2, Codex, 30/09).
+  db.insert(tags).values(row).onConflictDoNothing({ target: tags.slug }).run();
+  return db.select().from(tags).where(eq(tags.slug, slug)).get() ?? row;
 }
 
 /** Cria (ou reaproveita) uma tag pelo nome — usada pelo seletor manual da UI. */
