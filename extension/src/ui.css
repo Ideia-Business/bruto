@@ -81,6 +81,23 @@ body {
   font-size: 11px;
 }
 
+.link-topo {
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.link-topo:hover {
+  color: var(--acento);
+  background: transparent;
+}
+
+.destaque-topo {
+  color: var(--acento);
+}
+
 .corpo {
   padding: 14px;
 }
@@ -99,6 +116,15 @@ body {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.passos {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.passos li + li {
+  margin-top: 4px;
 }
 
 h2 {
