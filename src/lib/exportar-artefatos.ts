@@ -419,6 +419,13 @@ export async function exportarVideoAutomaticamente(
     await marcarSeAPastaNaoMudou(videoId, jobId, pastaId, escritos, total, revisaoCapturada);
   } finally {
     emAndamento.delete(videoId);
+    // Artefato (re)gerado DURANTE esta exportação: a chamada de
+    // `reexportarAposArtefatoNovo` bateu no `emAndamento` acima e voltou sem
+    // fazer nada, e esta rodada (corretamente) não marcou a cópia velha. Sem
+    // isto, a versão nova só saía no próximo tique de 60 s, apesar da promessa
+    // de reexportar na hora (P2, Codex, 30/09). Sem laço: a próxima rodada
+    // captura a revisão nova.
+    if (revisaoAtual(videoId) !== revisaoCapturada) void sincronizarExportacoesPendentes();
   }
 }
 
