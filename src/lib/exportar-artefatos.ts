@@ -524,3 +524,81 @@ export async function sincronizarExportacoesPendentes(): Promise<void> {
     sincronizacaoEmAndamento = false;
   }
 }
+
+export interface PastaAntigaEncontrada {
+  categoriaNome: string;
+  pastaVideoNome: string;
+  caminhoCompleto: string;
+  categoriaHandle: FileSystemDirectoryHandle;
+}
+
+/**
+ * Verifica se o nome de um subdiretório pertence ao videoId especificado,
+ * isto é, termina exatamente com ` (${videoId})`.
+ */
+export function identificarPastaDoVideo(nomePasta: string, videoId: string): boolean {
+  if (!nomePasta || !videoId) return false;
+  return nomePasta.endsWith(` (${videoId})`);
+}
+
+/**
+ * Varre a pasta de exportação em busca de pastas pertencentes ao mesmo videoId,
+ * mas que não sejam a pasta atual/esperada (por exemplo, após renomear título
+ * ou alterar a categoria).
+ */
+export async function localizarPastasAntigasDoVideo(
+  handle: FileSystemDirectoryHandle,
+  videoId: string,
+  pastaAtual?: { categoriaNome: string; pastaVideoNome: string },
+): Promise<PastaAntigaEncontrada[]> {
+  const encontradas: PastaAntigaEncontrada[] = [];
+  try {
+    for await (const entry of handle.values()) {
+      if (entry.kind !== "directory") continue;
+      const categoriaNome = entry.name;
+      const categoriaHandle = entry as FileSystemDirectoryHandle;
+      try {
+        for await (const subEntry of categoriaHandle.values()) {
+          if (subEntry.kind !== "directory") continue;
+          if (!identificarPastaDoVideo(subEntry.name, videoId)) continue;
+
+          if (
+            pastaAtual &&
+            categoriaNome === pastaAtual.categoriaNome &&
+            subEntry.name === pastaAtual.pastaVideoNome
+          ) {
+            continue;
+          }
+
+          encontradas.push({
+            categoriaNome,
+            pastaVideoNome: subEntry.name,
+            caminhoCompleto: `${categoriaNome}/${subEntry.name}`,
+            categoriaHandle,
+          });
+        }
+      } catch {
+        /* erro na leitura da categoria específica — não aborta as demais */
+      }
+    }
+  } catch {
+    /* erro de leitura na raiz */
+  }
+  return encontradas;
+}
+
+/**
+ * Remove com segurança a pasta antiga indicada (com recursive: true).
+ */
+export async function removerPastaAntiga(
+  categoriaHandle: FileSystemDirectoryHandle,
+  pastaVideoNome: string,
+): Promise<boolean> {
+  try {
+    await categoriaHandle.removeEntry(pastaVideoNome, { recursive: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+

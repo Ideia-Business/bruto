@@ -27,11 +27,14 @@ import {
 import {
   avisarUmaVez,
   deveMarcarExportado,
+  identificarPastaDoVideo,
   idsPendentesDeExportacao,
+  localizarPastasAntigasDoVideo,
   nomeArquivoDoCabecalho,
   esquecerExportacaoDoVideo,
   pastaAindaExisteNoDisco,
   reexportarAposArtefatoNovo,
+  removerPastaAntiga,
   resultadoDaCopia,
   revisaoAtual,
 } from "@/lib/exportar-artefatos";
@@ -420,5 +423,107 @@ describe("avisarUmaVez — item 3 (6ª revisão), falha persistente não repete 
     avisarUmaVez("v5", "j1", "falha", () => chamadas++);
     avisarUmaVez("v6", "j1", "falha", () => chamadas++);
     assert.equal(chamadas, 2);
+  });
+});
+
+describe("identificarPastaDoVideo — tarefa 22b13383", () => {
+  test("reconhece pasta que termina com o videoId no padrão ' (videoId)'", () => {
+    assert.equal(identificarPastaDoVideo("Título Qualquer (abc-123)", "abc-123"), true);
+    assert.equal(identificarPastaDoVideo("Aula 1 (xyz)", "xyz"), true);
+  });
+
+  test("rejeita se o id for diferente ou não estiver no final", () => {
+    assert.equal(identificarPastaDoVideo("Título Qualquer (abc-123)", "abc-999"), false);
+    assert.equal(identificarPastaDoVideo("abc-123 - Outro nome", "abc-123"), false);
+    assert.equal(identificarPastaDoVideo("Título (abc-123) cópia", "abc-123"), false);
+  });
+
+  test("rejeita strings vazias", () => {
+    assert.equal(identificarPastaDoVideo("", "abc"), false);
+    assert.equal(identificarPastaDoVideo("Pasta", ""), false);
+  });
+});
+
+describe("localizarPastasAntigasDoVideo e removerPastaAntiga — tarefa 22b13383", () => {
+  interface MockEntry {
+    name: string;
+    kind: "directory" | "file";
+  }
+
+  function criarDiretorioMock(nome: string, entries: (MockEntry | FileSystemDirectoryHandle)[]) {
+    return {
+      name: nome,
+      kind: "directory" as const,
+      async *values() {
+        for (const e of entries) yield e;
+      },
+      async removeEntry(entryName: string, _opts?: { recursive?: boolean }) {
+        const idx = entries.findIndex((e) => e.name === entryName);
+        if (idx === -1) throw new Error("Entry not found");
+        entries.splice(idx, 1);
+      },
+    } as unknown as FileSystemDirectoryHandle;
+  }
+
+  test("encontra pasta antiga em categoria anterior quando renomeia/muda categoria", async () => {
+    const pastaAntiga = {
+      name: "Título Antigo (vid-1)",
+      kind: "directory" as const,
+    };
+    const catTecnologia = criarDiretorioMock("Tecnologia", [pastaAntiga]);
+
+    const pastaNova = {
+      name: "Título Novo (vid-1)",
+      kind: "directory" as const,
+    };
+    const catNegocios = criarDiretorioMock("Negócios", [pastaNova]);
+
+    const raizMock = criarDiretorioMock("Raiz", [catTecnologia, catNegocios]);
+
+    const antigas = await localizarPastasAntigasDoVideo(raizMock, "vid-1", {
+      categoriaNome: "Negócios",
+      pastaVideoNome: "Título Novo (vid-1)",
+    });
+
+    assert.equal(antigas.length, 1);
+    assert.equal(antigas[0].categoriaNome, "Tecnologia");
+    assert.equal(antigas[0].pastaVideoNome, "Título Antigo (vid-1)");
+    assert.equal(antigas[0].caminhoCompleto, "Tecnologia/Título Antigo (vid-1)");
+  });
+
+  test("ignora a pasta nova esperada e não retorna ela como antiga", async () => {
+    const pastaAtual = {
+      name: "Mesmo Título (vid-2)",
+      kind: "directory" as const,
+    };
+    const cat = criarDiretorioMock("Tecnologia", [pastaAtual]);
+    const raizMock = criarDiretorioMock("Raiz", [cat]);
+
+    const antigas = await localizarPastasAntigasDoVideo(raizMock, "vid-2", {
+      categoriaNome: "Tecnologia",
+      pastaVideoNome: "Mesmo Título (vid-2)",
+    });
+
+    assert.equal(antigas.length, 0);
+  });
+
+  test("removerPastaAntiga remove a pasta com sucesso através de removeEntry", async () => {
+    const entradas = [{ name: "Pasta Velha (vid-3)", kind: "directory" as const }];
+    const catMock = criarDiretorioMock("Tecnologia", entradas);
+
+    const sucesso = await removerPastaAntiga(catMock, "Pasta Velha (vid-3)");
+    assert.equal(sucesso, true);
+    assert.equal(entradas.length, 0);
+  });
+
+  test("removerPastaAntiga retorna false se a pasta não existir ou der erro, sem lançar", async () => {
+    const catMock = {
+      async removeEntry() {
+        throw new Error("Permissão negada ou não encontrada");
+      },
+    } as unknown as FileSystemDirectoryHandle;
+
+    const sucesso = await removerPastaAntiga(catMock, "Pasta Inexistente (vid-4)");
+    assert.equal(sucesso, false);
   });
 });
