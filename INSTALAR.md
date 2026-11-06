@@ -10,7 +10,9 @@ Pressione **Command (⌘) + Espaço** para abrir o Spotlight. Digite `Terminal` 
 
 ### 2. Instalar o Homebrew
 
-Cole este comando exatamente como está — você pode colar com **Command + V**:
+Se você já tem o Homebrew (digite `brew --version` e, se aparecer um número de versão, já tem), pule para o passo 3. O instalador do Bruto não instala o Homebrew sozinho: sem ele, para logo na primeira etapa.
+
+Se não tem, cole este comando exatamente como está — você pode colar com **Command + V**:
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
