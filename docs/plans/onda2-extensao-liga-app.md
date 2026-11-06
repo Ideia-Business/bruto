@@ -42,7 +42,7 @@ a extensão ainda não usa `connectNative` nem `nativeMessaging`.
   popup, nem a permissão, nem a sobrevivência do servidor).
 
 ## Roteiro manual (do dono, ~5 min, Chrome real)
-1. Carregar `extension/pacote/bruto-<versão>` descompactada em `chrome://extensions`; copiar o ID mostrado.
+1. `npm run build:ext` e carregar `extension/dist` descompactada em `chrome://extensions`; copiar o ID mostrado. (Não `extension/pacote`: o `package:ext` gera só o `.zip` da loja; corrigido em 06/11/2026.)
 2. `bash launcher/registrar-host.sh --extensao-id <ID>`.
 3. Com o app FECHADO, abrir um vídeo de Instagram/TikTok, clicar em "Ligar o app" e aceitar o pedido de permissão.
 4. Conferir "Pronto" e que `http://127.0.0.1:3000` responde; **fechar o Chrome inteiro** e conferir que o servidor segue de pé.

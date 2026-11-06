@@ -175,11 +175,13 @@ Abra um vídeo e destrinche. A aula sai sem mostrar "de 3" — usa a sua chave.
 
 Este roteiro verifica a permissão opcional `nativeMessaging`: a extensão ligando o app local por
 conta própria, a partir de um clique seu. Ele precisa do **Google Chrome de verdade** (não um
-Chromium automatizado) e do pacote instalado, não da pasta `extension/dist`.
+Chromium automatizado).
 
-1. Carregue `extension/pacote/bruto-<versão>` **descompactada** em `chrome://extensions` (modo do
-   desenvolvedor ligado, "Carregar sem compactação") e **copie o ID** que o Chrome mostra no
-   cartão da extensão.
+1. Gere a extensão atual com `npm run build:ext` e carregue **`extension/dist`** (a pasta
+   descompactada que o build produz) em `chrome://extensions` (modo do desenvolvedor ligado,
+   "Carregar sem compactação"); **copie o ID** que o Chrome mostra no cartão da extensão. Não use
+   `extension/pacote`: o `npm run package:ext` gera só o `.zip` para a loja, e uma pasta
+   `pacote/bruto-<versão>` que exista ali é sobra de uma extração antiga, com o popup velho.
 2. Rode `bash launcher/registrar-host.sh --extensao-id <ID>`, com o ID copiado no passo 1.
 3. Com o app **FECHADO**, abra um vídeo de Instagram ou TikTok, clique em **"Ligar o app"** no
    popup e **aceite o pedido de permissão** que o Chrome mostra.
