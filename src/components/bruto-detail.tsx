@@ -27,6 +27,14 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -41,7 +49,19 @@ import { TranscriptView } from "./transcript-view";
 import { TranscriptAiTools } from "./transcript-ai-tools";
 import { JobProgressBar, useJobProgress } from "./job-progress";
 import { fetchApp } from "@/lib/fetch-app";
-import { reexportarAposArtefatoNovo } from "@/lib/exportar-artefatos";
+import {
+  localizarPastasAntigasDoVideo,
+  reexportarAposArtefatoNovo,
+  removerPastaAntiga,
+  type PastaAntigaEncontrada,
+} from "@/lib/exportar-artefatos";
+import {
+  autoExportarAtivado,
+  nomeDaPastaDoVideo,
+  obterPastaAtual,
+  permissaoAtual,
+  sanitizarNomeArquivo,
+} from "@/lib/pasta-exportacao";
 import {
   formatDuration,
   formatUploadDate,
@@ -157,6 +177,40 @@ export function BrutoDetail({
     }
   }
 
+  // Pasta antiga detectada após renomear ou trocar de categoria.
+  const [pastaAntigaDetectada, setPastaAntigaDetectada] = useState<{
+    antigas: PastaAntigaEncontrada[];
+    caminhoNovo: string;
+  } | null>(null);
+  const [removendoPastaAntiga, setRemovendoPastaAntiga] = useState(false);
+
+  async function checarPastasAntigasAposMudanca(novoTitulo: string, novaCategoriaId: number | null) {
+    try {
+      if (!autoExportarAtivado()) return;
+      const pastaAtual = await obterPastaAtual();
+      if (!pastaAtual || (await permissaoAtual(pastaAtual.handle)) !== "granted") return;
+
+      const categoriaObj = categories.find((c) => c.id === novaCategoriaId) ?? data.category;
+      const categoriaNome = sanitizarNomeArquivo(categoriaObj?.name ?? "Sem categoria");
+      const tituloNome = sanitizarNomeArquivo(novoTitulo);
+      const pastaVideoNome = nomeDaPastaDoVideo(tituloNome, data.bruto.id);
+
+      const antigas = await localizarPastasAntigasDoVideo(pastaAtual.handle, data.bruto.id, {
+        categoriaNome,
+        pastaVideoNome,
+      });
+
+      if (antigas.length > 0) {
+        setPastaAntigaDetectada({
+          antigas,
+          caminhoNovo: `${categoriaNome}/${pastaVideoNome}`,
+        });
+      }
+    } catch {
+      /* não interrompe o fluxo normal se a checagem falhar */
+    }
+  }
+
   // Edição inline do título cadastrado.
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(data.bruto.title);
@@ -182,6 +236,7 @@ export function BrutoDetail({
       // de exportação (por jobId) seguiria "em dia" e a pasta ficava com o
       // documento velho para sempre (P2, Codex, 30/09, costura #19 × #20).
       void reexportarAposArtefatoNovo(data.bruto.id);
+      void checarPastasAntigasAposMudanca(title, data.bruto.categoryId);
       router.refresh();
     } else {
       const d = await res.json().catch(() => ({}));
@@ -190,16 +245,18 @@ export function BrutoDetail({
   }
 
   async function changeCategory(categoryId: string) {
+    const catIdNum = Number(categoryId);
     const res = await fetchApp(`/api/videos/${data.bruto.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ categoryId: Number(categoryId) }),
+      body: JSON.stringify({ categoryId: catIdNum }),
     });
     if (res.ok) {
       toast.success("Categoria atualizada.");
       // A exportação grava em categoria/vídeo — mesma classe do título acima:
       // sem invalidar, o vídeo nunca aparecia na pasta da categoria nova.
       void reexportarAposArtefatoNovo(data.bruto.id);
+      void checarPastasAntigasAposMudanca(data.bruto.title, catIdNum);
       router.refresh();
     } else {
       toast.error("Não foi possível mudar a categoria.");
@@ -533,6 +590,82 @@ export function BrutoDetail({
           </Tabs>
         </>
       )}
+
+      <Dialog
+        open={!!pastaAntigaDetectada}
+        onOpenChange={(open) => {
+          if (!open && !removendoPastaAntiga) {
+            setPastaAntigaDetectada(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cópia exportada antiga encontrada</DialogTitle>
+            <DialogDescription className="space-y-3 pt-2 text-foreground/90">
+              <p className="text-sm">
+                Ao renomear o título ou mudar a categoria, uma nova cópia foi gravada em:
+              </p>
+              <p className="rounded bg-muted px-2.5 py-1.5 font-mono text-xs font-semibold text-primary break-all">
+                {pastaAntigaDetectada?.caminhoNovo}
+              </p>
+              <p className="text-sm">
+                {pastaAntigaDetectada?.antigas.length === 1
+                  ? "Foi encontrada a pasta antiga anterior:"
+                  : "Foram encontradas as seguintes pastas antigas:"}
+              </p>
+              <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                {pastaAntigaDetectada?.antigas.map((a) => (
+                  <li key={a.caminhoCompleto} className="font-mono break-all">
+                    {a.caminhoCompleto}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-muted-foreground">
+                Deseja apagar a cópia antiga do seu computador para não acumular arquivos duplicados?
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button
+              variant="outline"
+              disabled={removendoPastaAntiga}
+              onClick={() => setPastaAntigaDetectada(null)}
+            >
+              Manter as duas
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={removendoPastaAntiga}
+              onClick={async () => {
+                if (!pastaAntigaDetectada) return;
+                setRemovendoPastaAntiga(true);
+                try {
+                  let apagadas = 0;
+                  for (const antiga of pastaAntigaDetectada.antigas) {
+                    const ok = await removerPastaAntiga(antiga.categoriaHandle, antiga.pastaVideoNome);
+                    if (ok) apagadas++;
+                  }
+                  if (apagadas > 0) {
+                    toast.success(
+                      apagadas === 1
+                        ? "Pasta antiga apagada com sucesso."
+                        : `${apagadas} pastas antigas apagadas com sucesso.`,
+                    );
+                  } else {
+                    toast.error("Não foi possível apagar a pasta antiga.");
+                  }
+                } finally {
+                  setRemovendoPastaAntiga(false);
+                  setPastaAntigaDetectada(null);
+                }
+              }}
+            >
+              {removendoPastaAntiga ? "Apagando…" : "Apagar pasta antiga"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

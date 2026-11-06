@@ -101,8 +101,9 @@ git rev-parse --verify "${BASE}^{commit}" >/dev/null 2>&1 || exit 1
 git rev-parse --verify HEAD^{commit} >/dev/null 2>&1 || exit 1
 MUDANCAS="$(git diff --name-only "$BASE" HEAD 2>/dev/null)" || exit 1
 
-# Diff vazio não contém mudança de produto; só caminhos da doutrina cancelam.
-[ -z "$MUDANCAS" ] && exit 0
+# Diff vazio (redeploy do mesmo SHA: rollback, nova env var, retry) não prova que
+# nada mudou; só caminhos da doutrina cancelam. Sem diff, constrói.
+[ -z "$MUDANCAS" ] && exit 1
 if printf '%s\n' "$MUDANCAS" | grep -Eqv "$REGEX"; then
   exit 1
 else
