@@ -14,7 +14,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const LIMITE_BYTES = 1024;
-const ESPERA_LIGAR_MS = 30000;
+// A espera acompanha a vida do serve.sh (que pode rodar `npm run build` e depois
+// aguarda ~40 s o servidor subir), não um prazo fixo curto: um build frio ou uma
+// atualização passava dos 30 s e o host dava falha enquanto o launcher seguia e
+// funcionava (achado do Codex, 05/11/2026). O teto só protege de build travado.
+const TETO_LIGAR_MS = 300000;
+const FOLGA_APOS_SAIDA_MS = 5000;
 const PASSO_MS = 500;
 
 const porta = (() => {
@@ -87,7 +92,8 @@ async function ligar() {
     return responder({ ok: true, cmd: "ligar", rodando: true, iniciado: false, url });
   }
   const serve = path.join(path.dirname(fileURLToPath(import.meta.url)), "serve.sh");
-  let falhou = false;
+  let saiu = false;
+  let codigoSaida = 0;
   let filho;
   try {
     filho = spawn("/bin/bash", [serve], {
@@ -99,23 +105,29 @@ async function ligar() {
     return erro("falha-ao-ligar");
   }
   filho.on("error", () => {
-    falhou = true;
+    saiu = true;
+    codigoSaida = -1;
   });
   // serve.sh sai 0 ao terminar de garantir o servidor; saída != 0 é falha.
   filho.on("exit", (codigo) => {
-    if (codigo !== 0) falhou = true;
+    saiu = true;
+    codigoSaida = codigo ?? -1;
   });
   filho.unref();
 
-  const limite = Date.now() + ESPERA_LIGAR_MS;
-  while (Date.now() < limite && !falhou) {
+  const inicio = Date.now();
+  let saidaEm = null;
+  while (Date.now() - inicio < TETO_LIGAR_MS) {
     if (await servidorResponde()) {
       return responder({ ok: true, cmd: "ligar", rodando: true, iniciado: true, url });
     }
+    if (saiu) {
+      if (codigoSaida !== 0) return erro("falha-ao-ligar");
+      // O launcher terminou bem e o servidor ainda não responde: dá uma folga curta e desiste.
+      saidaEm ??= Date.now();
+      if (Date.now() - saidaEm > FOLGA_APOS_SAIDA_MS) break;
+    }
     await dormir(PASSO_MS);
-  }
-  if (!falhou && (await servidorResponde())) {
-    return responder({ ok: true, cmd: "ligar", rodando: true, iniciado: true, url });
   }
   return erro("falha-ao-ligar");
 }
