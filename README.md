@@ -12,7 +12,6 @@
 
 <p align="center">
   <img alt="licença MIT" src="https://img.shields.io/badge/licen%C3%A7a-MIT-E14A18?style=flat-square&labelColor=17140F">
-  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Ideia-Business/bruto/ci.yml?branch=main&style=flat-square&label=CI&labelColor=17140F&color=4A6B3D">
   <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-17140F?style=flat-square&labelColor=6B655C">
   <img alt="PT-BR" src="https://img.shields.io/badge/PT--BR-nativo-17140F?style=flat-square&labelColor=6B655C">
 </p>

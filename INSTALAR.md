@@ -32,7 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/Ideia-Business/bruto/main/install/i
 
 Pressione Enter. Vai instalar as dependências (git, Node.js, Python, Whisper) e criar o app. Leva de 5 a 15 minutos — a primeira vez é mais lenta porque baixa as ferramentas.
 
-Se perguntar "Deseja instalar o transcritor local? (s/n)", responda `s` (sim) e pressione Enter — ele transcreve vídeos de Instagram e TikTok.
+O transcritor (Whisper) é o que lê o áudio de vídeos de Instagram e TikTok. Em Mac com chip Apple (M1 em diante) ele é instalado sozinho e não pergunta nada. Em Mac com chip Intel, aparece "Instalar o transcritor Whisper (openai-whisper, baixa ~2 GB de PyTorch)? [S/n]": pressione Enter (ou `s`) para instalar.
 
 Quando terminar, vai dizer onde ficou instalado. Pronto!
 
@@ -62,7 +62,7 @@ irm https://raw.githubusercontent.com/Ideia-Business/bruto/main/install/instalar
 
 Pressione Enter. Vai instalar tudo — git, Node.js, Python, Whisper, yt-dlp, ffmpeg. Leva de 5 a 15 minutos.
 
-Se perguntar "Deseja instalar o transcritor local? (S/n)", pressione **S** (sim) e Enter.
+Vai aparecer "Instalar o Whisper para transcrição de áudio (~2 GB de download, necessário para Instagram e TikTok)? [S/n]": pressione **S** (ou só Enter) para instalar.
 
 Quando terminar, vai dizer onde ficou instalado (normalmente `C:\Users\[seu nome]\Bruto`).
 
@@ -111,7 +111,7 @@ curl -fsSL https://raw.githubusercontent.com/Ideia-Business/bruto/main/install/i
 
 Pressione Enter. Vai instalar tudo (git, Node.js, Python, Whisper, yt-dlp, ffmpeg). Leva de 5 a 15 minutos.
 
-Se perguntar "Deseja instalar o transcritor local? (s/n)", responda `s` (sim) e pressione Enter.
+Vai aparecer "Instalar o transcritor Whisper (openai-whisper, baixa ~2 GB de PyTorch)? [S/n]": pressione Enter (ou `s`) para instalar.
 
 Quando terminar, vai dizer onde ficou instalado (normalmente `~/Bruto`) e como abrir.
 
