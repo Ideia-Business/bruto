@@ -45,7 +45,7 @@ export const LIMITE_CORPO_BYTES = 1_000_000;
 export const LIMITE_CORPO_PEQUENO = 16_000;
 
 /** Hosts aceitos: só a própria máquina. Porta livre (3000, 3999, o que for). */
-function hostEhLoopback(host: string | null): boolean {
+export function hostEhLoopback(host: string | null): boolean {
   if (!host) return false;
   const semPorta = host.replace(/:\d+$/, "").toLowerCase();
   return semPorta === "127.0.0.1" || semPorta === "localhost" || semPorta === "[::1]" || semPorta === "::1";

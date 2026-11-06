@@ -177,7 +177,9 @@ function friendlyTitle(raw: RawDumpJson, platform: VideoMetadata["platform"]): s
 
 /** Busca metadata do vídeo via --dump-json (sem baixar mídia). */
 export async function fetchMetadata(url: string): Promise<VideoMetadata> {
-  const { stdout } = await runYtdlp(["--skip-download", "--dump-json", "--no-warnings", url]);
+  // `--` antes da URL: um "ID puro" de 11 caracteres começando com `-` (ex.: `-Uxxxxxxxxx`)
+  // passa na checagem de ID do YouTube e, sem o terminador, chegaria ao yt-dlp como opção.
+  const { stdout } = await runYtdlp(["--skip-download", "--dump-json", "--no-warnings", "--", url]);
 
   let raw: RawDumpJson;
   try {
@@ -269,6 +271,7 @@ export async function downloadBestVtt(
     "%(id)s.%(ext)s",
     "-P",
     workdir,
+    "--",
     url,
   ]);
 
@@ -295,7 +298,7 @@ export async function downloadBestVtt(
  */
 export async function downloadAudio(url: string, workdir: string): Promise<string> {
   await runYtdlp(
-    ["-f", "bestaudio/best", "-x", "--audio-format", "m4a", "-o", "audio.%(ext)s", "-P", workdir, url],
+    ["-f", "bestaudio/best", "-x", "--audio-format", "m4a", "-o", "audio.%(ext)s", "-P", workdir, "--", url],
     AUDIO_TIMEOUT_MS,
   );
   return path.join(workdir, "audio.m4a");
