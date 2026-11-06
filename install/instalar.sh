@@ -53,6 +53,7 @@ app. Rodar de novo é atualizar — idempotente, pula o que já existe.
 Opções:
   --sem-whisper     não instala o transcritor local (Whisper)
   --sem-atalho      não cria o atalho do app (Bruto.app / bruto.desktop)
+  --sem-host        não registra o host que liga o Bruto pela extensão do navegador
   --sim             não pergunta nada (assume sim para tudo, inclusive Whisper)
   --dir <pasta>     pasta onde instalar (padrão: o clone atual, $BRUTO_DIR, ou ~/Bruto)
   -h, --help        mostra esta ajuda
@@ -70,6 +71,7 @@ AJUDA
 # ---------------------------------------------------------------------------
 SEM_WHISPER=0
 SEM_ATALHO=0
+SEM_HOST=0
 SIM=0
 DIR_INSTALACAO=""
 
@@ -77,6 +79,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --sem-whisper) SEM_WHISPER=1; shift ;;
     --sem-atalho) SEM_ATALHO=1; shift ;;
+    --sem-host) SEM_HOST=1; shift ;;
     --sim) SIM=1; shift ;;
     --dir)
       [ $# -ge 2 ] || { echo "✗ --dir exige um caminho" >&2; exit 1; }
@@ -491,6 +494,21 @@ else
   else
     etapa "Atalho (bruto.desktop)"
     if bash "$BRUTO_ALVO/launcher/atalho-linux.sh"; then ok; else falha "criação do atalho .desktop falhou" "rode 'bash launcher/atalho-linux.sh' manualmente para ver o erro completo"; fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# Host da extensão (native messaging) — deixa a extensão ligar o Bruto sozinha.
+# Falha aqui é AVISO: o resto do Bruto funciona sem isso.
+# ---------------------------------------------------------------------------
+if [ "$SEM_HOST" -eq 1 ]; then
+  echo "→ Pulando registro do host da extensão (--sem-host)"
+else
+  etapa "Host da extensão (liga o Bruto pelo navegador)"
+  if bash "$BRUTO_ALVO/launcher/registrar-host.sh"; then
+    ok
+  else
+    echo "  ⚠️  não consegui registrar o host da extensão — só afeta ligar o Bruto pela extensão; rode 'bash launcher/registrar-host.sh' depois"
   fi
 fi
 

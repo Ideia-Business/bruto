@@ -82,6 +82,10 @@ if ! is_up; then
   done
 fi
 
+# BRUTO_SEM_JANELA=1 (host nativo da extensão): só garante o servidor, sem abrir
+# a janela do app — quem ligou já está no navegador.
+if [ -n "${BRUTO_SEM_JANELA:-}" ]; then exit 0; fi
+
 # Abre em janela de app (Chrome/Chromium/Edge). Fallback: navegador padrão.
 SO="$(uname -s)"
 if [ "$SO" = "Darwin" ]; then
