@@ -43,7 +43,8 @@ Regras:
 4. `npm run build`, e grava o commit do build em `.next/.bruto-build-commit`.
 5. `npm run doctor` (informativo; não reprova a instalação).
 6. Cria o atalho (ver abaixo).
-7. Diz qual modelo de IA vai ser usado: `claude` ou `codex` logados = plano; senão explica as duas saídas (logar num dos dois, ou `.env` com chave). **Nunca** cria, lê nem escreve `.env`.
+7. Registra o host de native messaging da extensão (`launcher/registrar-host.sh`; `--sem-host` pula). Escreve `com.ideiabusiness.bruto.json` em cada navegador que a pessoa já tem (Chrome, Chromium, Edge, Brave), apontando para `launcher/host-nativo.sh`. Sem ID de extensão conhecido (nem `key` no `extension/manifest.json`, nem `BRUTO_EXTENSAO_ID`), não escreve nada e avisa. Falha do registro é **aviso**, nunca derruba a instalação. macOS e Linux; Windows fica fora desta onda.
+8. Diz qual modelo de IA vai ser usado: `claude` ou `codex` logados = plano; senão explica as duas saídas (logar num dos dois, ou `.env` com chave). **Nunca** cria, lê nem escreve `.env`.
 
 ## Atalho
 
@@ -65,6 +66,7 @@ Regras:
 |---|---|---|
 | `--sem-whisper` | `-SemWhisper` | não instala transcritor |
 | `--sem-atalho` | `-SemAtalho` | não cria atalho |
+| `--sem-host` | — (Windows fora da Onda 1) | não registra o host da extensão |
 | `--sim` | `-Sim` | não pergunta nada (whisper = sim) |
 | `--dir <pasta>` | `-Dir <pasta>` | pasta de instalação |
 
