@@ -345,18 +345,30 @@ describe("devolverUnidade", () => {
     assert.equal(r2.ok, true, "depois da devolução, um novo pedido deve passar");
   });
 
-  test("se o decr de UMA chave falhar, as outras duas ainda são devolvidas (mesma reserva compensada)", async () => {
+  test("devolve só a unidade da instalação — rede e geral continuam gastas (a tentativa custou uma chamada ao Ollama)", async () => {
+    const contador = new ContadorFake();
+    const limites = { diario: 3, rede: 6, geral: 150 };
+    const params = { instalacao: UUID_A, ipHash: "hash-fixo" };
+
+    const r1 = await verificarLimite(contador, { ...params, limites });
+    assert.equal(r1.ok, true);
+    if (!r1.ok) return;
+
+    await devolverUnidade(contador, r1.chaves);
+
+    assert.equal(contador.mapa.get(r1.chaves.instalacao), 0, "a instalação recupera a unidade");
+    assert.equal(contador.mapa.get(r1.chaves.rede), 1, "rede NÃO é devolvida");
+    assert.equal(contador.mapa.get(r1.chaves.geral), 1, "geral NÃO é devolvida");
+  });
+
+  test("se o decr da instalação falhar, não lança (a falha do Redis não derruba a resposta)", async () => {
     class ContadorComFalhaAoDecrementar extends ContadorFake {
-      constructor(private readonly falhaEm: (chave: string) => boolean) {
-        super();
-      }
-      async decr(chave: string): Promise<void> {
-        if (this.falhaEm(chave)) throw new Error("Redis indisponível ao decrementar (simulado)");
-        return super.decr(chave);
+      async decr(_chave: string): Promise<void> {
+        throw new Error("Redis indisponível ao decrementar (simulado)");
       }
     }
 
-    const contador = new ContadorComFalhaAoDecrementar((chave) => chave.includes(":instalacao:"));
+    const contador = new ContadorComFalhaAoDecrementar();
     const limites = { diario: 1, rede: 1, geral: 1 };
     const params = { instalacao: UUID_A, ipHash: "hash-fixo" };
 
@@ -364,15 +376,7 @@ describe("devolverUnidade", () => {
     assert.equal(r1.ok, true);
     if (!r1.ok) return;
 
-    // Não deve lançar, mesmo com o decr da instalação falhando por dentro.
-    await devolverUnidade(contador, r1.chaves);
-
-    assert.equal(
-      contador.mapa.get(r1.chaves.rede),
-      0,
-      "rede tem de ter sido devolvida mesmo com a falha no decr da instalação",
-    );
-    assert.equal(contador.mapa.get(r1.chaves.geral), 0, "geral também tem de ter sido devolvida");
+    await assert.doesNotReject(devolverUnidade(contador, r1.chaves));
   });
 });
 

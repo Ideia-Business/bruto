@@ -179,8 +179,8 @@ async function desfazerIncrementos(contador: Contador, aplicados: readonly strin
  * teste nem de depender do suporte a `EVAL` da API REST do Upstash.
  *
  * Quem chama, se o Ollama falhar depois de um `ok: true`, chama
- * `devolverUnidade` com as `chaves` — mesma simetria, unidade sempre devolvida
- * quando a aula não sai.
+ * `devolverUnidade` com as `chaves` — a unidade da instalação volta quando a
+ * aula não sai; rede e geral ficam gastas (ver `devolverUnidade`).
  */
 export async function verificarLimite(
   contador: Contador,
@@ -234,13 +234,16 @@ export async function verificarLimite(
 }
 
 /**
- * Devolve as três unidades — usado quando o Ollama falha depois do limite ter
- * passado. Cada `decr` é independente (mesmo `catch` mudo de
- * `desfazerIncrementos`): a falha ao devolver UMA chave não pode impedir a
- * devolução das outras duas.
+ * Devolve SÓ a unidade da instalação — usado quando o Ollama falha depois do
+ * limite ter passado, para a pessoa não perder cota por falha do servidor.
+ * Rede e geral NÃO voltam: cada tentativa que chegou ao Ollama gastou uma
+ * chamada da assinatura do dono, e devolver essas duas deixava quem provoca a
+ * falha (resposta vazia, estouro de tempo) pedir sem teto por IP nem geral
+ * (achado de segurança de 05/11/2026). Custo aceito: uma queda real do Ollama
+ * consome o teto geral do dia.
  */
 export async function devolverUnidade(contador: Contador, chaves: ChavesDoPedido): Promise<void> {
-  await desfazerIncrementos(contador, [chaves.instalacao, chaves.rede, chaves.geral]);
+  await desfazerIncrementos(contador, [chaves.instalacao]);
 }
 
 /** O que `GET /api/cota` usa: só lê, nunca incrementa. */
