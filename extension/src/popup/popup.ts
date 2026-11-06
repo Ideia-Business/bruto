@@ -22,6 +22,8 @@ import {
   type FalhaDoApp,
   type ResultadoEnvio,
 } from "../lib/app-local";
+import { ligarApp, statusDoApp } from "../lib/host-nativo";
+import { TEXTO_LIGANDO, TEXTO_PRONTO, mensagemDoLigar } from "../lib/ligar-app-textos";
 import { pedirAulaGratis, verCotaGratis, GratisError } from "../lib/gratis";
 import { guardarAula, listarBancada, esquecerAula, limparBancada } from "../lib/bancada";
 import type { AulaGuardada } from "../lib/bancada";
@@ -73,6 +75,12 @@ const telas = {
 type NomeTela = keyof typeof telas;
 
 function mostrar(nome: NomeTela): void {
+  // Os botões "Ligar o app" só fazem sentido dentro das suas telas: trocar de
+  // tela os devolve ao estado inicial (escondidos e clicáveis), sempre.
+  btnLigarApp.hidden = true;
+  btnLigarApp.disabled = false;
+  btnLigarAppModo.hidden = true;
+  btnLigarAppModo.disabled = false;
   for (const chave of Object.keys(telas) as NomeTela[]) {
     telas[chave].hidden = chave !== nome;
   }
@@ -102,6 +110,8 @@ const appLocalNota = el<HTMLParagraphElement>("app-local-nota");
 const appLocalLista = el<HTMLUListElement>("app-local-lista");
 const appLocalEstado = el<HTMLParagraphElement>("app-local-estado");
 const btnAppLocal = el<HTMLButtonElement>("btn-app-local");
+const btnLigarApp = el<HTMLButtonElement>("btn-ligar-app");
+const btnLigarAppModo = el<HTMLButtonElement>("btn-ligar-app-modo");
 const modoCompletoEstado = el<HTMLParagraphElement>("modo-completo-estado");
 const btnVerificarModoCompleto = el<HTMLButtonElement>("btn-verificar-modo-completo");
 const btnAbrirApp = el<HTMLButtonElement>("btn-abrir-app");
@@ -216,6 +226,41 @@ function prepararTelaAppLocal(plataforma: "instagram" | "tiktok"): void {
 }
 
 /**
+ * O clique em "Ligar o app" (as duas telas usam o mesmo). A ORDEM AQUI É O
+ * CONTRATO (ver `host-nativo.ts`): `ligarApp()` precisa ser a PRIMEIRA coisa
+ * executada no handler — o Chrome só abre o diálogo da permissão dentro do
+ * gesto do usuário, e o gesto expira no primeiro `await`. Por isso a promise
+ * nasce em `p` antes de qualquer atualização de tela, e só então é aguardada.
+ */
+async function ligarAppDoClique(
+  botao: HTMLButtonElement,
+  estado: HTMLParagraphElement,
+  quandoLigado: () => void,
+): Promise<void> {
+  // PRIMEIRO: a permissão parte ainda dentro do gesto do clique.
+  const p = ligarApp();
+  // SÓ DEPOIS: a tela avisa que está ligando e trava o botão contra duplo
+  // clique (cada `ligar` manda o host subir o app de novo).
+  botao.disabled = true;
+  estado.hidden = false;
+  estado.className = "estado";
+  estado.textContent = TEXTO_LIGANDO;
+
+  const resultado = await p;
+  const mensagem = mensagemDoLigar(resultado);
+  estado.className = `estado ${mensagem.tipo}`;
+  estado.textContent = mensagem.texto;
+
+  if (mensagem.ligado) {
+    quandoLigado();
+  } else {
+    // Não ligou: a nova tentativa fica a um clique — a mensagem diz o que
+    // fazer antes dele (reabrir em 1 min, rodar o instalador…).
+    botao.disabled = false;
+  }
+}
+
+/**
  * A extensão não pode iniciar um programa local por conta própria. Esta tela
  * torna o caminho explícito e confirma quando o aplicativo já está pronto.
  */
@@ -223,6 +268,10 @@ async function verificarModoCompleto(): Promise<void> {
   btnVerificarModoCompleto.disabled = true;
   btnVerificarModoCompleto.textContent = "Verificando…";
   btnAbrirApp.hidden = true;
+  // Qualquer verificação devolve o "Ligar o app" ao estado inicial: ele só
+  // reaparece se o app continuar sem responder no fim desta rodada.
+  btnLigarAppModo.hidden = true;
+  btnLigarAppModo.disabled = false;
   modoCompletoEstado.className = "estado";
   modoCompletoEstado.textContent = "Procurando o Bruto neste computador…";
 
@@ -233,8 +282,20 @@ async function verificarModoCompleto(): Promise<void> {
     modoCompletoEstado.textContent = `Pronto: o Bruto está aberto e vai usar seu plano ${plano.label}.`;
     btnAbrirApp.hidden = false;
   } else if (saude === null) {
-    modoCompletoEstado.className = "estado atencao";
-    modoCompletoEstado.textContent = "Ainda não encontrei o aplicativo aberto. Abra o Bruto e clique em “Verificar de novo”.";
+    // O servidor não respondeu — o app está desligado ou ainda subindo.
+    // `statusDoApp` não abre diálogo nenhum (só consulta a permissão), então
+    // dá para sondar a ponte sem incomodar: se o host diz "rodando", o app
+    // está de pé mesmo sem a rota de saúde ter respondido ainda.
+    const status = await statusDoApp();
+    if (status.resultado === "rodando") {
+      modoCompletoEstado.className = "estado ok";
+      modoCompletoEstado.textContent = TEXTO_PRONTO;
+      btnAbrirApp.hidden = false;
+    } else {
+      modoCompletoEstado.className = "estado atencao";
+      modoCompletoEstado.textContent = "Ainda não encontrei o aplicativo aberto. Abra o Bruto e clique em “Verificar de novo”.";
+      btnLigarAppModo.hidden = false;
+    }
   } else {
     const motivo = saude.provedores.find((p) => p.plano && !p.disponivel)?.motivo;
     modoCompletoEstado.className = "estado atencao";
@@ -260,14 +321,20 @@ function mostrarResultadoDoEnvio(resultado: ResultadoEnvio): void {
     appLocalEstado.className = "estado atencao";
     appLocalEstado.textContent =
       "O app do Bruto não está aberto. Abra-o (npm run app) e clique de novo.";
+    // O app está desligado — a saída nova é ligá-lo pela ponte, sem sair do popup.
+    btnLigarApp.hidden = false;
     return;
   }
   if (resultado.resultado === "recusado") {
     appLocalEstado.hidden = false;
     appLocalEstado.className = "estado ruim";
     appLocalEstado.textContent = resultado.motivo;
+    // O servidor respondeu: o app está de pé, então "Ligar o app" some.
+    btnLigarApp.hidden = true;
     return;
   }
+  // Enviou: o app está de pé — "Ligar o app" some.
+  btnLigarApp.hidden = true;
   const destino =
     resultado.resultado === "enfileirado"
       ? `${APP_BASE}/processing`
@@ -296,6 +363,15 @@ async function enviarParaAppLocal(): Promise<void> {
 
 btnAppLocal.addEventListener("click", () => {
   void enviarParaAppLocal();
+});
+
+btnLigarApp.addEventListener("click", () => {
+  void ligarAppDoClique(btnLigarApp, appLocalEstado, () => {
+    // Ligado: o caminho original volta a ficar clicável — a extensão NÃO
+    // envia o link sozinha; quem decide enviar é a pessoa, num clique novo.
+    btnLigarApp.hidden = true;
+    btnAppLocal.disabled = false;
+  });
 });
 
 // --- captura ----------------------------------------------------------
@@ -881,6 +957,14 @@ el<HTMLButtonElement>("btn-modo-completo").addEventListener("click", abrirTelaMo
 
 btnVerificarModoCompleto.addEventListener("click", () => {
   void verificarModoCompleto();
+});
+
+btnLigarAppModo.addEventListener("click", () => {
+  void ligarAppDoClique(btnLigarAppModo, modoCompletoEstado, () => {
+    // Ligado: refaz a verificação — é ela quem confirma o plano e mostra o
+    // "Abrir o app".
+    void verificarModoCompleto();
+  });
 });
 
 el<HTMLButtonElement>("btn-voltar-modo-completo").addEventListener("click", () => {
