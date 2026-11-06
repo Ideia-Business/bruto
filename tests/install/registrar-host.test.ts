@@ -3,7 +3,9 @@
  * Roda o script de verdade com `HOME` num diretório temporário: nada aqui toca os
  * NativeMessagingHosts reais da pessoa. Cobre: só navegadores que existem, JSON válido com
  * caminho absoluto, idempotência, `--remover` só do arquivo próprio, nunca inventar ID,
- * e a derivação do ID a partir do campo `key` conferida por um cálculo independente.
+ * a derivação do ID a partir do campo `key` conferida por um cálculo independente, e
+ * VÁRIOS IDs ao mesmo tempo (`--extensao-id` repetível, `BRUTO_EXTENSAO_ID` com lista,
+ * duplicado uma vez só, ID inválido no meio da lista reprova a lista inteira).
  */
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -18,6 +20,9 @@ const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const REGISTRAR = path.join(RAIZ, "launcher", "registrar-host.sh");
 const ARQUIVO = "com.ideiabusiness.bruto.json";
 const ID_VALIDO = "abcdefghijklmnopabcdefghijklmnop";
+/** Dois IDs válidos com ordem óbvia (LOJA < TESTE) para provar ordenação e dedupe. */
+const ID_LOJA = "aaaabbbbccccddddaaaabbbbccccdddd";
+const ID_TESTE = "ppppooooppppooooppppooooppppoooo";
 
 const ehMac = process.platform === "darwin";
 /** Pasta de dados de cada navegador, relativa ao HOME, como o registrador as enumera. */
@@ -126,6 +131,106 @@ describe("registrar-host.sh", () => {
     const r = rodar([], { env: { BRUTO_EXTENSAO_ID: ID_VALIDO } });
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(JSON.parse(fs.readFileSync(manifestoDe("chrome"), "utf8")).allowed_origins, [`chrome-extension://${ID_VALIDO}/`]);
+  });
+
+  test("--extensao-id repetível: as duas origens entram, ordenadas", () => {
+    criarNavegadores("chrome");
+    const r = rodar(["--extensao-id", ID_TESTE, "--extensao-id", ID_LOJA]);
+    assert.equal(r.status, 0, r.stderr);
+    const m = JSON.parse(fs.readFileSync(manifestoDe("chrome"), "utf8"));
+    assert.deepEqual(m.allowed_origins, [`chrome-extension://${ID_LOJA}/`, `chrome-extension://${ID_TESTE}/`]);
+  });
+
+  test("BRUTO_EXTENSAO_ID aceita lista separada por vírgula e/ou espaço", () => {
+    criarNavegadores("chrome");
+    const esperado = [`chrome-extension://${ID_LOJA}/`, `chrome-extension://${ID_TESTE}/`];
+    for (const lista of [`${ID_LOJA},${ID_TESTE}`, `${ID_LOJA} ${ID_TESTE}`, `${ID_TESTE} ${ID_LOJA},${ID_LOJA}`]) {
+      fs.rmSync(path.join(home, NAVEGADORES.chrome, "NativeMessagingHosts"), { recursive: true, force: true });
+      const r = rodar([], { env: { BRUTO_EXTENSAO_ID: lista } });
+      assert.equal(r.status, 0, r.stderr);
+      assert.deepEqual(JSON.parse(fs.readFileSync(manifestoDe("chrome"), "utf8")).allowed_origins, esperado, `BRUTO_EXTENSAO_ID=${JSON.stringify(lista)}`);
+    }
+  });
+
+  test("ID repetido (na flag e no ambiente) entra uma única vez", () => {
+    criarNavegadores("chrome");
+    const r = rodar(["--extensao-id", ID_LOJA, "--extensao-id", ID_LOJA], { env: { BRUTO_EXTENSAO_ID: `${ID_LOJA},${ID_LOJA}` } });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(JSON.parse(fs.readFileSync(manifestoDe("chrome"), "utf8")).allowed_origins, [`chrome-extension://${ID_LOJA}/`]);
+  });
+
+  test("um ID inválido no meio da lista reprova a lista inteira: nada escrito, exit 0, aviso nomeia o inválido", () => {
+    criarNavegadores("chrome", "edge");
+    const invalido = "isto-nao-e-um-id";
+    for (const extras of [[ID_LOJA, invalido], [invalido, ID_LOJA, ID_TESTE]]) {
+      const args: string[] = [];
+      for (const id of extras) args.push("--extensao-id", id);
+      const r = rodar(args);
+      assert.equal(r.status, 0, `lista=${JSON.stringify(extras)}`);
+      assert.equal(fs.existsSync(manifestoDe("chrome")), false, `escreveu manifesto com a lista ${JSON.stringify(extras)}`);
+      assert.equal(fs.existsSync(manifestoDe("edge")), false, `escreveu manifesto com a lista ${JSON.stringify(extras)}`);
+      assert.ok((r.stdout + r.stderr).includes(invalido), `o aviso não nomeou o ID inválido em ${JSON.stringify(extras)}`);
+    }
+    // O mesmo quando o inválido vem no ambiente, misturado na lista por vírgula:
+    const r2 = rodar([], { env: { BRUTO_EXTENSAO_ID: `${ID_LOJA},${ID_TESTE},${invalido}` } });
+    assert.equal(r2.status, 0);
+    assert.equal(fs.existsSync(manifestoDe("chrome")), false);
+    assert.ok((r2.stdout + r2.stderr).includes(invalido));
+  });
+
+  test("idempotente com vários IDs: a segunda rodada, com a ordem trocada, deixa os bytes iguais", () => {
+    criarNavegadores("chrome");
+    rodar(["--extensao-id", ID_TESTE, "--extensao-id", ID_LOJA]);
+    const antes = fs.readFileSync(manifestoDe("chrome"));
+    const r = rodar(["--extensao-id", ID_LOJA, "--extensao-id", ID_TESTE]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(antes.equals(fs.readFileSync(manifestoDe("chrome"))));
+  });
+
+  test("a `key` do manifest entra como MAIS um ID junto com o --extensao-id informado", () => {
+    criarNavegadores("chrome");
+    const { publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const der = publicKey.export({ type: "spki", format: "der" });
+    const derivado = crypto
+      .createHash("sha256")
+      .update(der)
+      .digest("hex")
+      .slice(0, 32)
+      .replace(/[0-9a-f]/g, (c) => String.fromCharCode("a".charCodeAt(0) + parseInt(c, 16)));
+
+    // Raiz falsa: o script resolve a pasta do Bruto a partir do próprio caminho.
+    const raizFalsa = fs.mkdtempSync(path.join(os.tmpdir(), "bruto-raiz-"));
+    try {
+      fs.mkdirSync(path.join(raizFalsa, "launcher"));
+      fs.mkdirSync(path.join(raizFalsa, "extension"));
+      fs.copyFileSync(REGISTRAR, path.join(raizFalsa, "launcher", "registrar-host.sh"));
+      fs.writeFileSync(path.join(raizFalsa, "extension", "manifest.json"), JSON.stringify({ name: "x", key: der.toString("base64") }));
+
+      const r = rodar(["--extensao-id", ID_TESTE], { script: path.join(raizFalsa, "launcher", "registrar-host.sh") });
+      assert.equal(r.status, 0, r.stderr);
+      const m = JSON.parse(fs.readFileSync(manifestoDe("chrome"), "utf8"));
+      assert.deepEqual(m.allowed_origins, [`chrome-extension://${ID_TESTE}/`, `chrome-extension://${derivado}/`].sort());
+      assert.equal(m.path, path.join(raizFalsa, "launcher", "host-nativo.sh"));
+    } finally {
+      fs.rmSync(raizFalsa, { recursive: true, force: true });
+    }
+  });
+
+  test("--remover depois de registrar vários IDs continua removendo só o arquivo próprio", () => {
+    criarNavegadores("chrome", "brave");
+    rodar(["--extensao-id", ID_LOJA, "--extensao-id", ID_TESTE]);
+    const vizinho = path.join(path.dirname(manifestoDe("chrome")), "outro.host.json");
+    fs.writeFileSync(vizinho, '{"name":"outro"}');
+
+    const r = rodar(["--remover"]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(fs.existsSync(manifestoDe("chrome")), false);
+    assert.equal(fs.existsSync(manifestoDe("brave")), false);
+    assert.equal(fs.readFileSync(vizinho, "utf8"), '{"name":"outro"}', "o --remover levou um arquivo que não era dele");
+  });
+
+  test("--extensao-id sem valor continua recusado com exit 1", () => {
+    assert.equal(rodar(["--extensao-id"]).status, 1);
   });
 
   test("opção desconhecida é recusada com exit 1 (não é silêncio)", () => {
