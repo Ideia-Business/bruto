@@ -56,7 +56,13 @@ listar_diretorios() {
         "$base/BraveSoftware/Brave-Browser"
       ;;
     Linux)
-      base="$HOME/.config"
+      # XDG_CONFIG_HOME (caminho absoluto, como manda a especificação XDG) é onde os
+      # navegadores guardam a config e os manifestos de native messaging; sem ele, ~/.config.
+      base="${XDG_CONFIG_HOME:-}"
+      case "$base" in
+        /*) ;;
+        *) base="$HOME/.config" ;;
+      esac
       printf '%s\n' \
         "$base/google-chrome" \
         "$base/chromium" \

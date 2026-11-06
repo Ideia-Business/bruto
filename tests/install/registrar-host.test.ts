@@ -162,6 +162,48 @@ describe("registrar-host.sh", () => {
   });
 });
 
+describe("registrar-host.sh — Linux e XDG_CONFIG_HOME", () => {
+  /** `uname` falso na frente do PATH: faz o script seguir o ramo Linux também no macOS. */
+  function comLinuxFalso(): string {
+    const bin = path.join(home, "bin-falso");
+    fs.mkdirSync(bin, { recursive: true });
+    fs.writeFileSync(path.join(bin, "uname"), '#!/bin/sh\necho Linux\n', { mode: 0o755 });
+    return bin;
+  }
+  const rodarLinux = (args: string[], env: Record<string, string> = {}) =>
+    rodar(args, { env: { PATH: `${comLinuxFalso()}${path.delimiter}${process.env.PATH ?? ""}`, ...env } });
+
+  test("com XDG_CONFIG_HOME absoluto, registra ali e não em ~/.config", () => {
+    const xdg = path.join(home, "xdg");
+    fs.mkdirSync(path.join(xdg, "google-chrome"), { recursive: true });
+    fs.mkdirSync(path.join(home, ".config", "chromium"), { recursive: true }); // existe, mas não é o XDG
+    const r = rodarLinux(["--extensao-id", ID_VALIDO], { XDG_CONFIG_HOME: xdg });
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(fs.existsSync(path.join(xdg, "google-chrome", "NativeMessagingHosts", ARQUIVO)));
+    assert.equal(fs.existsSync(path.join(home, ".config", "chromium", "NativeMessagingHosts", ARQUIVO)), false);
+  });
+
+  test("sem XDG_CONFIG_HOME, ou com valor relativo/vazio, cai em ~/.config", () => {
+    fs.mkdirSync(path.join(home, ".config", "google-chrome"), { recursive: true });
+    for (const xdg of ["", "relativo/xdg"]) {
+      const r = rodarLinux(["--extensao-id", ID_VALIDO], { XDG_CONFIG_HOME: xdg });
+      assert.equal(r.status, 0, r.stderr);
+      assert.ok(fs.existsSync(path.join(home, ".config", "google-chrome", "NativeMessagingHosts", ARQUIVO)), `XDG=${JSON.stringify(xdg)}`);
+      rodarLinux(["--remover"], { XDG_CONFIG_HOME: xdg });
+    }
+  });
+
+  test("--remover também respeita XDG_CONFIG_HOME", () => {
+    const xdg = path.join(home, "xdg");
+    fs.mkdirSync(path.join(xdg, "microsoft-edge"), { recursive: true });
+    rodarLinux(["--extensao-id", ID_VALIDO], { XDG_CONFIG_HOME: xdg });
+    const alvo = path.join(xdg, "microsoft-edge", "NativeMessagingHosts", ARQUIVO);
+    assert.ok(fs.existsSync(alvo));
+    assert.equal(rodarLinux(["--remover"], { XDG_CONFIG_HOME: xdg }).status, 0);
+    assert.equal(fs.existsSync(alvo), false);
+  });
+});
+
 describe("instalar.sh — passo do host", () => {
   test("--help lista --sem-host e o script tem sintaxe válida", () => {
     const ajuda = spawnSync("bash", [path.join(RAIZ, "install", "instalar.sh"), "--help"], { encoding: "utf8" });
