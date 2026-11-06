@@ -21,6 +21,7 @@
   },
   "options_page": "options/options.html",
   "permissions": ["storage", "scripting", "activeTab", "downloads"],
+  "optional_permissions": ["nativeMessaging"],
   "host_permissions": [
     "http://127.0.0.1:3000/*",
     "https://bruto-gratis.vercel.app/*",
