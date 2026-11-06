@@ -22,22 +22,21 @@
  *                             na legenda vira comando de shell com leitura do
  *                             disco inteiro (`~/.ssh`, `.env`, `~/.codex/auth.json`).
  *                             É o mesmo motivo do `--tools ""` no `claude-cli`.
- *   -c mcp_servers={}         zera os MCP servers de `~/.codex/config.toml`
- *                             para esta chamada. `--disable shell_tool` sozinho
- *                             NÃO os desligava: uma instrução na legenda podia
- *                             chamar uma ferramenta de MCP que a pessoa tivesse
- *                             configurado, sem ninguém aprovando. Só a chave
- *                             `mcp_servers` é sobrescrita — `--ignore-user-config`
- *                             fecharia o MCP mas apagaria também o `model`
- *                             escolhido pela pessoa (ver comentário abaixo sobre
- *                             por que o modelo não é passado por flag). Achado
- *                             S-01/P1 de 24/09/2026, fechado por decisão do dono
- *                             em 05/11/2026. NÃO PROVADO em execução: nesta
- *                             estação o `codex exec` não expôs nenhum MCP nem
- *                             sem o override (controle positivo ausente), então
- *                             o efeito só foi medido como "a chamada continua
- *                             funcionando" — a prova de que fecha o MCP exige
- *                             uma estação com MCP de escrita configurado.
+ *   --ignore-user-config      não carrega `$CODEX_HOME/config.toml` (a
+ *                             autenticação continua vindo de `CODEX_HOME`).
+ *                             `--disable shell_tool` sozinho NÃO desligava MCP:
+ *                             uma instrução na legenda de um vídeo podia chamar
+ *                             ferramenta de MCP configurada no Codex da pessoa,
+ *                             sem ninguém aprovando. Medido com um MCP canário
+ *                             (05/11/2026): `-c mcp_servers={}` NÃO fecha — o
+ *                             servidor iniciou e listou a ferramenta mesmo com
+ *                             o override —, e esta flag fecha (nenhum servidor
+ *                             iniciou, a chamada seguiu funcionando). Custo
+ *                             aceito pelo dono: o `model` do config.toml da
+ *                             pessoa é ignorado e vale o padrão do Codex (ver
+ *                             comentário abaixo sobre por que o modelo não é
+ *                             passado por flag); o esforço de raciocínio segue
+ *                             por `-c`. Achado S-01/P1 de 24/09/2026.
  *   --ephemeral               não persiste arquivo de sessão
  *   --skip-git-repo-check     permite rodar fora de repositório git — usamos um
  *                             diretório temporário como raiz de trabalho, para
@@ -141,8 +140,7 @@ export function argumentosDoExec(prompt: string, esforco: string): string[] {
     "never",
     "-c",
     `model_reasoning_effort=${esforco}`,
-    "-c",
-    "mcp_servers={}",
+    "--ignore-user-config",
     "--",
     prompt,
   ];

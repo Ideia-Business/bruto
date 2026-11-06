@@ -1,8 +1,8 @@
 /**
  * `argumentosDoExec` (src/pipeline/lib/llm/providers/codex-cli.ts) — as flags de
  * contenção do `codex exec`, que roda sobre a transcrição de um vídeo de TERCEIRO.
- * Travam: o prompt só depois de `--`, o shell desligado, a sandbox só-leitura e os
- * MCP servers da pessoa zerados (achado de segurança de 05/11/2026).
+ * Travam: o prompt só depois de `--`, o shell desligado, a sandbox só-leitura e a
+ * config da pessoa ignorada (fecha o MCP; achado de segurança de 05/11/2026).
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
@@ -24,15 +24,14 @@ describe("argumentosDoExec", () => {
     assert.equal(hostil.indexOf("--dangerously-bypass-approvals-and-sandbox"), hostil.length - 1);
   });
 
-  test("zera os MCP servers da pessoa (`-c mcp_servers={}`)", () => {
-    const i = args.indexOf("mcp_servers={}");
-    assert.ok(i > 0, "o override tem de estar presente");
-    assert.equal(args[i - 1], "-c");
+  test("ignora a config da pessoa, que é o que fecha os MCP servers (`-c mcp_servers={}` não fecha: medido)", () => {
+    assert.ok(args.includes("--ignore-user-config"));
+    assert.ok(args.indexOf("--ignore-user-config") < args.indexOf("--"), "é flag, tem de vir antes do terminador");
+    assert.ok(!args.includes("mcp_servers={}"), "o override não fecha MCP; não deve voltar como se fechasse");
   });
 
-  test("mantém o esforço de raciocínio como override separado, sem apagar o resto da config", () => {
+  test("o esforço de raciocínio segue como override separado", () => {
     assert.ok(args.includes("model_reasoning_effort=medium"));
-    assert.ok(!args.includes("--ignore-user-config"), "ignorar a config inteira apagaria o `model` da pessoa");
   });
 
   test("shell desligado, sandbox só-leitura e sessão efêmera", () => {
