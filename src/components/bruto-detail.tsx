@@ -181,6 +181,7 @@ export function BrutoDetail({
   const [pastaAntigaDetectada, setPastaAntigaDetectada] = useState<{
     antigas: PastaAntigaEncontrada[];
     caminhoNovo: string;
+    pastaId: string | null;
   } | null>(null);
   const [removendoPastaAntiga, setRemovendoPastaAntiga] = useState(false);
 
@@ -204,6 +205,7 @@ export function BrutoDetail({
         setPastaAntigaDetectada({
           antigas,
           caminhoNovo: `${categoriaNome}/${pastaVideoNome}`,
+          pastaId: pastaAtual.pastaId,
         });
       }
     } catch {
@@ -622,7 +624,9 @@ export function BrutoDetail({
                 ))}
               </ul>
               <p className="text-xs text-muted-foreground">
-                Deseja apagar a cópia antiga do seu computador para não acumular arquivos duplicados?
+                Deseja apagar a cópia antiga? Só serão apagados os arquivos que o Bruto gravou nela; se houver
+                algo seu dentro da pasta (ou ela for de uma versão anterior sem registro), ela fica e você
+                precisa apagá-la manualmente.
               </p>
             </DialogDescription>
           </DialogHeader>
@@ -642,9 +646,16 @@ export function BrutoDetail({
                 setRemovendoPastaAntiga(true);
                 try {
                   let apagadas = 0;
+                  const manuais: string[] = [];
+                  let erros = 0;
                   for (const antiga of pastaAntigaDetectada.antigas) {
-                    const ok = await removerPastaAntiga(antiga.categoriaHandle, antiga.pastaVideoNome);
-                    if (ok) apagadas++;
+                    const r = await removerPastaAntiga(antiga.categoriaHandle, antiga.pastaVideoNome, {
+                      categoriaNome: antiga.categoriaNome,
+                      pastaId: pastaAntigaDetectada.pastaId,
+                    });
+                    if (r.tipo === "removida") apagadas++;
+                    else if (r.tipo === "erro") erros++;
+                    else manuais.push(antiga.caminhoCompleto);
                   }
                   if (apagadas > 0) {
                     toast.success(
@@ -652,9 +663,13 @@ export function BrutoDetail({
                         ? "Pasta antiga apagada com sucesso."
                         : `${apagadas} pastas antigas apagadas com sucesso.`,
                     );
-                  } else {
-                    toast.error("Não foi possível apagar a pasta antiga.");
                   }
+                  if (manuais.length > 0) {
+                    toast.warning(
+                      `Não apaguei: ${manuais.join(", ")}. Apague manualmente — há arquivos que o Bruto não gravou ou a pasta é anterior ao registro.`,
+                    );
+                  }
+                  if (erros > 0) toast.error("Não foi possível apagar a pasta antiga.");
                 } finally {
                   setRemovendoPastaAntiga(false);
                   setPastaAntigaDetectada(null);

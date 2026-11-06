@@ -34,6 +34,7 @@ import {
   esquecerExportacaoDoVideo,
   pastaAindaExisteNoDisco,
   reexportarAposArtefatoNovo,
+  registrarArquivoGravado,
   removerPastaAntiga,
   resultadoDaCopia,
   revisaoAtual,
@@ -507,23 +508,161 @@ describe("localizarPastasAntigasDoVideo e removerPastaAntiga — tarefa 22b13383
     assert.equal(antigas.length, 0);
   });
 
-  test("removerPastaAntiga remove a pasta com sucesso através de removeEntry", async () => {
-    const entradas = [{ name: "Pasta Velha (vid-3)", kind: "directory" as const }];
-    const catMock = criarDiretorioMock("Tecnologia", entradas);
+  // --- removerPastaAntiga: só apaga o que o próprio export registrou, nunca recursivo ---
 
-    const sucesso = await removerPastaAntiga(catMock, "Pasta Velha (vid-3)");
-    assert.equal(sucesso, true);
-    assert.equal(entradas.length, 0);
-  });
+  function instalarLocalStorageFalso() {
+    const mapa = new Map<string, string>();
+    const antes = (globalThis as { localStorage?: unknown }).localStorage;
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (k: string) => mapa.get(k) ?? null,
+      setItem: (k: string, v: string) => void mapa.set(k, v),
+      removeItem: (k: string) => void mapa.delete(k),
+    };
+    return () => {
+      (globalThis as { localStorage?: unknown }).localStorage = antes;
+    };
+  }
 
-  test("removerPastaAntiga retorna false se a pasta não existir ou der erro, sem lançar", async () => {
-    const catMock = {
-      async removeEntry() {
-        throw new Error("Permissão negada ou não encontrada");
+  /** Categoria com UMA pasta de vídeo; registra `removeEntry` com as opções recebidas. */
+  function montarCategoria(pastaNome: string, conteudo: { name: string; kind: "file" | "directory" }[]) {
+    const chamadas: { alvo: string; nome: string; recursive?: boolean }[] = [];
+    const pasta = {
+      name: pastaNome,
+      kind: "directory" as const,
+      async *values() {
+        for (const e of [...conteudo]) yield e;
+      },
+      async removeEntry(nome: string, opts?: { recursive?: boolean }) {
+        chamadas.push({ alvo: "pasta", nome, recursive: opts?.recursive });
+        const idx = conteudo.findIndex((e) => e.name === nome);
+        if (idx === -1) throw new Error("not found");
+        if (conteudo[idx].kind === "directory" && !opts?.recursive) throw new Error("não vazia");
+        conteudo.splice(idx, 1);
+      },
+    };
+    const categorias = [pasta];
+    const cat = {
+      name: "Tecnologia",
+      kind: "directory" as const,
+      async getDirectoryHandle(nome: string) {
+        if (nome !== pastaNome) throw new Error("not found");
+        return pasta;
+      },
+      async removeEntry(nome: string, opts?: { recursive?: boolean }) {
+        chamadas.push({ alvo: "categoria", nome, recursive: opts?.recursive });
+        if (opts?.recursive) throw new Error("teste: recursive não deveria ser usado");
+        if (conteudo.length > 0) throw new Error("não vazia");
+        categorias.pop();
       },
     } as unknown as FileSystemDirectoryHandle;
+    return { cat, chamadas, categorias };
+  }
 
-    const sucesso = await removerPastaAntiga(catMock, "Pasta Inexistente (vid-4)");
-    assert.equal(sucesso, false);
+  const CTX = { categoriaNome: "Tecnologia", pastaId: "p1" };
+
+  test("(b) apaga só os nomes registrados e depois a pasta, sem recursive", async () => {
+    const restaura = instalarLocalStorageFalso();
+    try {
+      registrarArquivoGravado("p1", "Tecnologia/Velha (vid-3)", "resumo.md");
+      registrarArquivoGravado("p1", "Tecnologia/Velha (vid-3)", "transcricao.md");
+      const conteudo = [
+        { name: "resumo.md", kind: "file" as const },
+        { name: "transcricao.md", kind: "file" as const },
+      ];
+      const { cat, chamadas, categorias } = montarCategoria("Velha (vid-3)", conteudo);
+      const r = await removerPastaAntiga(cat, "Velha (vid-3)", CTX);
+      assert.deepEqual(r, { tipo: "removida" });
+      assert.equal(conteudo.length, 0);
+      assert.equal(categorias.length, 0);
+      assert.ok(chamadas.length === 3 && chamadas.every((c) => !c.recursive), JSON.stringify(chamadas));
+      assert.deepEqual(chamadas.map((c) => c.nome), ["resumo.md", "transcricao.md", "Velha (vid-3)"]);
+      // registro consumido: a mesma pasta não tem mais autorização
+      const de_novo = await removerPastaAntiga(cat, "Velha (vid-3)", CTX);
+      assert.deepEqual(de_novo, { tipo: "sem-registro" });
+    } finally {
+      restaura();
+    }
+  });
+
+  test("(a) arquivo estranho sobrevive, a pasta fica e o resultado diz que não removeu tudo", async () => {
+    const restaura = instalarLocalStorageFalso();
+    try {
+      registrarArquivoGravado("p1", "Tecnologia/Velha (vid-5)", "resumo.md");
+      const conteudo = [
+        { name: "resumo.md", kind: "file" as const },
+        { name: "minhas-notas.md", kind: "file" as const },
+      ];
+      const { cat, chamadas } = montarCategoria("Velha (vid-5)", conteudo);
+      const r = await removerPastaAntiga(cat, "Velha (vid-5)", CTX);
+      assert.deepEqual(r, { tipo: "parcial", restantes: ["minhas-notas.md"] });
+      assert.deepEqual(conteudo.map((e) => e.name), ["minhas-notas.md"]);
+      assert.ok(!chamadas.some((c) => c.alvo === "categoria"), "a pasta não pode ter sido removida");
+      assert.ok(chamadas.every((c) => !c.recursive));
+    } finally {
+      restaura();
+    }
+  });
+
+  test("(c) pasta sem registro não é apagada", async () => {
+    const restaura = instalarLocalStorageFalso();
+    try {
+      const conteudo = [{ name: "resumo.md", kind: "file" as const }];
+      const { cat, chamadas } = montarCategoria("Antiga (vid-6)", conteudo);
+      const r = await removerPastaAntiga(cat, "Antiga (vid-6)", CTX);
+      assert.deepEqual(r, { tipo: "sem-registro" });
+      assert.equal(conteudo.length, 1);
+      assert.equal(chamadas.length, 0);
+    } finally {
+      restaura();
+    }
+  });
+
+  test("(c2) registro de OUTRA pasta de exportação ou de outro caminho não autoriza", async () => {
+    const restaura = instalarLocalStorageFalso();
+    try {
+      registrarArquivoGravado("outra-pasta", "Tecnologia/Antiga (vid-7)", "resumo.md");
+      registrarArquivoGravado("p1", "Negócios/Antiga (vid-7)", "resumo.md");
+      const conteudo = [{ name: "resumo.md", kind: "file" as const }];
+      const { cat, chamadas } = montarCategoria("Antiga (vid-7)", conteudo);
+      const r = await removerPastaAntiga(cat, "Antiga (vid-7)", CTX);
+      assert.deepEqual(r, { tipo: "sem-registro" });
+      assert.equal(chamadas.length, 0);
+    } finally {
+      restaura();
+    }
+  });
+
+  test("(d) subpasta dentro da pasta antiga nunca é apagada, mesmo com o mesmo nome de um arquivo registrado", async () => {
+    const restaura = instalarLocalStorageFalso();
+    try {
+      registrarArquivoGravado("p1", "Tecnologia/Velha (vid-8)", "resumo.md");
+      const conteudo = [
+        { name: "resumo.md", kind: "directory" as const }, // pasta com nome registrado
+        { name: "Anexos (vid-8)", kind: "directory" as const },
+      ];
+      const { cat, chamadas } = montarCategoria("Velha (vid-8)", conteudo);
+      const r = await removerPastaAntiga(cat, "Velha (vid-8)", CTX);
+      assert.deepEqual(r, { tipo: "parcial", restantes: ["resumo.md/", "Anexos (vid-8)/"] });
+      assert.equal(conteudo.length, 2);
+      assert.equal(chamadas.length, 0);
+    } finally {
+      restaura();
+    }
+  });
+
+  test("removerPastaAntiga devolve erro (sem lançar) se o handle falhar", async () => {
+    const restaura = instalarLocalStorageFalso();
+    try {
+      registrarArquivoGravado("p1", "Tecnologia/Velha (vid-4)", "resumo.md");
+      const catMock = {
+        async getDirectoryHandle() {
+          throw new Error("Permissão negada ou não encontrada");
+        },
+      } as unknown as FileSystemDirectoryHandle;
+      const r = await removerPastaAntiga(catMock, "Velha (vid-4)", CTX);
+      assert.deepEqual(r, { tipo: "erro" });
+    } finally {
+      restaura();
+    }
   });
 });

@@ -107,6 +107,46 @@ function chaveExportados(pastaId: string | null): string {
   return `${PREFIXO_LOCALSTORAGE_EXPORTADOS}:${pastaId ?? "default"}`;
 }
 
+const PREFIXO_LOCALSTORAGE_ARQUIVOS = "bruto:arquivos-exportados";
+
+/**
+ * Registro do que ESTE app gravou, por pasta de exportação (`pastaId`) e por
+ * CAMINHO da pasta do vídeo (`Categoria/Título (videoId)`): caminho -> nomes de
+ * arquivo. É o que autoriza `removerPastaAntiga` a apagar algo — achar a pasta
+ * por busca de nome não prova que o conteúdo dela é nosso. Por caminho (não por
+ * videoId) porque renomear o título cria pasta nova e a antiga precisa manter o
+ * registro dela.
+ */
+function chaveArquivos(pastaId: string | null): string {
+  return `${PREFIXO_LOCALSTORAGE_ARQUIVOS}:${pastaId ?? "default"}`;
+}
+
+function lerRegistroArquivos(pastaId: string | null): Record<string, string[]> {
+  try {
+    const bruto = localStorage.getItem(chaveArquivos(pastaId));
+    const lido = bruto ? (JSON.parse(bruto) as unknown) : {};
+    return lido && typeof lido === "object" && !Array.isArray(lido) ? (lido as Record<string, string[]>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function gravarRegistroArquivos(pastaId: string | null, registro: Record<string, string[]>): void {
+  try {
+    localStorage.setItem(chaveArquivos(pastaId), JSON.stringify(registro));
+  } catch {
+    /* storage bloqueado — sem registro, a remoção automática recusa (falha segura) */
+  }
+}
+
+export function registrarArquivoGravado(pastaId: string | null, caminhoPasta: string, nomeArquivo: string): void {
+  const registro = lerRegistroArquivos(pastaId);
+  const nomes = Array.isArray(registro[caminhoPasta]) ? registro[caminhoPasta] : [];
+  if (!nomes.includes(nomeArquivo)) nomes.push(nomeArquivo);
+  registro[caminhoPasta] = nomes;
+  gravarRegistroArquivos(pastaId, registro);
+}
+
 /**
  * Mapa `videoId -> jobId` já exportado com sucesso pleno, DA PASTA cujo id é
  * passado — nunca relê a pasta atual. Escopar por pasta é o que faz trocar de
@@ -343,6 +383,9 @@ export async function exportarVideoAutomaticamente(
       const writable = await fileHandle.createWritable();
       await writable.write(dados);
       await writable.close();
+      // Registra DEPOIS do close e ANTES do próximo arquivo: só o que este app
+      // gravou pode ser apagado depois (ver `removerPastaAntiga`).
+      registrarArquivoGravado(pastaId, `${categoriaNome}/${pastaVideoNome}`, nomeArquivo);
       escritos++;
     }
 
@@ -587,18 +630,60 @@ export async function localizarPastasAntigasDoVideo(
   return encontradas;
 }
 
+export type ResultadoRemocaoPastaAntiga =
+  | { tipo: "removida" }
+  /** Pasta antiga exportada antes do registro existir (ou registro perdido): nada foi apagado. */
+  | { tipo: "sem-registro" }
+  /** Havia coisa que o app não gravou (arquivo ou subpasta): os arquivos do app foram apagados, a pasta FICA. */
+  | { tipo: "parcial"; restantes: string[] }
+  | { tipo: "erro" };
+
 /**
- * Remove com segurança a pasta antiga indicada (com recursive: true).
+ * Remove a pasta antiga SÓ se ela contiver exclusivamente arquivos que este app
+ * gravou (registro por caminho, ver `registrarArquivoGravado`). Nunca recursivo:
+ * apaga arquivo por arquivo (nomes registrados) e depois a pasta vazia — se
+ * sobrar qualquer coisa (arquivo da pessoa, subpasta), `removeEntry` da pasta
+ * nem é chamado e o resultado é "parcial". Sem registro: não apaga nada.
  */
 export async function removerPastaAntiga(
   categoriaHandle: FileSystemDirectoryHandle,
   pastaVideoNome: string,
-): Promise<boolean> {
+  contexto: { categoriaNome: string; pastaId: string | null },
+): Promise<ResultadoRemocaoPastaAntiga> {
   try {
-    await categoriaHandle.removeEntry(pastaVideoNome, { recursive: true });
-    return true;
+    const caminho = `${contexto.categoriaNome}/${pastaVideoNome}`;
+    const registro = lerRegistroArquivos(contexto.pastaId);
+    const nomes = registro[caminho];
+    if (!Array.isArray(nomes) || nomes.length === 0) return { tipo: "sem-registro" };
+
+    const pasta = await categoriaHandle.getDirectoryHandle(pastaVideoNome);
+    const presentes: { nome: string; tipo: "file" | "directory" }[] = [];
+    for await (const entrada of pasta.values()) {
+      presentes.push({ nome: entrada.name, tipo: entrada.kind === "file" ? "file" : "directory" });
+    }
+
+    const restantes: string[] = [];
+    for (const p of presentes) {
+      if (p.tipo === "file" && nomes.includes(p.nome)) {
+        await pasta.removeEntry(p.nome); // sem recursive: arquivo
+      } else {
+        restantes.push(p.tipo === "directory" ? `${p.nome}/` : p.nome);
+      }
+    }
+
+    if (restantes.length > 0) {
+      // Os arquivos do app já foram apagados; não sobra nada nosso a registrar.
+      delete registro[caminho];
+      gravarRegistroArquivos(contexto.pastaId, registro);
+      return { tipo: "parcial", restantes };
+    }
+
+    await categoriaHandle.removeEntry(pastaVideoNome); // sem recursive: falha se não estiver vazia
+    delete registro[caminho];
+    gravarRegistroArquivos(contexto.pastaId, registro);
+    return { tipo: "removida" };
   } catch {
-    return false;
+    return { tipo: "erro" };
   }
 }
 
