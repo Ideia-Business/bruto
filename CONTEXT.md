@@ -38,3 +38,16 @@ para onde o app copia automaticamente o pacote completo de artefatos de cada Bru
 organizado como `<pasta>/<Categoria>/<título>/`. É sempre cópia — nunca substitui a biblioteca
 canônica em `~/.bruto/library/`, que é onde o pipeline realmente grava.
 _Evite_: destino, diretório de saída, backup
+
+**App local**:
+O programa do Bruto rodando na máquina da pessoa (o servidor em `127.0.0.1`, com ou sem janela).
+É ele que destrincha Instagram, TikTok e vídeo sem legenda. Não se confunde com **Bruto**, que é só
+o material de entrada: "ligar o app", nunca "ligar o Bruto".
+_Evite_: o Bruto (para o programa), servidor, aplicativo
+
+**Host nativo**:
+O pequeno programa que o Chrome chama, pela permissão opcional `nativeMessaging`, para ligar o
+App local quando a pessoa clica em "Ligar o app" na extensão. Aceita só dois comandos, `status` e
+`ligar`, e nunca recebe caminho, argumento ou comando da mensagem. Sai logo depois de responder; o
+App local que ele liga continua de pé sozinho. Fica registrado por navegador pelo instalador.
+_Evite_: daemon, serviço, agente, helper
