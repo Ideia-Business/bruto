@@ -155,6 +155,7 @@ faísca. Só a anotação daquela faísca.
 | `activeTab` | ler a transcrição da aba que você está vendo, quando você clica no ícone |
 | `scripting` | injetar o leitor de transcrição nessa aba — é ele que lê o painel do YouTube |
 | `downloads` | salvar uma aula em arquivo, quando você pede |
+| `nativeMessaging` (opcional) | só liga o app local nesta máquina, quando você clica em "Ligar o app" no popup — e nada é enviado a servidor por causa dela |
 | `host_permissions` | falar com o app do Bruto na sua máquina (`127.0.0.1`), com o servidor grátis da Ideia Business (`https://bruto-gratis.vercel.app`, modo grátis), e com o provedor de IA que você escolheu — e **só** com eles |
 
 ## Crianças

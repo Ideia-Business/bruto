@@ -171,6 +171,30 @@ Abra um vídeo e destrinche. A aula sai sem mostrar "de 3" — usa a sua chave.
 
 ---
 
+## Ligar o app pela extensão (roteiro manual, ~5 min, Chrome real)
+
+Este roteiro verifica a permissão opcional `nativeMessaging`: a extensão ligando o app local por
+conta própria, a partir de um clique seu. Ele precisa do **Google Chrome de verdade** (não um
+Chromium automatizado) e do pacote instalado, não da pasta `extension/dist`.
+
+1. Carregue `extension/pacote/bruto-<versão>` **descompactada** em `chrome://extensions` (modo do
+   desenvolvedor ligado, "Carregar sem compactação") e **copie o ID** que o Chrome mostra no
+   cartão da extensão.
+2. Rode `bash launcher/registrar-host.sh --extensao-id <ID>`, com o ID copiado no passo 1.
+3. Com o app **FECHADO**, abra um vídeo de Instagram ou TikTok, clique em **"Ligar o app"** no
+   popup e **aceite o pedido de permissão** que o Chrome mostra.
+4. Confira que o popup chega em **"Pronto"** e que `http://127.0.0.1:3000` responde; depois
+   **feche o Chrome inteiro** e confira que o servidor segue de pé (o endereço continua
+   respondendo).
+5. Repita o passo 3 **negando a permissão** e confira que aparece a mensagem de **"Permissão
+   negada"**.
+
+**O que registrar ao terminar:** para cada passo (1 a 5), **passou** ou **falhou** — e, se
+falhou, o que apareceu na tela ou no terminal — mais a **versão do Chrome** usada (em
+`chrome://settings/help`).
+
+---
+
 ## Se der errado
 
 Antes de mais nada: **abra o console do popup**. Clique com o botão direito dentro do popup → **Inspecionar**. É lá que o erro real aparece — a mensagem na tela é a versão curta.
