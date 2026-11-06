@@ -374,6 +374,33 @@ describe("POST /api/aula — limite e devolução de unidade", () => {
       if (k.includes(`instalacao:${UUID_A}:`)) total += v;
     }
     assert.equal(total, 0, "incr + decr da tentativa que falhou deve fechar em zero");
+
+    // Rede e geral NÃO voltam: a tentativa gastou uma chamada ao Ollama, e
+    // devolvê-las deixava quem provoca a falha pedir sem teto (achado de 05/11/2026).
+    for (const [k, v] of contadorFake.mapa) {
+      if (k.includes(":rede:") || k.includes(":geral:")) {
+        assert.equal(v, 1, `a chave ${k.split(":").slice(0, 3).join(":")} deve continuar gasta`);
+      }
+    }
+  });
+
+  test("500 pedidos que falham no Ollama não ficam sem contagem: o teto por IP segura (S-01, 05/11/2026)", async () => {
+    // Limites de produção (rede 6): o padrão dos testes (rede 100) esconderia o teto por IP.
+    const deps = depsBase({ fetchImpl: fetchOllamaFalha(), limites: { diario: 3, rede: 6, geral: 150 } });
+    let chamadasAoOllama = 0;
+    const base = deps.fetchImpl as typeof fetch;
+    deps.fetchImpl = (async (...args: Parameters<typeof fetch>) => {
+      chamadasAoOllama++;
+      return base(...args);
+    }) as typeof fetch;
+
+    let s429 = 0;
+    for (let i = 0; i < 30; i++) {
+      const resp = await tratarAula(pedido({ corpo: corpoValido() }), deps);
+      if (resp.status === 429) s429++;
+    }
+    assert.ok(s429 > 0, "depois do teto por IP, os pedidos passam a ser recusados com 429");
+    assert.ok(chamadasAoOllama < 30, `o Ollama não pode receber todos os 30 (recebeu ${chamadasAoOllama})`);
   });
 
   test("quando o Ollama trava no meio do corpo (timeout), a unidade também é devolvida — 502, não pendura", async () => {
