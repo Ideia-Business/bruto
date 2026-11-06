@@ -22,17 +22,22 @@
  *                             na legenda vira comando de shell com leitura do
  *                             disco inteiro (`~/.ssh`, `.env`, `~/.codex/auth.json`).
  *                             É o mesmo motivo do `--tools ""` no `claude-cli`.
- *                             Residual conhecido: isto NÃO desliga MCP servers
- *                             que a pessoa tenha configurado em
- *                             `~/.codex/config.toml` — não existe flag estável
- *                             equivalente a `--strict-mcp-config` nesta versão,
- *                             e `--ignore-user-config` fecharia o MCP mas também
- *                             apagaria o `model` escolhido pela pessoa (ver
- *                             comentário abaixo sobre por que o modelo não é
- *                             passado por flag). Achado S-01/P1 da revisão de
- *                             24/09/2026 — fechar o residual de MCP é decisão
- *                             do dono, porque troca segurança por previsibilidade
- *                             de modelo.
+ *   -c mcp_servers={}         zera os MCP servers de `~/.codex/config.toml`
+ *                             para esta chamada. `--disable shell_tool` sozinho
+ *                             NÃO os desligava: uma instrução na legenda podia
+ *                             chamar uma ferramenta de MCP que a pessoa tivesse
+ *                             configurado, sem ninguém aprovando. Só a chave
+ *                             `mcp_servers` é sobrescrita — `--ignore-user-config`
+ *                             fecharia o MCP mas apagaria também o `model`
+ *                             escolhido pela pessoa (ver comentário abaixo sobre
+ *                             por que o modelo não é passado por flag). Achado
+ *                             S-01/P1 de 24/09/2026, fechado por decisão do dono
+ *                             em 05/11/2026. NÃO PROVADO em execução: nesta
+ *                             estação o `codex exec` não expôs nenhum MCP nem
+ *                             sem o override (controle positivo ausente), então
+ *                             o efeito só foi medido como "a chamada continua
+ *                             funcionando" — a prova de que fecha o MCP exige
+ *                             uma estação com MCP de escrita configurado.
  *   --ephemeral               não persiste arquivo de sessão
  *   --skip-git-repo-check     permite rodar fora de repositório git — usamos um
  *                             diretório temporário como raiz de trabalho, para
@@ -112,6 +117,35 @@ interface Saida {
   stderr: string;
   code: number | null;
   timedOut: boolean;
+}
+
+/**
+ * Argumentos do `codex exec`. O `prompt` vem DEPOIS de `--`, e nunca antes das
+ * flags: medido, com o prompt na frente `codex exec "--version"` imprimia
+ * `codex-cli-exec 0.153.4` e o modelo nunca era chamado — texto de fora virava
+ * flag do CLI, inclusive a que pula a sandbox, num processo que herda HOME e
+ * CODEX_HOME. Com o terminador, chega como texto. Exportada para o teste
+ * travar a ordem e as flags de contenção.
+ */
+export function argumentosDoExec(prompt: string, esforco: string): string[] {
+  return [
+    "exec",
+    "--sandbox",
+    "read-only",
+    "--disable",
+    "shell_tool",
+    "--ephemeral",
+    "--skip-git-repo-check",
+    "--json",
+    "--color",
+    "never",
+    "-c",
+    `model_reasoning_effort=${esforco}`,
+    "-c",
+    "mcp_servers={}",
+    "--",
+    prompt,
+  ];
 }
 
 function executar(args: string[], input: string | undefined, timeoutMs: number): Promise<Saida> {
@@ -313,27 +347,7 @@ export const codexCliProvider: LlmProvider = {
   async run(req: LlmRequest, timeoutMs: number): Promise<LlmResult> {
     const esforco = ESFORCO[req.tier ?? "balanced"];
 
-    // O `req.prompt` vem DEPOIS de `--`, e nunca antes das flags. Medido: com o
-    // prompt na frente, `codex exec "--version"` imprimia `codex-cli-exec
-    // 0.153.4` e o modelo nunca era chamado — ou seja, texto de fora virava
-    // flag do CLI, inclusive a que pula a sandbox, num processo que herda
-    // HOME e CODEX_HOME. Com o terminador, chega como texto.
-    const args = [
-      "exec",
-      "--sandbox",
-      "read-only",
-      "--disable",
-      "shell_tool",
-      "--ephemeral",
-      "--skip-git-repo-check",
-      "--json",
-      "--color",
-      "never",
-      "-c",
-      `model_reasoning_effort=${esforco}`,
-      "--",
-      req.prompt,
-    ];
+    const args = argumentosDoExec(req.prompt, esforco);
 
     const r = await executar(args, req.input, timeoutMs);
 
