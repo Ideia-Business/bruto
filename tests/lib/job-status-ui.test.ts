@@ -13,11 +13,13 @@ import {
   podeCancelar,
   precisaConfirmarCancelamento,
   statusEfetivo,
+  progressoDoJob,
   classificarResposta409,
   textoDeCancelado,
   dividirDuplicados,
   resumirUrl,
 } from "@/lib/job-status-ui";
+import type { JobProgressEvent } from "@/lib/api-types";
 
 const TODOS_OS_STATUS = ["queued", "running", "done", "error", "canceled"] as const;
 
@@ -101,6 +103,52 @@ describe("statusEfetivo — nenhum componente decide a partir de status VELHO (E
     assert.equal(podeCancelar(statusEfetivo("done", "running")), false);
     assert.equal(podeCancelar(statusEfetivo("error", "running")), false);
     assert.equal(podeCancelar(statusEfetivo("canceled", "queued")), false);
+  });
+});
+
+describe("progressoDoJob — o progresso pertence SEMPRE ao jobId pedido (P1)", () => {
+  const doneDeA: JobProgressEvent = {
+    jobId: "job-A",
+    videoId: "v-1",
+    status: "done",
+    step: null,
+    progressPct: 100,
+    errorCode: null,
+    errorMessage: null,
+  };
+  const runningDeB: JobProgressEvent = {
+    jobId: "job-B",
+    videoId: null,
+    status: "running",
+    step: "transcribe",
+    progressPct: 40,
+    errorCode: null,
+    errorMessage: null,
+  };
+
+  test("progresso terminal do job A + jobId = B → null (não vaza)", () => {
+    assert.equal(progressoDoJob(doneDeA, "job-B"), null);
+  });
+
+  test("progresso do próprio job → devolvido inteiro", () => {
+    assert.equal(progressoDoJob(runningDeB, "job-B"), runningDeB);
+  });
+
+  test("jobId null → null (desligou a assinatura, não há dono)", () => {
+    assert.equal(progressoDoJob(runningDeB, null), null);
+    assert.equal(progressoDoJob(null, null), null);
+  });
+
+  test("o caso do achado: done de A não desarma o botão do job B", () => {
+    // statusEfetivo cai no status da prop job ("queued") — o botão
+    // Cancelar continua visível e com o estado certo.
+    assert.equal(statusEfetivo(progressoDoJob(doneDeA, "job-B")?.status, "queued"), "queued");
+    assert.equal(podeCancelar(statusEfetivo(progressoDoJob(doneDeA, "job-B")?.status, "queued")), true);
+  });
+
+  test("controle: mesmo job → mantém (inclusive o terminal do próprio job)", () => {
+    assert.equal(progressoDoJob(doneDeA, "job-A"), doneDeA);
+    assert.equal(progressoDoJob(null, "job-B"), null);
   });
 });
 

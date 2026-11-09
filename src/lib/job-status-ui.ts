@@ -8,7 +8,7 @@
  * `canceled` chegou na ETAPA 1 (back-end): job cancelado pelo usuário ou
  * por duplicata tardia (link curto que virou job depois de outro igual).
  */
-import type { Job } from "@/lib/api-types";
+import type { Job, JobProgressEvent } from "@/lib/api-types";
 
 /** O união canônico de status — derivado do tipo que a API entrega. */
 export type StatusDeJob = Job["status"];
@@ -60,6 +60,22 @@ export function statusEfetivo(
   jobStatus: string,
 ): string {
   return progressStatus ?? jobStatus;
+}
+
+/**
+ * O progresso devolvido pertence SEMPRE ao `jobId` pedido (INVARIANTE P1):
+ * o `useJobProgress` guarda o último evento de SSE que chegou — sem este
+ * filtro, o evento TERMINAL de um job A continuava vivo quando o componente
+ * passou a acompanhar um job B (reprocessamento), e o `statusEfetivo`
+ * aplicava `done`/`error`/`canceled` ao job novo (escondendo o botão
+ * Cancelar de um job que está na fila). Dono errado ou sem dono → null.
+ */
+export function progressoDoJob(
+  progress: JobProgressEvent | null | undefined,
+  jobId: string | null,
+): JobProgressEvent | null {
+  if (!progress || !jobId) return null;
+  return progress.jobId === jobId ? progress : null;
 }
 
 /** O corpo da resposta 409 de POST /api/videos e /api/videos/[id]/retry. */
