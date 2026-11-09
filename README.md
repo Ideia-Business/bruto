@@ -176,6 +176,8 @@ Passo a passo de instalação e teste, com a tabela de erros comuns: [extension/
 
 O instalador cria o atalho automaticamente em todos os sistemas — procure por **Bruto** no seu menu de aplicativos ou na Área de Trabalho. Duplo-clique para abrir.
 
+Fechou a janela, o atalho sumiu ou a página não carrega? Veja [Como abro o Bruto de novo](INSTALAR.md#já-instalei-como-abro-o-bruto-de-novo). No macOS o atalho fica em `~/Applications/Bruto.app` (Launchpad) e, pelo terminal, `bash ~/Bruto/launcher/serve.sh` liga o servidor e abre a janela.
+
 Se precisar recriar o atalho manualmente:
 
 **macOS:**

@@ -2,6 +2,29 @@
 
 Um passo a passo para quem nunca usou terminal. Escolha seu sistema — o processo é o mesmo em todos os três.
 
+## Já instalei. Como abro o Bruto de novo?
+
+O Bruto é um programa que roda **no seu computador** (o endereço é `http://localhost:3000`, só você acessa). Sempre se abre pelo atalho que o instalador criou — não precisa instalar de novo.
+
+| Sistema | Onde está o atalho |
+|---------|---|
+| macOS | **Launchpad** (ícone de foguete, ou `Fn + F4`) → **Bruto**. O arquivo é `~/Applications/Bruto.app` |
+| Windows | **Área de Trabalho** → `Bruto`, ou **Menu Iniciar** → procure `Bruto` |
+| Linux | Menu de aplicativos → `Bruto` (Ubuntu: grid de pontinhos; Fedora: Activities) |
+
+- **Fechei a janela sem querer.** Clique no atalho de novo. O servidor do Bruto continua rodando em segundo plano; o atalho só abre a janela outra vez.
+- **A janela abre, mas a página fica em branco.** Espere alguns segundos e atualize com `⌘ + R` (macOS) ou `Ctrl + R`. Depois de uma atualização do Bruto, a primeira abertura leva mais tempo porque o app é reconstruído.
+- **O atalho não aparece.** Recrie com o comando do seu sistema (seção "Atalho no computador" do [README](README.md#atalho-no-computador)).
+- **No macOS e no Linux, pelo terminal** (serve quando o atalho não funciona):
+
+  ```bash
+  bash ~/Bruto/launcher/serve.sh
+  ```
+
+  Esse comando liga o servidor e abre a janela. Se der erro, o motivo fica em `bruto-server.log`, na pasta temporária do sistema.
+
+---
+
 ## macOS
 
 ### 1. Abrir o terminal
