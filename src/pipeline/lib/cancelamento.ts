@@ -23,6 +23,11 @@ export interface ContextoDeJob {
   signal: AbortSignal;
   /** Filhos vivos deste job — mortos em grupo quando o signal aborta. */
   filhos: Set<ChildProcess>;
+  /**
+   * Ações de cancelamento que não são subprocesso (ex.: `browser.close()` do
+   * Chromium compartilhado) — executadas quando o signal aborta.
+   */
+  acoes: Set<() => void>;
 }
 
 const storage = new AsyncLocalStorage<ContextoDeJob>();
@@ -51,11 +56,12 @@ export function rodarComCancelamento<T>(
   raiz: { jobId: string; signal: AbortSignal },
   fn: () => Promise<T>,
 ): Promise<T> {
-  const ctx: ContextoDeJob = { ...raiz, filhos: new Set() };
+  const ctx: ContextoDeJob = { ...raiz, filhos: new Set(), acoes: new Set() };
   ctx.signal.addEventListener(
     "abort",
     () => {
       for (const filho of ctx.filhos) matarGrupoDoFilho(filho);
+      for (const acao of ctx.acoes) acao();
     },
     { once: true },
   );
@@ -130,6 +136,31 @@ export function registrarFilho(filho: ChildProcess): void {
   }
   ctx.filhos.add(filho);
   filho.once("close", () => ctx.filhos.delete(filho));
+}
+
+/**
+ * Registra uma ação de cancelamento para o job corrente — para recursos que
+ * não são subprocesso (o Chromium do export é parado por `browser.close()`,
+ * não por sinal de processo). Sem contexto de job, é no-op: recurso de fora
+ * de job (doctor, `availability()`) não é alvo de cancelamento NENHUM.
+ *
+ * INVARIANTE E1: um registro que não pode surtir efeito falha ALTO — aqui na
+ * hora do registro, não no dia em que o cancelamento precisar dele. Por isso
+ * o parâmetro é uma função PLENA (não um "talvez método" opcional): quem
+ * registra algo inefetivo descobre agora, com exceção.
+ */
+export function registrarAcaoDeCancelamento(acao: () => void): void {
+  if (typeof acao !== "function") {
+    throw new TypeError("registrarAcaoDeCancelamento exige uma função executável");
+  }
+  const ctx = storage.getStore();
+  if (!ctx) return;
+  if (ctx.signal.aborted) {
+    // Cancelamento chegou entre a criação do recurso e o registro: age agora.
+    acao();
+    return;
+  }
+  ctx.acoes.add(acao);
 }
 
 /**

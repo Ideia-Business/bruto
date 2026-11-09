@@ -50,7 +50,7 @@ import { TranscriptAiTools } from "./transcript-ai-tools";
 import { JobProgressBar, useJobProgress } from "./job-progress";
 import { CancelarJobBotao } from "./cancelar-job-botao";
 import { fetchApp } from "@/lib/fetch-app";
-import { classificarResposta409, type Resposta409 } from "@/lib/job-status-ui";
+import { classificarResposta409, statusEfetivo, type Resposta409 } from "@/lib/job-status-ui";
 import {
   localizarPastasAntigasDoVideo,
   reexportarAposArtefatoNovo,
@@ -441,7 +441,17 @@ export function BrutoDetail({
           <p className="text-sm font-medium">Processando este vídeo…</p>
           <JobProgressBar progress={progress} />
           <div className="flex justify-end">
-            <CancelarJobBotao job={{ id: data.latestJob!.id, status: data.latestJob!.status, url: data.bruto.url }} onCanceled={() => router.refresh()} />
+            {/* Status VIVO do SSE (E1c): `latestJob` é prop de servidor — um
+                job renderizado como `queued` que já está `running` tem que
+                pedir a confirmação de job rodando, não cancelar direto. */}
+            <CancelarJobBotao
+              job={{
+                id: data.latestJob!.id,
+                status: statusEfetivo(progress?.status, data.latestJob!.status),
+                url: data.bruto.url,
+              }}
+              onCanceled={() => router.refresh()}
+            />
           </div>
         </div>
       ) : data.latestJob?.status === "error" ? (

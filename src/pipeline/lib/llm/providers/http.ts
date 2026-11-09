@@ -34,8 +34,16 @@ export async function postJson(opts: PostJsonOpts): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
   // Dentro de um job, cancelar o job aborta ESTA chamada junto (o timeout
-  // continua valendo por conta própria).
+  // continua valendo por conta própria). O vínculo dura até o CORPO ser
+  // consumido: `fetch()` resolver só prova que os CABEÇALHOS chegaram — um
+  // endpoint que manda cabeçalhos e demora no JSON continua abortável
+  // durante a leitura (INVARIANTE E1: a cobertura dura a vida inteira da
+  // operação, e o cleanup só roda quando nada mais está em voo).
   const desvincular = vincularAoSinalDoJob(controller);
+  const desmontar = () => {
+    clearTimeout(timer);
+    desvincular();
+  };
 
   let res: Response;
   try {
@@ -46,8 +54,7 @@ export async function postJson(opts: PostJsonOpts): Promise<unknown> {
       signal: controller.signal,
     });
   } catch (err) {
-    clearTimeout(timer);
-    desvincular();
+    desmontar();
     if (err instanceof Error && err.name === "AbortError") {
       throw new LlmHttpError(408, `tempo esgotado após ${opts.timeoutMs}ms`);
     }
@@ -57,12 +64,10 @@ export async function postJson(opts: PostJsonOpts): Promise<unknown> {
       0,
       `não foi possível falar com ${opts.label}: ${redact(err instanceof Error ? err.message : String(err))}`,
     );
-  } finally {
-    clearTimeout(timer);
-    desvincular();
   }
 
   if (!res.ok) {
+    desmontar();
     // O corpo do erro pode ecoar o request inteiro — inclusive o header de
     // autenticação em alguns proxies. Só o status atravessa esta fronteira.
     throw new LlmHttpError(res.status, `${opts.label} respondeu ${res.status}`);
@@ -70,8 +75,15 @@ export async function postJson(opts: PostJsonOpts): Promise<unknown> {
 
   try {
     return (await res.json()) as unknown;
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      // Abortou durante a LEITURA do corpo (timeout ou cancelamento do job).
+      // Se foi cancelamento, o runner grava `canceled` e descarta a mensagem.
+      throw new LlmHttpError(408, `tempo esgotado após ${opts.timeoutMs}ms`);
+    }
     throw new LlmHttpError(res.status, `${opts.label} devolveu uma resposta ilegível`);
+  } finally {
+    desmontar();
   }
 }
 

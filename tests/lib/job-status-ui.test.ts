@@ -12,6 +12,7 @@ import {
   ESTILO_DE_STATUS,
   podeCancelar,
   precisaConfirmarCancelamento,
+  statusEfetivo,
   classificarResposta409,
   textoDeCancelado,
   dividirDuplicados,
@@ -78,6 +79,28 @@ describe("precisaConfirmarCancelamento — só running (Q7)", () => {
     assert.equal(precisaConfirmarCancelamento("done"), false);
     assert.equal(precisaConfirmarCancelamento("error"), false);
     assert.equal(precisaConfirmarCancelamento("canceled"), false);
+  });
+});
+
+describe("statusEfetivo — nenhum componente decide a partir de status VELHO (E1c)", () => {
+  test("job renderizado como queued que PASSOU a running por SSE: o botão vê running", () => {
+    assert.equal(statusEfetivo("running", "queued"), "running");
+  });
+
+  test("o caso do achado: queued + progresso running EXIGE confirmação de job rodando", () => {
+    assert.equal(precisaConfirmarCancelamento(statusEfetivo("running", "queued")), true);
+  });
+
+  test("sem evento de SSE ainda, o status da prop job decide", () => {
+    assert.equal(statusEfetivo(undefined, "queued"), "queued");
+    assert.equal(statusEfetivo(null, "running"), "running");
+    assert.equal(statusEfetivo(undefined, "error"), "error");
+  });
+
+  test("status terminal do SSE desarma o botão mesmo com prop ainda ativa", () => {
+    assert.equal(podeCancelar(statusEfetivo("done", "running")), false);
+    assert.equal(podeCancelar(statusEfetivo("error", "running")), false);
+    assert.equal(podeCancelar(statusEfetivo("canceled", "queued")), false);
   });
 });
 

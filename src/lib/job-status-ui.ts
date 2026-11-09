@@ -48,6 +48,20 @@ export function precisaConfirmarCancelamento(status: string): boolean {
   return status === "running";
 }
 
+/**
+ * O status que a UI decide (INVARIANTE E1c): o evento de SSE é sempre mais
+ * novo que a prop `job` que veio do servidor — um job renderizado como
+ * `queued` pode JÁ estar `running` (e um `running` já pode ser terminal).
+ * Nenhum componente decide comportamento a partir de status que pode estar
+ * velho: decide a partir daqui.
+ */
+export function statusEfetivo(
+  progressStatus: string | null | undefined,
+  jobStatus: string,
+): string {
+  return progressStatus ?? jobStatus;
+}
+
 /** O corpo da resposta 409 de POST /api/videos e /api/videos/[id]/retry. */
 export interface Resposta409 {
   readonly error?: string;

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { JobProgressBar, useJobProgress } from "./job-progress";
 import { CancelarJobBotao } from "./cancelar-job-botao";
 import { textoDoErro } from "@/lib/format";
-import { ESTILO_DE_STATUS, ROTULO_DE_STATUS, textoDeCancelado } from "@/lib/job-status-ui";
+import { ESTILO_DE_STATUS, ROTULO_DE_STATUS, statusEfetivo, textoDeCancelado } from "@/lib/job-status-ui";
 import type { Job } from "@/lib/api-types";
 
 /** Linha de um job na página /processing — status ao vivo via SSE. */
@@ -27,7 +27,7 @@ function JobRow({ job, onFinished }: { job: Job; onFinished: () => void }) {
     },
   });
 
-  const status = progress?.status ?? job.status;
+  const status = statusEfetivo(progress?.status, job.status);
 
   return (
     <div className="rounded-lg border border-border bg-card p-4">
@@ -47,7 +47,10 @@ function JobRow({ job, onFinished }: { job: Job; onFinished: () => void }) {
         <>
           <JobProgressBar progress={progress} />
           <div className="mt-2 flex justify-end">
-            <CancelarJobBotao job={job} onCanceled={onFinished} />
+            {/* O botão decide pelo status VIVO (SSE), não pela prop que pode
+                estar velha — senão um job `queued` que virou `running` cancela
+                direto, sem a confirmação de job rodando (E1c). */}
+            <CancelarJobBotao job={{ ...job, status }} onCanceled={onFinished} />
           </div>
         </>
       ) : status === "error" ? (
