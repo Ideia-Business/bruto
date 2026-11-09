@@ -1,6 +1,6 @@
 /** Contratos compartilhados do pipeline — fonte única de verdade dos tipos. */
 
-export type JobStatus = "queued" | "running" | "done" | "error";
+export type JobStatus = "queued" | "running" | "done" | "error" | "canceled";
 
 export type JobStep =
   | "metadata"

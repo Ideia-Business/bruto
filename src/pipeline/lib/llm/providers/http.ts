@@ -9,6 +9,7 @@
  */
 
 import { redact } from "../redact";
+import { vincularAoSinalDoJob } from "@/pipeline/lib/cancelamento";
 
 /** Erro de transporte com o status preservado, para o `runLLM` classificar. */
 export class LlmHttpError extends Error {
@@ -32,6 +33,9 @@ export interface PostJsonOpts {
 export async function postJson(opts: PostJsonOpts): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
+  // Dentro de um job, cancelar o job aborta ESTA chamada junto (o timeout
+  // continua valendo por conta própria).
+  const desvincular = vincularAoSinalDoJob(controller);
 
   let res: Response;
   try {
@@ -43,6 +47,7 @@ export async function postJson(opts: PostJsonOpts): Promise<unknown> {
     });
   } catch (err) {
     clearTimeout(timer);
+    desvincular();
     if (err instanceof Error && err.name === "AbortError") {
       throw new LlmHttpError(408, `tempo esgotado após ${opts.timeoutMs}ms`);
     }
@@ -54,6 +59,7 @@ export async function postJson(opts: PostJsonOpts): Promise<unknown> {
     );
   } finally {
     clearTimeout(timer);
+    desvincular();
   }
 
   if (!res.ok) {

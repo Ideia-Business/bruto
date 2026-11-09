@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/jobs/[id]/events → stream SSE de progresso.
  * Emite snapshot inicial (do SQLite) + eventos do bus; heartbeat a cada 15s.
- * Fecha o stream quando o job chega a done/error.
+ * Fecha o stream quando o job chega a done/error/canceled.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -52,14 +52,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         errorMessage: job.errorMessage,
       };
       send(snapshot);
-      if (job.status === "done" || job.status === "error") {
+      if (job.status === "done" || job.status === "error" || job.status === "canceled") {
         close();
         return;
       }
 
       const onProgress = (p: JobProgress) => {
         send(p);
-        if (p.status === "done" || p.status === "error") close();
+        if (p.status === "done" || p.status === "error" || p.status === "canceled") close();
       };
       bus.on(`job:${id}`, onProgress);
 

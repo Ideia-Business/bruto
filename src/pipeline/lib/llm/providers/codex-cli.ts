@@ -69,6 +69,7 @@
 import spawn from "cross-spawn";
 import os from "node:os";
 import { ENV_SENSIVEIS, redact } from "../redact";
+import { FILHO_EM_GRUPO_PROPRIO, registrarFilho } from "@/pipeline/lib/cancelamento";
 import type { LlmCapability, LlmProvider, LlmRequest, LlmResult } from "../types";
 
 /**
@@ -154,7 +155,10 @@ function executar(args: string[], input: string | undefined, timeoutMs: number):
       cwd: os.tmpdir(),
       env: semChavesDeOutros(),
       stdio: ["pipe", "pipe", "pipe"],
+      // Grupo próprio + registro: cancelar o job mata o `codex` no meio.
+      detached: FILHO_EM_GRUPO_PROPRIO,
     });
+    registrarFilho(child);
 
     // Mesmo caso de `claude-cli.ts`: o tipo de `cross-spawn` devolve
     // `ChildProcess` com streams nuláveis, ao contrário do `child_process`

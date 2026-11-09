@@ -37,7 +37,7 @@ export interface Job {
   id: string;
   videoId: string | null;
   url: string;
-  status: "queued" | "running" | "done" | "error";
+  status: "queued" | "running" | "done" | "error" | "canceled";
   currentStep: string | null;
   progressPct: number;
   errorCode: string | null;
@@ -57,7 +57,7 @@ export interface CatalogResponse {
 export interface JobProgressEvent {
   jobId: string;
   videoId: string | null;
-  status: "queued" | "running" | "done" | "error";
+  status: "queued" | "running" | "done" | "error" | "canceled";
   step: string | null;
   progressPct: number;
   errorCode: string | null;

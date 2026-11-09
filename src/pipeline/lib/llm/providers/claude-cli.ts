@@ -29,6 +29,7 @@
 // tem que ser por posição de argv, nunca por concatenação de shell.
 import spawn from "cross-spawn";
 import { ENV_SENSIVEIS, redact } from "../redact";
+import { FILHO_EM_GRUPO_PROPRIO, registrarFilho } from "@/pipeline/lib/cancelamento";
 import type { LlmCapability, LlmProvider, LlmRequest, LlmResult } from "../types";
 
 /**
@@ -73,7 +74,10 @@ function executar(args: string[], input: string | undefined, timeoutMs: number):
     const child = spawn("claude", args, {
       env: semChavesDeOutros(),
       stdio: ["pipe", "pipe", "pipe"],
+      // Grupo próprio + registro: cancelar o job mata o `claude` no meio.
+      detached: FILHO_EM_GRUPO_PROPRIO,
     });
+    registrarFilho(child);
 
     // O tipo de `cross-spawn` devolve `ChildProcess` genérico (streams
     // nuláveis), diferente do `child_process.spawn` nativo, que infere

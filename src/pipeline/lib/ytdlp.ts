@@ -7,6 +7,11 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
+import {
+  FILHO_EM_GRUPO_PROPRIO,
+  registrarFilho,
+  vincularAoSinalDoJob,
+} from "@/pipeline/lib/cancelamento";
 import { PipelineError, type ErrorCode, type VideoMetadata } from "@/pipeline/types";
 import { detectarPlataforma } from "@/lib/plataformas";
 
@@ -31,7 +36,13 @@ interface RunResult {
  */
 function runYtdlpUmaVez(args: string[], timeoutMs: number): Promise<RunResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn("yt-dlp", args, { shell: false });
+    // Grupo próprio + registro: cancelar o job mata este processo E os netos
+    // que ele lançar (ffmpeg).
+    const child = spawn("yt-dlp", args, {
+      shell: false,
+      detached: FILHO_EM_GRUPO_PROPRIO,
+    });
+    registrarFilho(child);
 
     let stdout = "";
     let stderr = "";
@@ -313,8 +324,12 @@ export async function downloadThumbnail(
   destPath: string,
 ): Promise<void> {
   if (!thumbnailUrl) return;
+  // A thumbnail é rede longa DENTRO de um job: cancelar o job aborta o
+  // download no meio (falha não-fatal, como qualquer outra daqui).
+  const controller = new AbortController();
+  const desvincular = vincularAoSinalDoJob(controller);
   try {
-    const res = await fetch(thumbnailUrl);
+    const res = await fetch(thumbnailUrl, { signal: controller.signal });
     if (!res.ok) {
       console.warn(`downloadThumbnail: HTTP ${res.status}`);
       return;
@@ -323,5 +338,7 @@ export async function downloadThumbnail(
     fs.writeFileSync(destPath, buf);
   } catch (err) {
     console.warn(`downloadThumbnail: falha não-fatal:`, err);
+  } finally {
+    desvincular();
   }
 }

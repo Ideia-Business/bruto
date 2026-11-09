@@ -45,6 +45,19 @@ O programa do Bruto rodando na máquina da pessoa (o servidor em `127.0.0.1`, co
 o material de entrada: "ligar o app", nunca "ligar o Bruto".
 _Evite_: o Bruto (para o programa), servidor, aplicativo
 
+**Cancelado**:
+Estado terminal do job quando a pessoa interrompe o processamento (ou o job descobre uma
+duplicata ativa). O que já foi salvo até ali, salvo fica; o vídeo NÃO conta como concluído
+("Tentar de novo" segue valendo) e o boot não ressuscita job cancelado.
+_Evite_: abortado, parado, falhado (falhou é **Erro**)
+
+**Duplicata ativa**:
+O mesmo vídeo (mesma IDENTIDADE — `watch?v=`, `youtu.be` e `/shorts/` do mesmo ID — não a
+mesma string de URL) já com job `queued` ou `running`: as portas de entrada respondem 409
+"Esse vídeo já está na fila" apontando o job ativo; link curto que só revela o ID depois da
+etapa metadata se encerra como **Cancelado**.
+_Evite_: duplicado, reprocessamento (que é o retry, intencional)
+
 **Host nativo**:
 O pequeno programa que o Chrome chama, pela permissão opcional `nativeMessaging`, para ligar o
 App local quando a pessoa clica em "Ligar o app" na extensão. Aceita só dois comandos, `status` e

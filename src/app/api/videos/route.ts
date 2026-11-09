@@ -4,7 +4,7 @@ import {
   LIMITE_CORPO_PEQUENO,
   recusarSeNaoForChamadaDeCliente,
 } from "@/lib/endpoint-local";
-import { getCatalog, getHistory, getHeroBruto, getActiveJobs, searchBrutos, isBrutoDone } from "@/db/queries";
+import { getCatalog, getHistory, getHeroBruto, getActiveJobs, searchBrutos, isBrutoDone, getJobAtivoDoVideo } from "@/db/queries";
 import { catalogoParaWire } from "@/lib/wire";
 import { parseMediaUrl } from "@/pipeline/lib/paths";
 import { enqueue } from "@/pipeline/runner";
@@ -50,6 +50,19 @@ export async function POST(req: Request) {
       { error: "Vídeo já processado", videoId, duplicate: true },
       { status: 409 },
     );
+  }
+  // Duplicata ATIVA: o vídeo JÁ está na fila ou em execução (job queued/running)
+  // — comparado por IDENTIDADE do vídeo, não pela string da URL (watch?v=,
+  // youtu.be e /shorts/ do mesmo vídeo são o mesmo vídeo). Sem isso, dois
+  // POSTs do mesmo link rodavam o pipeline inteiro duas vezes em paralelo.
+  if (videoId) {
+    const ativo = getJobAtivoDoVideo(videoId);
+    if (ativo) {
+      return NextResponse.json(
+        { error: "Esse vídeo já está na fila", duplicate: true, jobId: ativo.id, videoId },
+        { status: 409 },
+      );
+    }
   }
   const jobId = enqueue(url, {
     forceWhisper: body.forceWhisper ?? false,
