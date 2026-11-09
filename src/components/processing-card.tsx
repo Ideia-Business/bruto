@@ -3,11 +3,12 @@
 import { useRouter } from "next/navigation";
 import { Thumb } from "./thumb";
 import { JobProgressBar, useJobProgress } from "./job-progress";
+import { CancelarJobBotao } from "./cancelar-job-botao";
 import type { Job } from "@/lib/api-types";
 
 /**
  * Card de um job em processamento — thumb (se já tem videoId) + barra SSE.
- * Ao concluir, dispara o refresh do catálogo (via callback).
+ * Ao concluir (ou cancelar), dispara o refresh do catálogo (via callback).
  */
 export function ProcessingCard({
   job,
@@ -23,6 +24,7 @@ export function ProcessingCard({
       router.refresh();
     },
     onError: () => onFinished(),
+    onCanceled: () => onFinished(),
   });
   const videoId = progress?.videoId ?? job.videoId;
 
@@ -38,6 +40,9 @@ export function ProcessingCard({
         )}
       </div>
       <JobProgressBar progress={progress} />
+      <div className="flex justify-end">
+        <CancelarJobBotao job={job} onCanceled={onFinished} />
+      </div>
     </div>
   );
 }
