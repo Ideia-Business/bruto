@@ -11,6 +11,7 @@ import { jobs, brutos, artifacts, categories } from "@/db/schema";
 import { parseMediaUrl, artifactPaths } from "@/pipeline/lib/paths";
 import { bus } from "@/pipeline/bus";
 import { runJobSync } from "@/pipeline/runner";
+import { descreverResultadoDoJob } from "@/scripts/job-result";
 import type { JobProgress } from "@/pipeline/types";
 
 function parseArgs(argv: string[]): { url: string; whisper: boolean; translate: boolean } {
@@ -62,17 +63,22 @@ async function main(): Promise<void> {
   bus.off("job:*", onProgress);
 
   const job = db.select().from(jobs).where(eq(jobs.id, jobId)).get();
-  if (!job || job.status === "error") {
-    console.error(`\n✖ Falhou [${job?.errorCode ?? "?"}]: ${job?.errorMessage ?? "erro desconhecido"}`);
+  // `canceled` (duplicata tardia de link curto, cancelamento por sinal) é
+  // NÃO-sucesso: mensagem própria e exit 1, sem nunca ler `job.videoId!`
+  // (que neste estado pode nem existir). Ver `job-result.ts`.
+  const resultado = descreverResultadoDoJob(job);
+  if (!resultado.ok) {
+    console.error(`\n✖ ${resultado.mensagem}`);
     process.exit(1);
   }
+  const jobConcluido = resultado.job;
 
-  const video = db.select().from(brutos).where(eq(brutos.id, job.videoId!)).get();
+  const video = db.select().from(brutos).where(eq(brutos.id, jobConcluido.videoId!)).get();
   const cat = video?.categoryId
     ? db.select().from(categories).where(eq(categories.id, video.categoryId)).get()
     : null;
-  const arts = db.select().from(artifacts).where(eq(artifacts.videoId, job.videoId!)).all();
-  const paths = artifactPaths(job.videoId!);
+  const arts = db.select().from(artifacts).where(eq(artifacts.videoId, jobConcluido.videoId!)).all();
+  const paths = artifactPaths(jobConcluido.videoId!);
 
   console.log(`\n✔ Concluído: "${video?.title}" — ${video?.channel ?? "?"}`);
   console.log(`  Categoria: ${cat?.name ?? "?"} · Fonte da transcrição: ${video?.transcriptSource ?? "?"}`);
