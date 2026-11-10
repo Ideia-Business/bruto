@@ -27,8 +27,8 @@ interface EntradaCatalogo {
 
 /**
  * No SQLite `jobs.status` é `text` livre; no contrato publicado é uma união de
- * quatro valores. Quem grava a coluna é só o runner do pipeline, e só com esses
- * quatro — mas o tipo do banco não sabe disso, e é aqui que a diferença se
+ * cinco valores. Quem grava a coluna é só o runner do pipeline, e só com esses
+ * cinco — mas o tipo do banco não sabe disso, e é aqui que a diferença se
  * resolve, explicitamente, em vez de um `as unknown as` engolindo o objeto todo.
  */
 function jobParaWire(job: JobDoBanco): Job {

@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { JobProgressBar, useJobProgress } from "./job-progress";
+import { CancelarJobBotao } from "./cancelar-job-botao";
 import { textoDoErro } from "@/lib/format";
+import { ESTILO_DE_STATUS, ROTULO_DE_STATUS, statusEfetivo, textoDeCancelado } from "@/lib/job-status-ui";
 import type { Job } from "@/lib/api-types";
 
 /** Linha de um job na página /processing — status ao vivo via SSE. */
@@ -19,9 +21,13 @@ function JobRow({ job, onFinished }: { job: Job; onFinished: () => void }) {
       onFinished();
       router.refresh();
     },
+    onCanceled: () => {
+      onFinished();
+      router.refresh();
+    },
   });
 
-  const status = progress?.status ?? job.status;
+  const status = statusEfetivo(progress?.status, job.status);
 
   return (
     <div className="rounded-lg border border-border bg-card p-4">
@@ -38,9 +44,21 @@ function JobRow({ job, onFinished }: { job: Job; onFinished: () => void }) {
         <StatusPill status={status} />
       </div>
       {isActive ? (
-        <JobProgressBar progress={progress} />
+        <>
+          <JobProgressBar progress={progress} />
+          <div className="mt-2 flex justify-end">
+            {/* O botão decide pelo status VIVO (SSE), não pela prop que pode
+                estar velha — senão um job `queued` que virou `running` cancela
+                direto, sem a confirmação de job rodando (E1c). */}
+            <CancelarJobBotao job={{ ...job, status }} onCanceled={onFinished} />
+          </div>
+        </>
       ) : status === "error" ? (
         <p className="text-xs text-destructive">{textoDoErro(job.errorCode, job.errorMessage)}</p>
+      ) : status === "canceled" ? (
+        <p className="text-xs text-muted-foreground">
+          {textoDeCancelado(progress?.errorMessage ?? job.errorMessage)}
+        </p>
       ) : (
         <p className="text-xs text-muted-foreground">Concluído</p>
       )}
@@ -49,21 +67,13 @@ function JobRow({ job, onFinished }: { job: Job; onFinished: () => void }) {
 }
 
 function StatusPill({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    queued: "bg-muted text-muted-foreground",
-    running: "bg-primary/20 text-primary",
-    done: "bg-emerald-500/20 text-emerald-400",
-    error: "bg-destructive/20 text-destructive",
-  };
-  const label: Record<string, string> = {
-    queued: "Na fila",
-    running: "Processando",
-    done: "Concluído",
-    error: "Erro",
-  };
   return (
-    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${map[status] ?? map.queued}`}>
-      {label[status] ?? status}
+    <span
+      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+        ESTILO_DE_STATUS[status as keyof typeof ESTILO_DE_STATUS] ?? ESTILO_DE_STATUS.queued
+      }`}
+    >
+      {ROTULO_DE_STATUS[status as keyof typeof ROTULO_DE_STATUS] ?? status}
     </span>
   );
 }

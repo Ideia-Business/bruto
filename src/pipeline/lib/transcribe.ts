@@ -26,6 +26,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { dividirPath, localizarBinario, pythonDaFerramentaUv } from "@/pipeline/lib/binario";
+import { FILHO_EM_GRUPO_PROPRIO, registrarFilho } from "@/pipeline/lib/cancelamento";
 import { DATA_ROOT } from "@/pipeline/lib/paths";
 import { redact } from "@/pipeline/lib/llm/redact";
 import { PipelineError } from "@/pipeline/types";
@@ -106,10 +107,14 @@ function rodar(
   return new Promise((resolve, reject) => {
     // stdio "pipe" nos três: quando não há entrada, o stdin é apenas fechado —
     // mesmo efeito de "ignore" para quem está do outro lado.
+    // Grupo próprio + registro: cancelar o job mata o backend de transcrição
+    // (python/whisper) E os netos dele.
     const child = spawn(cmd, args, {
       stdio: ["pipe", "pipe", "pipe"],
       env: ambienteMinimo(),
+      detached: FILHO_EM_GRUPO_PROPRIO,
     });
+    registrarFilho(child);
 
     // Os tipos do `spawn` não provam que os streams existem; em vez de calar o
     // compilador com `!`, tratamos a ausência como o erro que ela seria.

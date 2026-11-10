@@ -52,7 +52,7 @@ export const jobs = sqliteTable(
     // em `brutos`. A coluna continua chamando-se `video_id` no banco: o débito
     // pago aqui era o da TABELA; renomear coluna é migração à parte.
     url: text("url").notNull(),
-    status: text("status").notNull(), // 'queued' | 'running' | 'done' | 'error'
+    status: text("status").notNull(), // 'queued' | 'running' | 'done' | 'error' | 'canceled'
     // 'metadata' | 'transcript' | 'summary' | 'mindmap' | 'category' | 'export'
     currentStep: text("current_step"),
     progressPct: integer("progress_pct").notNull().default(0),

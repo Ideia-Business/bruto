@@ -48,7 +48,9 @@ import { CopyButton } from "./copy-button";
 import { TranscriptView } from "./transcript-view";
 import { TranscriptAiTools } from "./transcript-ai-tools";
 import { JobProgressBar, useJobProgress } from "./job-progress";
+import { CancelarJobBotao } from "./cancelar-job-botao";
 import { fetchApp } from "@/lib/fetch-app";
+import { classificarResposta409, statusEfetivo, type Resposta409 } from "@/lib/job-status-ui";
 import {
   localizarPastasAntigasDoVideo,
   reexportarAposArtefatoNovo,
@@ -152,6 +154,7 @@ export function BrutoDetail({
   const progress = useJobProgress(isActive ? (data.latestJob?.id ?? null) : null, {
     onDone: () => router.refresh(),
     onError: () => router.refresh(),
+    onCanceled: () => router.refresh(),
   });
 
   const [studyBusy, setStudyBusy] = useState(false);
@@ -275,6 +278,38 @@ export function BrutoDetail({
         return;
       }
       toast.success(okMsg);
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * "Tentar de novo" dos estados de erro e de cancelamento. Diferente do
+   * `action` genérico: o 409 de duplicata ATIVA (com `jobId`) tem aviso
+   * próprio — "Esse vídeo já está na fila." — em vez do erro genérico.
+   */
+  async function tentarDeNovo(whisper: boolean) {
+    setBusy(true);
+    try {
+      const res = await fetchApp(`/api/videos/${data.bruto.id}/retry${whisper ? "?whisper=1" : ""}`, {
+        method: "POST",
+      });
+      if (res.status === 409) {
+        const d = (await res.json().catch(() => ({}))) as Resposta409;
+        if (classificarResposta409(d) === "ja-na-fila") {
+          toast.info("Esse vídeo já está na fila.");
+          return;
+        }
+        toast.error(d.error ?? "Falhou.");
+        return;
+      }
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        toast.error(d.error ?? "Falhou.");
+        return;
+      }
+      toast.success(whisper ? "Reprocessando com Whisper…" : "Reprocessando…");
       router.refresh();
     } finally {
       setBusy(false);
@@ -405,6 +440,19 @@ export function BrutoDetail({
         <div className="mx-auto max-w-lg space-y-2 rounded-xl border border-border bg-card p-6">
           <p className="text-sm font-medium">Processando este vídeo…</p>
           <JobProgressBar progress={progress} />
+          <div className="flex justify-end">
+            {/* Status VIVO do SSE (E1c): `latestJob` é prop de servidor — um
+                job renderizado como `queued` que já está `running` tem que
+                pedir a confirmação de job rodando, não cancelar direto. */}
+            <CancelarJobBotao
+              job={{
+                id: data.latestJob!.id,
+                status: statusEfetivo(progress?.status, data.latestJob!.status),
+                url: data.bruto.url,
+              }}
+              onCanceled={() => router.refresh()}
+            />
+          </div>
         </div>
       ) : data.latestJob?.status === "error" ? (
         <div className="space-y-3 rounded-xl border border-destructive/40 bg-destructive/10 p-6">
@@ -412,10 +460,27 @@ export function BrutoDetail({
             {textoDoErro(data.latestJob.errorCode, data.latestJob.errorMessage)}
           </p>
           <div className="flex gap-2">
-            <Button size="sm" disabled={busy} onClick={() => action(`/api/videos/${data.bruto.id}/retry`, "Reprocessando…")}>
+            <Button size="sm" disabled={busy} onClick={() => tentarDeNovo(false)}>
               <RefreshCw className="mr-1.5 size-4" /> Tentar de novo
             </Button>
-            <Button size="sm" variant="secondary" disabled={busy} onClick={() => action(`/api/videos/${data.bruto.id}/retry?whisper=1`, "Reprocessando com Whisper…")}>
+            <Button size="sm" variant="secondary" disabled={busy} onClick={() => tentarDeNovo(true)}>
+              <Sparkles className="mr-1.5 size-4" /> Usar Whisper
+            </Button>
+          </div>
+        </div>
+      ) : data.latestJob?.status === "canceled" ? (
+        <div className="space-y-3 rounded-xl border border-border bg-card p-6">
+          <p className="text-sm text-muted-foreground">
+            {data.latestJob.errorMessage
+              ? `Processamento cancelado. ${data.latestJob.errorMessage}`
+              : "Processamento cancelado."}
+          </p>
+          {/* Cancelamento não conclui vídeo nenhum — mesmos botões do erro. */}
+          <div className="flex gap-2">
+            <Button size="sm" disabled={busy} onClick={() => tentarDeNovo(false)}>
+              <RefreshCw className="mr-1.5 size-4" /> Tentar de novo
+            </Button>
+            <Button size="sm" variant="secondary" disabled={busy} onClick={() => tentarDeNovo(true)}>
               <Sparkles className="mr-1.5 size-4" /> Usar Whisper
             </Button>
           </div>

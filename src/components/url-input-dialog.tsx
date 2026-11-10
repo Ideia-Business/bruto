@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Compatibilidade } from "./compatibilidade";
 import { fetchApp } from "@/lib/fetch-app";
+import { classificarResposta409, dividirDuplicados } from "@/lib/job-status-ui";
 import {
   avaliarLoteDeLinks,
   chaveDeRastreio,
@@ -46,6 +47,12 @@ async function enviarLinha(
     });
     const data = await res.json();
     if (res.status === 409 && data.duplicate) {
+      // O 409 de duplicata tem dois sabores e o `jobId` distingue: com ele,
+      // o vídeo JÁ está queued/running (aponta para /processing); sem ele,
+      // já foi processado e vive no catálogo (aponta para /video/...).
+      if (classificarResposta409(data) === "ja-na-fila") {
+        return { linha, status: "duplicado", mensagem: "Já está na fila.", jobId: data.jobId };
+      }
       return { linha, status: "duplicado", mensagem: "Já está no catálogo.", videoId: data.videoId };
     }
     if (!res.ok) {
@@ -149,6 +156,7 @@ export function UrlInputDialog({
     });
 
     const { naFila, duplicados, falhas } = contarEnvioDoLote(resultado);
+    const { noCatalogo, jaNaFila: duplicadosNaFila } = dividirDuplicados(resultado);
 
     // Efeitos de rede propagam mesmo se este envio foi superado (diálogo
     // fechado, ou um novo envio disparado no meio do caminho): o job já
@@ -174,7 +182,8 @@ export function UrlInputDialog({
     toast.info(
       [
         naFila > 0 ? `${naFila} na fila` : null,
-        duplicados > 0 ? `${duplicados} já no catálogo` : null,
+        noCatalogo > 0 ? `${noCatalogo} já no catálogo` : null,
+        duplicadosNaFila > 0 ? `${duplicadosNaFila} já na fila` : null,
         falhas > 0 ? `${falhas} com problema` : null,
       ]
         .filter(Boolean)
@@ -250,7 +259,18 @@ export function UrlInputDialog({
                   )}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-muted-foreground">{r.linha}</span>
-                    {r.status === "duplicado" && r.videoId ? (
+                    {r.status === "duplicado" && r.jobId ? (
+                      <button
+                        type="button"
+                        className="underline underline-offset-2 hover:text-foreground"
+                        onClick={() => {
+                          fecharEResetar();
+                          router.push("/processing");
+                        }}
+                      >
+                        {r.mensagem} Ver fila.
+                      </button>
+                    ) : r.status === "duplicado" && r.videoId ? (
                       <button
                         type="button"
                         className="underline underline-offset-2 hover:text-foreground"

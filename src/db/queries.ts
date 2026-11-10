@@ -5,6 +5,7 @@ import { db } from "./client";
 import { artifacts, brutoTags, categories, filaoBrutos, filoes, jobs, tags, brutos } from "./schema";
 import type { Artifact, Category, Filao, Job, Bruto, Tag } from "./schema";
 import { slugifyTag } from "@/pipeline/lib/tags";
+import { parseMediaUrl } from "@/pipeline/lib/paths";
 import { videosProntosParaExportar, type VideoProntoParaExportar } from "./videos-prontos";
 
 export interface TagLite {
@@ -255,6 +256,36 @@ export function isBrutoDone(id: string): boolean {
     .limit(1)
     .get();
   return !!done;
+}
+
+/**
+ * O job ATIVO (queued/running) de um vídeo, se houver — a função ÚNICA de
+ * dedupe de "já está na fila", usada por `POST /api/videos`,
+ * `POST /api/videos/[id]/retry` e a duplicata tardia do runner (nunca três
+ * cópias da mesma regra).
+ *
+ * Comparação por IDENTIDADE do vídeo, não pela string da URL: job `queued`
+ * ainda tem `videoId` null (a etapa metadata é quem o preenche), então nesse
+ * caso a identidade vem de `parseMediaUrl(job.url)` — o que faz
+ * `youtube.com/watch?v=ID`, `youtu.be/ID` e `/shorts/ID` do MESMO vídeo
+ * serem a mesma coisa aqui. Job com `videoId` preenchido compara por ele.
+ *
+ * `excetoJobId` exclui o próprio job — usado pela duplicata tardia, onde o
+ * job que descobre a identidade não pode ser duplicata de si mesmo.
+ */
+export function getJobAtivoDoVideo(videoId: string, excetoJobId?: string): Job | null {
+  const ativos = db
+    .select()
+    .from(jobs)
+    .where(inArray(jobs.status, ["queued", "running"]))
+    .all();
+  return (
+    ativos.find((job) => {
+      if (excetoJobId && job.id === excetoJobId) return false;
+      if (job.videoId === videoId) return true;
+      return job.videoId === null && parseMediaUrl(job.url)?.id === videoId;
+    }) ?? null
+  );
 }
 
 export function listCategories(): Category[] {
