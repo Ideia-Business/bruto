@@ -29,6 +29,7 @@
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { FILHO_EM_GRUPO_PROPRIO, registrarFilho } from "@/pipeline/lib/cancelamento";
 import { pythonDaFerramentaUv } from "@/pipeline/lib/binario";
@@ -256,18 +257,27 @@ function diretorioDosNavegadores(): string {
 }
 
 /**
- * Marca de "o headless shell está garantido neste PLAYWRIGHT_BROWSERS_PATH",
- * escrita por nós depois de cada instalação bem-sucedida. Vive DENTRO do
- * diretório dos navegadores: se o diretório for apagado, a marca some junto
- * e a próxima garantia reinstala.
+ * Marca de "o headless shell está garantido neste PLAYWRIGHT_BROWSERS_PATH
+ * NA REVISÃO QUE O PLAYWRIGHT INSTALADO EXIGE", escrita por nós depois de
+ * cada instalação bem-sucedida. Vive DENTRO do diretório dos navegadores:
+ * se o diretório for apagado, a marca some junto e a próxima garantia
+ * reinstala.
+ *
+ * Por que amarrada à revisão: depois de uma atualização do app que troca a
+ * revisão do Chromium exigida pelo Playwright, uma marca sem versão faria a
+ * garantia pular a instalação — e o `chromium.launch()` quebraria exigindo
+ * a revisão nova. Atualização do app com revisão nova → reinstala; mesma
+ * revisão → não reinstala. A marca é JSON `{ revisao, gravadoEm }`; o
+ * formato antigo (texto ISO, sem revisão) vale "desatualizado".
  *
  * Por que uma marca, e não varrer o diretório atrás de
  * `chromium_headless_shell-*`: `readdirSync` com caminho dinâmico faz o
  * tracer do build standalone varrer o projeto inteiro atrás de arquivo
- * (warning do Turbopack, medido nesta lane). A marca é `existsSync`, que o
- * tracer aceita sem varredura — e a CLI do Playwright é idempotente: numa
- * máquina onde o navegador já exista sem a nossa marca, a primeira garantia
- * roda a CLI, ela constata "já instalado" sem baixar nada, e a marca nasce.
+ * (warning do Turbopack, medido nesta lane). A marca e o `browsers.json`
+ * são leituras de arquivos FIXOS (`resolve` + `readFileSync`), que o tracer
+ * aceita sem varredura — e a CLI do Playwright é idempotente: numa máquina
+ * onde o navegador já exista sem marca válida, a garantia roda a CLI, ela
+ * constata "já instalado" sem baixar nada, e a marca nasce.
  */
 const MARCA_CHROMIUM = ".bruto-chromium-headless-shell-instalado";
 
@@ -275,14 +285,56 @@ function caminhoMarcaChromium(): string {
   return path.join(diretorioDosNavegadores(), MARCA_CHROMIUM);
 }
 
+/**
+ * A revisão do `chromium-headless-shell` que o Playwright INSTALADO exige
+ * agora, lida do `browsers.json` do `playwright-core` — resolvido com
+ * `createRequire` a partir da CLI do contrato (`BRUTO_PLAYWRIGHT_CLI`), o
+ * MESMO caminho de resolução que `"$BRUTO_NODE" "$BRUTO_PLAYWRIGHT_CLI"
+ * install` usa. `null` quando não dá para saber (lançador quebrado, pacote
+ * fora do lugar) — e aí a garantia defere à CLI (idempotente), nunca à
+ * marca cega.
+ */
+function revisaoChromiumExigida(): string | null {
+  try {
+    const cli = process.env.BRUTO_PLAYWRIGHT_CLI;
+    if (!cli) return null;
+    const exigir = createRequire(cli);
+    const pacoteCore = exigir.resolve("playwright-core/package.json");
+    const browsers = JSON.parse(
+      fs.readFileSync(path.join(path.dirname(pacoteCore), "browsers.json"), "utf8"),
+    ) as { browsers?: Array<{ name?: unknown; revision?: unknown }> };
+    const entrada = browsers.browsers?.find((b) => b.name === "chromium-headless-shell");
+    return typeof entrada?.revision === "string" ? entrada.revision : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A revisão registrada na marca; `null` se ausente, ilegível ou formato antigo. */
+function revisaoDaMarcaChromium(): string | null {
+  try {
+    const marca = JSON.parse(fs.readFileSync(caminhoMarcaChromium(), "utf8")) as {
+      revisao?: unknown;
+    };
+    return typeof marca.revisao === "string" ? marca.revisao : null;
+  } catch {
+    // Formato ANTIGO (texto ISO sem revisão) cai aqui: vale "não garantido".
+    return null;
+  }
+}
+
 function chromiumHeadlessShellPresente(): boolean {
-  return fs.existsSync(caminhoMarcaChromium());
+  const exigida = revisaoChromiumExigida();
+  if (exigida === null) return false;
+  return revisaoDaMarcaChromium() === exigida;
 }
 
 /**
  * Garante o Chromium headless antes de `chromium.launch` (modo pacote):
  * instala com `"$BRUTO_NODE" "$BRUTO_PLAYWRIGHT_CLI" install
- * chromium-headless-shell` se ausente. É `chromium-headless-shell` (e não
+ * chromium-headless-shell` se ausente — ou se a marca é de OUTRA revisão
+ * da que o Playwright instalado exige (app atualizado → reinstala). É
+ * `chromium-headless-shell` (e não
  * `chromium`) porque é o executável que o `headless: true` resolve no
  * Playwright 1.61 — conferido no pacote (`coreBundle.js`:
  * `options.headless ? "chromium-headless-shell" : "chromium"`).
@@ -304,10 +356,17 @@ export async function garantirChromium(opcoes: { timeoutMs?: number } = {}): Pro
         await rodarInstalacao(node, [cli, "install", "chromium-headless-shell"], timeoutMs);
         // A CLI saindo com 0 É a verificação: ela é idempotente e falha com
         // exit != 0 quando não consegue deixar o navegador no lugar. A marca
-        // registra esse sucesso para as próximas garantias (best-effort: sem
-        // ela, a próxima chamada só repetiria a CLI, que não baixaria nada).
+        // registra esse sucesso COM a revisão exigida, para as próximas
+        // garantias (best-effort: sem ela, a próxima chamada só repetiria a
+        // CLI, que não baixaria nada).
         try {
-          fs.writeFileSync(caminhoMarcaChromium(), new Date().toISOString());
+          fs.writeFileSync(
+            caminhoMarcaChromium(),
+            JSON.stringify({
+              revisao: revisaoChromiumExigida(),
+              gravadoEm: new Date().toISOString(),
+            }),
+          );
         } catch (err) {
           console.warn(
             `[bruto] Chromium instalado, mas a marca de presença não pôde ser gravada: ${

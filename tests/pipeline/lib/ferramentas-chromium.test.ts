@@ -34,7 +34,9 @@ const VARS = [
  * O dublê do node grava os argumentos. Com BRUTO_NODE_FALHA=1, sai com erro
  * (simula máquina sem internet). A "presença" do navegador é a marca que o
  * próprio app grava após a instalação (`.bruto-chromium-headless-shell-instalado`
- * no PLAYWRIGHT_BROWSERS_PATH) — o dublê não precisa criar nada.
+ * no PLAYWRIGHT_BROWSERS_PATH, JSON `{ revisao, gravadoEm }` com a revisão
+ * que o playwright-core falso deste teste exige — REVISAO_TESTE) — o dublê
+ * não precisa criar nada.
  */
 function escreverNodeDuble(destino: string): void {
   fs.writeFileSync(
@@ -56,6 +58,9 @@ function chamadasNode(): string[] {
   }
 }
 
+/** A revisão que o playwright-core falso deste teste "exige". */
+const REVISAO_TESTE = "9999";
+
 let ferramentas: typeof import("@/pipeline/lib/ferramentas");
 
 before(async () => {
@@ -66,6 +71,21 @@ before(async () => {
   playwrightCli = path.join(raiz, "app", "node_modules", "playwright", "cli.js");
   fs.mkdirSync(path.dirname(playwrightCli), { recursive: true });
   fs.writeFileSync(playwrightCli, "// duble da cli do playwright\n");
+
+  // O playwright-core falso que a CLI dublê resolve: é do browsers.json
+  // DELE que o app lê a revisão exigida para validar a marca.
+  const coreDir = path.join(raiz, "app", "node_modules", "playwright-core");
+  fs.mkdirSync(coreDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(coreDir, "package.json"),
+    JSON.stringify({ name: "playwright-core", version: "1.61.1" }),
+  );
+  fs.writeFileSync(
+    path.join(coreDir, "browsers.json"),
+    JSON.stringify({
+      browsers: [{ name: "chromium-headless-shell", revision: REVISAO_TESTE }],
+    }),
+  );
 
   nodeDuble = path.join(raiz, "node-duble");
   escreverNodeDuble(nodeDuble);
@@ -109,10 +129,10 @@ describe("garantirChromium — modo pacote", () => {
     assert.equal(chamadasNode().length, 1);
   });
 
-  test("já garantido antes (marca no PLAYWRIGHT_BROWSERS_PATH): não instala nada", async () => {
+  test("já garantido antes (marca com a revisão exigida): não instala nada", async () => {
     fs.writeFileSync(
       path.join(browsersPath, ".bruto-chromium-headless-shell-instalado"),
-      "2026-11-11",
+      JSON.stringify({ revisao: REVISAO_TESTE, gravadoEm: "2026-11-11T00:00:00.000Z" }),
     );
     await ferramentas.garantirChromium();
     assert.deepEqual(chamadasNode(), []);
