@@ -50,6 +50,34 @@ function* arquivos(dir: string): Generator<string> {
   }
 }
 
+/**
+ * CLASSE DD — nenhuma mensagem, em nenhum modo, manda a pessoa apagar,
+ * excluir ou sobrescrever dado dela (banco, biblioteca, `~/.bruto`) como
+ * conserto. O achado que originou a classe: a saída do estado intermediário
+ * da migração mandava apagar o `bruto.db` — com a biblioteca dentro.
+ *
+ * A varredura caça o PAR "verbo destrutivo + dado da pessoa" dentro do MESMO
+ * literal de string (fora de comentário), em qualquer ordem. Toda ocorrência
+ * tem de estar justificada em `ARQUIVOS_JUSTIFICADOS_DD`; ocorrência nova
+ * quebra a suíte até ser triada.
+ */
+const DD_VERBO = "apague|apagar|exclua|excluir|remova|remover|deletar|delete";
+const DD_DADO = "bruto\\.db|~\\/\\.bruto|dbPath|\\bbanco\\b|\\bbiblioteca\\b";
+const DD_PROIBIDO = new RegExp(
+  `(["'\`])(?:\\\\.|(?!\\1).)*(?:(?:${DD_VERBO})(?:\\\\.|(?!\\1).)*(?:${DD_DADO})|(?:${DD_DADO})(?:\\\\.|(?!\\1).)*(?:${DD_VERBO}))(?:\\\\.|(?!\\1).)*\\1`,
+  "i",
+);
+
+/**
+ * As ÚNICAS ocorrências do par verbo+dado permitidas, e por quê: AÇÃO
+ * explícita da pessoa, com confirmação na tela — nunca orientação de
+ * conserto. Mudou o conjunto? Este teste falha até a lista ser triada.
+ */
+const ARQUIVOS_JUSTIFICADOS_DD: Record<string, string> = {
+  "src/components/filoes-client.tsx":
+    "AÇÃO explícita da pessoa com confirmação (apagar um filão), não conserto — o próprio texto garante que os brutos continuam na biblioteca",
+};
+
 /** Heurística "não é comentário": comentário de linha, de bloco e JSX. */
 function ehCodigo(linha: string): boolean {
   const t = linha.trim();
@@ -132,5 +160,34 @@ describe("varredura da classe Y em src/**", () => {
         `${arquivo} deveria conter "${vocabulo}" (${ARQUIVOS_JUSTIFICADOS[arquivo]})`,
       );
     }
+  });
+});
+
+describe("varredura da classe DD em src/**", () => {
+  test("nenhuma instrução destrutiva sobre dado da pessoa fora dos justificados (nenhum a mais, nenhum a menos)", () => {
+    const ocorrencias = new Map<string, string[]>();
+    for (const arq of arquivos(SRC)) {
+      const rel = path.relative(RAIZ, arq);
+      const linhas = fs.readFileSync(arq, "utf8").split("\n");
+      linhas.forEach((linha, i) => {
+        if (!ehCodigo(linha)) return;
+        if (DD_PROIBIDO.test(linha)) {
+          const lista = ocorrencias.get(rel) ?? [];
+          lista.push(`${i + 1}: ${linha.trim().slice(0, 120)}`);
+          ocorrencias.set(rel, lista);
+        }
+      });
+    }
+
+    const achados = [...ocorrencias.keys()].sort();
+    const esperados = Object.keys(ARQUIVOS_JUSTIFICADOS_DD).sort();
+    const detalhe = [...ocorrencias.entries()]
+      .map(([a, ls]) => `\n  ${a}\n    ${ls.join("\n    ")}`)
+      .join("");
+    assert.deepEqual(
+      achados,
+      esperados,
+      `a varredura DD mudou — triar antes de seguir.${detalhe}`,
+    );
   });
 });

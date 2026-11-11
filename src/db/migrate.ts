@@ -59,6 +59,60 @@ function tabelaExiste(sqlite: Database.Database, nome: string): boolean {
 }
 
 /**
+ * O meio-termo perigoso: o banco tem PARTE das tabelas da baseline (pode ser
+ * um push antigo, anterior a alguma tabela nova). Carimbar deixaria o banco
+ * permanentemente incompleto, e executar a 0000 quebraria nas que existem.
+ *
+ * Retorna o que tem e o que falta — ou null quando o banco NÃO está nesse
+ * caso (vazio, completo ou já controlado pelo journal).
+ */
+function detectarEstadoIntermediario(
+  sqlite: Database.Database,
+  entradas: EntradaJournal[],
+  migrationsDir: string,
+): { presentes: string[]; faltando: string[] } | null {
+  if (entradas.length === 0) return null;
+  if (tabelaExiste(sqlite, TABELA_JOURNAL)) return null;
+
+  const base = entradas[0];
+  const esperadas = tabelasCriadasPor(migrationsDir, base.tag);
+  const presentes = esperadas.filter((t) => tabelaExiste(sqlite, t));
+
+  if (presentes.length === 0 || presentes.length === esperadas.length) return null;
+  return { presentes, faltando: esperadas.filter((t) => !presentes.includes(t)) };
+}
+
+/**
+ * A saída do estado intermediário, POR MODO — e em NENHUM dos dois ela manda
+ * apagar ou sobrescrever o banco (CLASSE DD): dado da pessoa não é consertado
+ * às cegas. A orientação é sempre preservar uma cópia e pedir ajuda; no clone
+ * existe um reparo não destrutivo (`drizzle-kit push` mostra o que vai mudar
+ * e pergunta antes — nada é aplicado sem confirmação), no app instalado não
+ * há ferramenta de schema, então o caminho é o suporte.
+ */
+function mensagemEstadoIntermediario(
+  presentes: string[],
+  faltando: string[],
+  dbPath: string,
+): string {
+  const saidas =
+    process.env.BRUTO_EMPACOTADO === "1"
+      ? `No app instalado não há ferramenta de schema à mão. Caminho seguro: ` +
+        `(1) faça uma cópia de ~/.bruto/bruto.db (por exemplo, ` +
+        `\`cp ~/.bruto/bruto.db ~/Desktop/bruto-backup.db\`); ` +
+        `(2) fale com o suporte e envie esta mensagem.`
+      : `Caminho seguro: (1) faça uma cópia de ${dbPath}; ` +
+        `(2) rode \`npx drizzle-kit push\` para completar o schema — ele mostra o que ` +
+        `vai mudar e pergunta antes, nada é aplicado sem a sua confirmação; ` +
+        `(3) rode \`npm run db:migrate\`. Em caso de dúvida, abra uma demanda antes.`;
+  return (
+    `Banco em estado intermediário: tem ${presentes.join(", ")} mas falta ${faltando.join(", ")}.\n` +
+    `Não dá para carimbar o baseline com segurança, e o Bruto NÃO alterou nada — ` +
+    `o banco está intacto em ${dbPath}. ${saidas}`
+  );
+}
+
+/**
  * O caso que mais importa: o banco que JÁ EXISTE.
  *
  * Quem já usa o Bruto tem um `bruto.db` criado por `drizzle-kit push` — com
@@ -74,12 +128,16 @@ function tabelaExiste(sqlite: Database.Database, nome: string): boolean {
  * insere uma linha de controle.
  *
  * Retorna true se carimbou o baseline.
+ *
+ * Pré-condição garantida por `aplicarMigracoes`: o banco NÃO está em estado
+ * intermediário (o portão somente-leitura já falhou antes, sem tocar no
+ * arquivo). Aqui só restam dois casos: banco vazio (nada a carimbar) ou
+ * banco com a baseline completa (carimbar).
  */
 function carimbarBaselineSeNecessario(
   sqlite: Database.Database,
   entradas: EntradaJournal[],
   migrationsDir: string,
-  dbPath: string,
 ): boolean {
   if (entradas.length === 0) return false;
   if (tabelaExiste(sqlite, TABELA_JOURNAL)) return false; // banco já controlado
@@ -90,28 +148,6 @@ function carimbarBaselineSeNecessario(
 
   // Banco vazio (clone novo): nada a carimbar — a 0000 roda de verdade.
   if (presentes.length === 0) return false;
-
-  // Meio-termo: o banco tem PARTE das tabelas da baseline. Pode ser um push
-  // antigo, anterior a alguma tabela nova. Carimbar aqui deixaria o banco
-  // permanentemente incompleto, e executar a 0000 quebraria nas que existem.
-  // Nenhuma das duas é segura, então paramos e dizemos exatamente o que falta.
-  if (presentes.length !== esperadas.length) {
-    const faltando = esperadas.filter((t) => !presentes.includes(t));
-    // A saída é POR MODO: no app instalado não existe `npx`/`npm run` para a
-    // pessoa — o caminho real é apagar o banco descartável e reabrir o app
-    // (a migração do boot refaz do zero).
-    const saidas =
-      process.env.BRUTO_EMPACOTADO === "1"
-        ? `No app instalado não dá para completar o schema à mão: apague ${dbPath} ` +
-          `e reabra o Bruto — a migração refaz o banco do zero.`
-        : `Saídas: (a) rode uma vez \`npx drizzle-kit push\` para completar o schema ` +
-          `e depois \`npm run db:migrate\`; ou (b) se o banco for descartável, apague ` +
-          `${dbPath} e rode a migração do zero.`;
-    throw new Error(
-      `Banco em estado intermediário: tem ${presentes.join(", ")} mas falta ${faltando.join(", ")}.\n` +
-        `Não dá para carimbar o baseline com segurança. ${saidas}`,
-    );
-  }
 
   sqlite.exec(
     `CREATE TABLE IF NOT EXISTS ${TABELA_JOURNAL} (
@@ -146,6 +182,27 @@ export function aplicarMigracoes(): void {
   const dbPath = path.join(dataRoot, "bruto.db");
 
   fs.mkdirSync(dataRoot, { recursive: true });
+
+  // CLASSE DD — o portão do estado intermediário: a inspeção abre o banco
+  // SOMENTE-LEITURA e fecha antes de qualquer conexão de escrita ou pragma.
+  // Se o schema está parcial, a migração falha aqui sem tocar no arquivo —
+  // até o cabeçalho mudaria se o `journal_mode` rodasse (sha256 antes =
+  // depois, provado em tests/db/migrate-estado-intermediario.test.ts).
+  const entradas = lerJournal(migrationsDir);
+  if (fs.existsSync(dbPath)) {
+    const inspecao = new Database(dbPath, { readonly: true, fileMustExist: true });
+    try {
+      const estado = detectarEstadoIntermediario(inspecao, entradas, migrationsDir);
+      if (estado) {
+        throw new Error(
+          mensagemEstadoIntermediario(estado.presentes, estado.faltando, dbPath),
+        );
+      }
+    } finally {
+      inspecao.close();
+    }
+  }
+
   const sqlite = new Database(dbPath);
   // Mesmos pragmas do client: o migrator abre a sua própria conexão e não
   // herdaria nada de lá.
@@ -154,12 +211,7 @@ export function aplicarMigracoes(): void {
   sqlite.pragma("foreign_keys = ON");
 
   try {
-    const carimbou = carimbarBaselineSeNecessario(
-      sqlite,
-      lerJournal(migrationsDir),
-      migrationsDir,
-      dbPath,
-    );
+    const carimbou = carimbarBaselineSeNecessario(sqlite, entradas, migrationsDir);
     if (carimbou) {
       console.log("ℹ️  Banco pré-existente detectado: baseline marcado como aplicado (nada foi executado).");
     }
