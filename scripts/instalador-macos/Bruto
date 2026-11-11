@@ -158,13 +158,18 @@ subir_servidor() {
   mv "${PID_ARQ}.novo" "$PID_ARQ" 2>/dev/null || true
 }
 
-# Item 5: espera /api/versao por até 60 s (avisando se demorar). Se estourar e
-# a porta ainda assim responder HTTP, segue e registra — servidor vivo sem
-# versão é melhor que app mudo.
+# Item 5: espera /api/versao responder com origem=pacote por até 60 s
+# (avisando se demorar). Sem essa prova NÃO há janela: nunca se abre janela
+# para um servidor que não provou ser o do pacote (a muleta "a porta
+# responde — seguindo" foi removida: achado da 1ª rodada do Codex). O
+# /api/versao real chega com o W2; aqui o que vale é a prova.
 esperar_servidor() {
-  local i=0
+  local i=0 json
   while [ "$i" -lt 120 ]; do
-    [ -n "$(versao_no_ar)" ] && return 0
+    json="$(versao_no_ar)"
+    if [ -n "$json" ] && [ "$(json_campo "$json" origem)" = "pacote" ]; then
+      return 0
+    fi
     i=$((i + 1))
     if [ "$i" -eq 40 ]; then
       log "o servidor ainda não respondeu (20 s)"
@@ -172,11 +177,8 @@ esperar_servidor() {
     fi
     sleep 0.5
   done
-  if porta_viva; then
-    log "sem /api/versao, mas a porta responde — seguindo"
-    return 0
-  fi
-  log "o servidor não respondeu em 60 s"
+  log "o servidor não provou ser o do pacote em 60 s — desistindo (log: $LOG)"
+  notificar "O servidor do Bruto não subiu em 60 s. Detalhes no log: $LOG"
   return 1
 }
 

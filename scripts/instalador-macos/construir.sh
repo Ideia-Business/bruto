@@ -47,6 +47,111 @@ sha256_de() {
   fi
 }
 
+# montar_host_do_pacote <recursos>
+# Monta o host de native messaging no layout do pacote (contrato, item 7 e
+# "Layout"). O registrar-host.sh calcula a raiz como o PAI da própria pasta:
+# copiado direto em Resources/, registraria Contents/launcher/host-nativo.sh
+# — caminho que NÃO existe (achado P2 da 1ª rodada do Codex). Por isso ele
+# vive em launcher/ (raiz calculada = Resources) e Resources/registrar-host.sh
+# é um DELEGADOR — é este que o lançador chama, sem mudar de comportamento.
+montar_host_do_pacote() {
+  local recursos="$1"
+  cp "$RAIZ/launcher/host-nativo.mjs" "$recursos/host-nativo.mjs"
+  cp "$PASTA/host-nativo.sh" "$recursos/host-nativo.sh"
+  chmod 755 "$recursos/host-nativo.sh"
+  mkdir -p "$recursos/launcher"
+  cp "$PASTA/host-nativo.sh" "$recursos/launcher/host-nativo.sh"
+  chmod 755 "$recursos/launcher/host-nativo.sh"
+  cp "$RAIZ/launcher/registrar-host.sh" "$recursos/launcher/registrar-host.sh"
+  chmod 755 "$recursos/launcher/registrar-host.sh"
+  cat >"$recursos/registrar-host.sh" <<'DELEG'
+#!/bin/bash
+# Bruto — delega o registro ao registrador real, que vive em launcher/
+# (a raiz que ELE calcula é o pai da própria pasta, ou seja, Resources: o
+# caminho do host no manifesto gerado EXISTE neste pacote).
+PASTA="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+exec bash "$PASTA/launcher/registrar-host.sh" "$@"
+DELEG
+  chmod 755 "$recursos/registrar-host.sh"
+}
+
+# provar_caminho <caminho> — CLASSE H: todo caminho que o pacote grava ou
+# passa adiante existe, é absoluto, canônico (sem "..") e executável.
+provar_caminho() {
+  local p="$1"
+  case "$p" in
+    /*) ;;
+    *) falha "caminho não absoluto: $p" "bug do layout do host neste build" ;;
+  esac
+  case "$p" in
+    *..*) falha "caminho não canônico (contém ..): $p" "bug do layout do host neste build" ;;
+  esac
+  [ -f "$p" ] || falha "caminho inexistente no pacote: $p" "bug do layout do host neste build"
+  [ -x "$p" ] || falha "caminho não executável: $p" "chmod 755 faltando neste build"
+}
+
+# provar_host_do_pacote <recursos> <rascunho>
+# A prova H do fim do build: cada caminho referenciado pelo host nativo é
+# conferido de verdade — inclusive o `path` do manifesto que o registrador
+# GERARIA, obtido rodando o registrador do pacote (o delegador que o lançador
+# chama) com HOME falso e um ID de teste, e lendo o que ele escreveu.
+provar_host_do_pacote() {
+  local recursos="$1" rascunho="$2"
+  local home_prova manifest host_no_manifesto
+  # 1) BRUTO_LANCADOR que cada variante do wrapper exporta (Resources/ e
+  #    Resources/launcher/ resolvem as duas para …/Contents/MacOS/Bruto).
+  provar_caminho "$(cd "$recursos/.." && pwd)/MacOS/Bruto"
+  provar_caminho "$recursos/host-nativo.sh"
+  provar_caminho "$recursos/launcher/host-nativo.sh"
+  provar_caminho "$recursos/registrar-host.sh"
+  provar_caminho "$recursos/launcher/registrar-host.sh"
+  # 2) o manifesto que o registrador geraria: roda o delegador com HOME falso
+  #    (nada escreve no usuário real) e um ID de teste de 32 letras a-p.
+  home_prova="$rascunho/prova-home"
+  rm -rf "$home_prova"
+  mkdir -p "$home_prova/Library/Application Support/Google/Chrome"
+  HOME="$home_prova" BRUTO_EXTENSAO_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    bash "$recursos/registrar-host.sh" >/dev/null 2>&1 \
+    || falha "o registrar-host.sh do pacote falhou" "rode manualmente: bash \"$recursos/registrar-host.sh\""
+  manifest="$home_prova/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.ideiabusiness.bruto.json"
+  [ -f "$manifest" ] || falha "o registrador não gerou o manifesto de prova" "confira a saída de bash \"$recursos/registrar-host.sh\""
+  host_no_manifesto="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["path"])' "$manifest")"
+  [ "$host_no_manifesto" = "$recursos/launcher/host-nativo.sh" ] \
+    || falha "o manifesto do host aponta para $host_no_manifesto" "o registrador calculou a raiz errada; confira montar_host_do_pacote"
+  provar_caminho "$host_no_manifesto"
+}
+
+# finalizar_dmg <dmg> — notariza quando as variáveis por NOME existem (decisão
+# do dono: sem elas, pula e DIZ que pulou) e SÓ DEPOIS gera e confere o
+# .sha256. CLASSE I: todo hash é calculado sobre o artefato FINAL — codesign,
+# notarytool e stapler MODIFICAM o .dmg, então o hash publicado vem sempre
+# depois deles (achado P2 da 1ª rodada do Codex), e o build confere com
+# `shasum -a 256 -c` o que publicou.
+finalizar_dmg() {
+  local dmg="$1" soma
+  if [ -n "${BRUTO_DEVELOPER_ID:-}" ] && [ -n "${BRUTO_NOTARY_PROFILE:-}" ]; then
+    etapa "Developer ID + notarização"
+    codesign --force --options runtime --timestamp --sign "$BRUTO_DEVELOPER_ID" "$dmg" \
+      || falha "codesign do .dmg falhou" "confira o certificado $BRUTO_DEVELOPER_ID"
+    xcrun notarytool submit "$dmg" --keychain-profile "$BRUTO_NOTARY_PROFILE" --wait \
+      || falha "notarização falhou" "veja o erro do notarytool acima"
+    xcrun stapler staple "$dmg" || falha "staple falhou" "rode xcrun stapler staple \"$dmg\" manualmente"
+    ok
+  else
+    linha "Developer ID + notarização: puladas (defina BRUTO_DEVELOPER_ID e BRUTO_NOTARY_PROFILE para ligar) — assinatura ad-hoc aplicada"
+  fi
+  soma="$(sha256_de "$dmg")"
+  printf '%s  %s\n' "$soma" "$(basename "$dmg")" >"$dmg.sha256"
+  if command -v shasum >/dev/null 2>&1; then
+    ( cd "$(dirname "$dmg")" && shasum -a 256 -c "$(basename "$dmg").sha256" >/dev/null 2>&1 ) \
+      || falha "a conferência do .sha256 falhou" "o hash não descreve o artefato final — bug deste script"
+  elif ! [ "$soma" = "$(openssl dgst -sha256 -r "$dmg" 2>/dev/null | awk '{print $1}')" ]; then
+    falha "a conferência do .sha256 falhou" "o hash não descreve o artefato final — bug deste script"
+  fi
+  linha "sha256: $soma"
+}
+
+
 # baixar_pinado <url> <sha256> <arquivo-no-cache>
 # INVARIANTE P4: baixa para .tmp, confere o hash e SÓ então publica. Hash
 # errado → o arquivo baixado é apagado e nada é montado. Cache válido → nem
@@ -255,17 +360,10 @@ bruto_construir() {
     cp -R "$RAIZ/node_modules/better-sqlite3/prebuilds" "$recursos/app/node_modules/better-sqlite3/prebuilds"
   fi
 
-  # Host da extensão: o wrapper do pacote define BRUTO_LANCADOR; a cópia em
-  # launcher/ existe porque o registrar-host.sh (reaproveitado sem edição)
-  # registra <pasta-dele>/../launcher/host-nativo.sh.
-  cp "$RAIZ/launcher/host-nativo.mjs" "$recursos/host-nativo.mjs"
-  cp "$PASTA/host-nativo.sh" "$recursos/host-nativo.sh"
-  chmod 755 "$recursos/host-nativo.sh"
-  mkdir -p "$recursos/launcher"
-  cp "$PASTA/host-nativo.sh" "$recursos/launcher/host-nativo.sh"
-  chmod 755 "$recursos/launcher/host-nativo.sh"
-  cp "$RAIZ/launcher/registrar-host.sh" "$recursos/registrar-host.sh"
-  chmod 755 "$recursos/registrar-host.sh"
+  # Host da extensão: o wrapper do pacote define BRUTO_LANCADOR; o layout
+  # inteiro (wrappers, mjs, registrador + delegador) é montado e provado por
+  # montar_host_do_pacote / provar_host_do_pacote (classe H).
+  montar_host_do_pacote "$recursos"
 
   # Licenças (contrato: LICENSES/ com node, ffmpeg+fonte, uv, yt-dlp).
   cp "$node_dir/LICENSE" "$recursos/LICENSES/node.txt"
@@ -317,6 +415,10 @@ bruto_construir() {
   rm -f "$prova_db"
   ok
 
+  etapa "Prova H — caminhos do host nativo (existem, absolutos, canônicos, executáveis)"
+  provar_host_do_pacote "$recursos" "$WORK"
+  ok
+
   etapa "Gerando o .dmg (com atalho para /Applications)"
   dmg="$DIST/Bruto-$versao-arm64.dmg"
   rm -f "$dmg" "$dmg.sha256"
@@ -330,7 +432,6 @@ bruto_construir() {
   # o caminho canônico e, se falhar por isso, avisa e NÃO pula a restauração
   # da lane abaixo — o exit non-zero vem no fim.
   if hdiutil create -volname Bruto -srcfolder "$dmgroot" -ov -format UDZO "$dmg" >/dev/null 2>&1; then
-    sha256_de "$dmg" >"$dmg.sha256"
     ok
   else
     linha "hdiutil create falhou (neste ambiente de sandbox a criação de imagem de disco é negada — EPERM)"
@@ -343,16 +444,12 @@ bruto_construir() {
   # instalados na máquina.
   rm -rf "$dmgroot"
 
-  if [ -f "$dmg" ] && [ -n "${BRUTO_DEVELOPER_ID:-}" ] && [ -n "${BRUTO_NOTARY_PROFILE:-}" ]; then
-    etapa "Developer ID + notarização"
-    codesign --force --options runtime --timestamp --sign "$BRUTO_DEVELOPER_ID" "$dmg" \
-      || falha "codesign do .dmg falhou" "confira o certificado $BRUTO_DEVELOPER_ID"
-    xcrun notarytool submit "$dmg" --keychain-profile "$BRUTO_NOTARY_PROFILE" --wait \
-      || falha "notarização falhou" "veja o erro do notarytool acima"
-    xcrun stapler staple "$dmg" || falha "staple falhou" "rode xcrun stapler staple \"$dmg\" manualmente"
-    ok
-  else
-    linha "Developer ID + notarização: puladas (defina BRUTO_DEVELOPER_ID e BRUTO_NOTARY_PROFILE para ligar) — assinatura ad-hoc aplicada"
+  # Assinatura/notarização (quando configuradas) MODIFICAM o .dmg — por isso
+  # o .sha256 só pode existir DEPOIS delas (classe I: o hash descreve o
+  # artefato FINAL). finalizar_dmg faz as duas coisas, nessa ordem, e ainda
+  # confere com shasum -a 256 -c o que publicou.
+  if [ -f "$dmg" ]; then
+    finalizar_dmg "$dmg"
   fi
 
   # A lane de desenvolvimento continua no Node da máquina (INVARIANTE P2): se
@@ -369,7 +466,7 @@ bruto_construir() {
   linha "Bruto.app: $(du -sh "$appb" | awk '{print $1}')"
   if [ -f "$dmg" ]; then
     linha "dmg: $(du -sh "$dmg" | awk '{print $1}') ($dmg)"
-    linha "sha256: $(cat "$dmg.sha256")"
+    linha "sha256: $(awk '{print $1}' "$dmg.sha256")"
   fi
   ok
   if [ "${DMG_FALHOU:-0}" -eq 1 ]; then

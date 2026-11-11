@@ -10,21 +10,31 @@ set -u
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Caminhos absolutos do node/mjs do pacote e do lançador — o host-nativo.mjs
-# só aceita BRUTO_LANCADOR no formato …/Bruto.app/Contents/MacOS/Bruto.
+# Resources em caminho CANÔNICO (absoluto, sem "..") para as duas variantes
+# de layout. O host-nativo.mjs só aceita BRUTO_LANCADOR no formato literal
+# …/Bruto.app/Contents/MacOS/Bruto — caminho com "/../" é recusado como
+# lancador-invalido (achado P2 da 1ª rodada do Codex), e a variante de
+# Resources/ sobe um diretório a mais (…/Bruto.app/MacOS/Bruto): por isso o
+# caminho é RESOLVIDO com cd+pwd antes de exportar, nunca concatenado com "..".
 case "$DIR" in
   */Resources)
-    BRUTO_LANCADOR="$DIR/../../MacOS/Bruto"
-    NODE="$DIR/node"
-    MJS="$DIR/host-nativo.mjs" ;;
+    RECURSOS="$DIR" ;;
   */Resources/launcher)
-    BRUTO_LANCADOR="$DIR/../../MacOS/Bruto"
-    NODE="$DIR/../node"
-    MJS="$DIR/../host-nativo.mjs" ;;
+    RECURSOS="$(cd "$DIR/.." && pwd)" ;;
   *)
     echo "Bruto: host-nativo.sh fora do Bruto.app ($DIR)" >&2
     exit 1 ;;
 esac
+BRUTO_LANCADOR="$(cd "$RECURSOS/.." && pwd)/MacOS/Bruto"
+NODE="$RECURSOS/node"
+MJS="$RECURSOS/host-nativo.mjs"
+
+# Falha alta se o lançador anunciado não existir de fato neste pacote (a
+# mensagem vai ao stderr — o stdout é o canal do protocolo).
+if [ ! -x "$BRUTO_LANCADOR" ]; then
+  echo "Bruto: lançador do pacote não encontrado em $BRUTO_LANCADOR" >&2
+  exit 1
+fi
 export BRUTO_LANCADOR
 
 exec "$NODE" "$MJS"
