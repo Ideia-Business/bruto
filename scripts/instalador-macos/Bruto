@@ -1,0 +1,245 @@
+#!/bin/bash
+# Bruto — lançador do pacote macOS (vai em Bruto.app/Contents/MacOS/Bruto).
+# Especificação: contrato do instalador (contrato-instalador.md), seção "O
+# lançador", itens 1–7. Compatível com bash 3.2.
+#
+# INVARIANTE P1: nada aqui depende da máquina que construiu o pacote — o Node,
+# ffmpeg, ffprobe e uv vêm por caminho absoluto de Resources, nunca de
+# gerenciadores de pacotes da máquina nem do PATH do desenvolvedor. O PATH
+# abaixo serve só para achar claude/codex (que são do usuário), como manda o
+# contrato.
+#
+# INVARIANTE P3: este lançador só encerra o processo cujo PID está gravado em
+# servidor.pid E cujo comando é o servidor node DESTE pacote. Instalação
+# antiga na porta: diálogo, nunca kill.
+
+set -u
+
+MACOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+CONTEUDO="$(cd "$MACOS_DIR/.." && pwd)" || exit 1
+RECURSOS="$CONTEUDO/Resources"
+APP="$RECURSOS/app"
+
+VERSAO="$(plutil -extract CFBundleShortVersionString raw "$CONTEUDO/Info.plist" 2>/dev/null | tr -d '\r\n')"
+
+BRUTO_DATA_ROOT="${BRUTO_DATA_ROOT:-$HOME/.bruto}"
+case "$BRUTO_DATA_ROOT" in /*) ;; *) BRUTO_DATA_ROOT="$PWD/$BRUTO_DATA_ROOT" ;; esac
+BRUTO_FERRAMENTAS="${BRUTO_FERRAMENTAS:-$BRUTO_DATA_ROOT/ferramentas}"
+
+export BRUTO_EMPACOTADO=1
+export BRUTO_RECURSOS="$RECURSOS"
+export BRUTO_NODE="$RECURSOS/node"
+export BRUTO_FFMPEG="$RECURSOS/bin/ffmpeg"
+export BRUTO_FFPROBE="$RECURSOS/bin/ffprobe"
+export BRUTO_UV="$RECURSOS/bin/uv"
+export BRUTO_FERRAMENTAS
+export UV_TOOL_DIR="$BRUTO_FERRAMENTAS/uv/tools"
+export UV_TOOL_BIN_DIR="$BRUTO_FERRAMENTAS/bin"
+export UV_PYTHON_INSTALL_DIR="$BRUTO_FERRAMENTAS/uv/python"
+export UV_CACHE_DIR="$BRUTO_FERRAMENTAS/uv/cache"
+export PLAYWRIGHT_BROWSERS_PATH="$BRUTO_FERRAMENTAS/ms-playwright"
+export BRUTO_PLAYWRIGHT_CLI="$APP/node_modules/playwright/cli.js"
+
+BRUTO_PORT="${BRUTO_PORT:-3000}"
+export PORT="$BRUTO_PORT"
+export HOSTNAME="127.0.0.1"
+URL="http://127.0.0.1:$BRUTO_PORT"
+
+# PATH do contrato: bin do pacote, bin das ferramentas, PATH do shell de login
+# do usuário (onde vivem claude/codex), depois o sistema. Nenhum caminho fixo
+# de gerenciador de pacotes.
+PATH_LOGIN=""
+if [ -x /bin/zsh ]; then
+  PATH_LOGIN="$(/bin/zsh -l -c 'printf %s "$PATH"' 2>/dev/null || true)"
+fi
+export PATH="$RECURSOS/bin:$BRUTO_FERRAMENTAS/bin${PATH_LOGIN:+:$PATH_LOGIN}:/usr/bin:/bin:/usr/sbin:/sbin"
+
+LOG_DIR="$BRUTO_DATA_ROOT/logs"
+LOG="$LOG_DIR/servidor.log"
+PID_ARQ="$BRUTO_DATA_ROOT/servidor.pid"
+mkdir -p "$LOG_DIR" "$BRUTO_FERRAMENTAS/bin" 2>/dev/null || {
+  echo "Bruto: sem permissão para criar $BRUTO_DATA_ROOT" >&2
+  exit 1
+}
+
+log() { printf '%s — %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >>"$LOG"; }
+
+# --- sondas HTTP -------------------------------------------------------------
+versao_no_ar() { curl -fsS --max-time 3 "$URL/api/versao" 2>/dev/null || true; }
+porta_viva() { curl -s -o /dev/null --max-time 3 "$URL" 2>/dev/null; }
+json_campo() {
+  printf '%s' "$1" | sed -n 's/.*"'"$2"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1
+}
+
+# --- janela / diálogo / notificação ------------------------------------------
+abrir_janela() {
+  [ -n "${BRUTO_SEM_JANELA:-}" ] && return 0
+  if [ -d "/Applications/Google Chrome.app" ]; then
+    open -na "Google Chrome" --args --app="$URL" --new-window
+  elif [ -d "/Applications/Chromium.app" ]; then
+    open -na "Chromium" --args --app="$URL" --new-window
+  elif [ -d "/Applications/Microsoft Edge.app" ]; then
+    open -na "Microsoft Edge" --args --app="$URL" --new-window
+  else
+    open "$URL"
+  fi
+}
+
+notificar() {
+  [ -n "${BRUTO_SEM_JANELA:-}" ] && return 0
+  command -v osascript >/dev/null 2>&1 && osascript -e "display notification \"$1\" with title \"Bruto\"" 2>/dev/null || true
+  return 0
+}
+
+# Decisão 4: outro Bruto na porta. NÃO encerra nada; pergunta à pessoa.
+dialogo_outro_bruto() {
+  command -v osascript >/dev/null 2>&1 || return 1
+  local resposta
+  resposta="$(osascript -e 'display dialog "Há outro Bruto aberto (a instalação antiga). Feche-o e abra de novo." with title "Bruto" buttons {"Cancelar", "Abrir mesmo assim"} default button "Cancelar"' 2>/dev/null)" || return 1
+  case "$resposta" in
+    *"Abrir mesmo assim"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+decisao_outro_bruto() {
+  log "porta $BRUTO_PORT ocupada por outro Bruto — nada é encerrado"
+  if [ -n "${BRUTO_SEM_JANELA:-}" ]; then
+    log "modo sem janela (host da extensão): não há como garantir o servidor deste pacote"
+    return 1
+  fi
+  if dialogo_outro_bruto; then
+    abrir_janela
+  fi
+  return 0
+}
+
+# --- PID (INVARIANTE P3) -----------------------------------------------------
+ler_pid() { tr -dc '0-9' <"$PID_ARQ" 2>/dev/null; }
+
+# O PID do arquivo só é "nosso" se o processo EXISTIR e o comando dele for o
+# servidor node DESTE pacote (<Resources>/node … server.js). A checagem é pelo
+# comando visto em pgrep -f — nunca pelo número sozinho: PID reciclado não é
+# motivo para matar processo alheio.
+pid_e_do_pacote() {
+  local pid padrao lista
+  pid="$(ler_pid)"
+  [ -n "$pid" ] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  padrao="$(printf '%s' "$BRUTO_NODE" | sed 's/[.[\*^$()+?{}|]/\\&/g')"
+  lista="$(pgrep -f "$padrao.*server\.js" 2>/dev/null | tr '\n' ' ' || true)"
+  case " $lista " in
+    *" $pid "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+sumiu() { ! kill -0 "$1" 2>/dev/null; }
+
+encerrar_servidor_do_pacote() {
+  local pid="$1" i
+  kill "$pid" 2>/dev/null || true
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    sumiu "$pid" && return 0
+    sleep 0.5
+  done
+  kill -9 "$pid" 2>/dev/null || true
+  sumiu "$pid"
+}
+
+# --- servidor ----------------------------------------------------------------
+subir_servidor() {
+  log "subindo o servidor do pacote (versão ${VERSAO:-?}, porta $BRUTO_PORT)"
+  (
+    cd "$APP" || exit 1
+    nohup "$BRUTO_NODE" server.js >>"$LOG" 2>&1 &
+    echo $! >"${PID_ARQ}.novo"
+  ) || { log "falha ao subir o servidor"; return 1; }
+  mv "${PID_ARQ}.novo" "$PID_ARQ" 2>/dev/null || true
+}
+
+# Item 5: espera /api/versao por até 60 s (avisando se demorar). Se estourar e
+# a porta ainda assim responder HTTP, segue e registra — servidor vivo sem
+# versão é melhor que app mudo.
+esperar_servidor() {
+  local i=0
+  while [ "$i" -lt 120 ]; do
+    [ -n "$(versao_no_ar)" ] && return 0
+    i=$((i + 1))
+    if [ "$i" -eq 40 ]; then
+      log "o servidor ainda não respondeu (20 s)"
+      notificar "O Bruto está demorando para iniciar…"
+    fi
+    sleep 0.5
+  done
+  if porta_viva; then
+    log "sem /api/versao, mas a porta responde — seguindo"
+    return 0
+  fi
+  log "o servidor não respondeu em 60 s"
+  return 1
+}
+
+# --- item 7: primeira execução registra o host da native messaging ----------
+# Reaproveita o registrar-host.sh do repo (copiado para Resources): sem ID de
+# extensão conhecido ele NÃO registra nada (comportamento atual, ADR 0004).
+registrar_host_primeira_execucao() {
+  local marco="$BRUTO_DATA_ROOT/.host-pacote-registrado"
+  [ -f "$marco" ] && return 0
+  if [ -f "$RECURSOS/registrar-host.sh" ]; then
+    bash "$RECURSOS/registrar-host.sh" >>"$LOG" 2>&1 || log "registro do host nativo falhou (não crítico)"
+  fi
+  touch "$marco" 2>/dev/null || true
+  return 0
+}
+
+# --- fluxo principal ---------------------------------------------------------
+registrar_host_primeira_execucao
+log "lançador do pacote (versão ${VERSAO:-desconhecida}) — porta $BRUTO_PORT"
+
+JSON="$(versao_no_ar)"
+if [ -n "$JSON" ]; then
+  ORIGEM="$(json_campo "$JSON" origem)"
+  VERSAO_SERVIDOR="$(json_campo "$JSON" versao)"
+  if [ "$ORIGEM" = "pacote" ] && [ "$VERSAO_SERVIDOR" = "$VERSAO" ]; then
+    # (2) este servidor, desta versão: só a janela.
+    log "servidor $VERSAO já no ar — só abrindo a janela"
+    abrir_janela
+    exit 0
+  fi
+  if [ "$ORIGEM" = "pacote" ]; then
+    # (3) outra versão do pacote: encerra SÓ o servidor que este pacote subiu.
+    if pid_e_do_pacote; then
+      PID_ANTIGO="$(ler_pid)"
+      log "outra versão no ar ($VERSAO_SERVIDOR ≠ ${VERSAO:-?}): encerrando o servidor do pacote (pid $PID_ANTIGO)"
+      encerrar_servidor_do_pacote "$PID_ANTIGO" || log "o pid $PID_ANTIGO não saiu"
+      rm -f "$PID_ARQ"
+      if subir_servidor && esperar_servidor; then
+        abrir_janela
+        exit 0
+      fi
+      log "não consegui subir o servidor novo"
+      exit 1
+    fi
+    # Outra versão do pacote na porta, mas o PID não é nosso → como em (4):
+    # não mexe em processo nenhum.
+    log "servidor de outra versão na porta que este lançador não subiu"
+    decisao_outro_bruto
+    exit $?
+  fi
+  # origem=clone (o serve.sh do repo está no ar): decisão 4.
+  decisao_outro_bruto
+  exit $?
+elif porta_viva; then
+  # (4) instalação antiga por curl|bash: responde, mas não tem /api/versao.
+  decisao_outro_bruto
+  exit $?
+fi
+
+# (5) porta livre: sobe o servidor do pacote e abre a janela.
+if subir_servidor && esperar_servidor; then
+  abrir_janela
+  exit 0
+fi
+log "não consegui subir o servidor"
+exit 1

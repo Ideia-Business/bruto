@@ -1,0 +1,34 @@
+{
+  "node": {
+    "versao": "26.13.0",
+    "url": "https://nodejs.org/dist/v26.13.0/node-v26.13.0-darwin-arm64.tar.gz",
+    "sha256": "d38bd5e5a2ddce6bbb5ce45e46e208337da4d51fffe611e567fd32073d6439f6",
+    "arquivo": "node-v26.13.0-darwin-arm64.tar.gz",
+    "origem": "https://nodejs.org/dist/v26.13.0/",
+    "licenca": "MIT (licença acompanha o pacote em Resources/LICENSES/node.txt)"
+  },
+  "uv": {
+    "versao": "0.13.7",
+    "url": "https://github.com/astral-sh/uv/releases/download/0.13.7/uv-aarch64-apple-darwin.tar.gz",
+    "sha256": "81b811b57e4624df7ed3aac148e0359100d9962f3d9dce00aec533dc2e086731",
+    "arquivo": "uv-aarch64-apple-darwin.tar.gz",
+    "origem": "https://github.com/astral-sh/uv/releases/tag/0.13.7",
+    "licenca": "MIT OR Apache-2.0"
+  },
+  "ffmpeg": {
+    "versao": "9.0.2",
+    "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip",
+    "sha256": "c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924",
+    "arquivo": "ffmpeg.zip",
+    "origem": "https://ffmpeg.martin-riedl.de/",
+    "licenca": "FFmpeg LGPL-2.1+ com componentes GPL (x264/x265/LAME) — ver Resources/LICENSES/ffmpeg.txt"
+  },
+  "ffprobe": {
+    "versao": "9.0.2",
+    "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffprobe.zip",
+    "sha256": "fcbe839537485eaee7a7a8bc5cbc0f90d53617e80943e8a5b2e31cb851197ea6",
+    "arquivo": "ffprobe.zip",
+    "origem": "https://ffmpeg.martin-riedl.de/",
+    "licenca": "FFmpeg LGPL-2.1+ com componentes GPL (x264/x265/LAME) — ver Resources/LICENSES/ffmpeg.txt"
+  }
+}
