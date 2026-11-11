@@ -6,6 +6,7 @@ import { Plus, GraduationCap, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchCommand } from "./search-command";
 import { UrlInputDialog } from "./url-input-dialog";
+import { AvisoVersao } from "./aviso-versao";
 
 /** Header claro e sóbrio: wordmark + navegação + busca + "Novo vídeo". */
 export function SiteHeader() {
@@ -39,6 +40,7 @@ export function SiteHeader() {
           {navItem("/processing", "Destrinchando")}
         </nav>
         <div className="ml-auto flex items-center gap-3">
+          <AvisoVersao />
           <SearchCommand />
           <Button variant="ghost" size="icon" asChild aria-label="Configurações">
             <Link href="/configuracoes">

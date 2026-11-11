@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { FolderOpen, FolderCheck, FolderX, RotateCw } from "lucide-react";
+import { FolderOpen, FolderCheck, FolderX, RotateCw, Download, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { fetchApp } from "@/lib/fetch-app";
 import { sincronizarExportacoesPendentes } from "@/lib/exportar-artefatos";
 import {
   autoExportarAtivado,
@@ -33,12 +34,34 @@ export function ConfiguracoesClient() {
   const [estado, setEstado] = useState<EstadoPasta>({ tipo: "carregando" });
   const [autoExportar, setAutoExportarState] = useState(false);
   const [processando, setProcessando] = useState(false);
+  const [whisper, setWhisper] = useState<{ suportado: boolean; instalado: boolean } | null>(null);
+  const [instalandoWhisper, setInstalandoWhisper] = useState(false);
 
   useEffect(() => {
     let cancelado = false;
     async function carregar() {
       setSuportado(suportaPastaLocal());
       setAutoExportarState(autoExportarAtivado());
+      // A seção do Whisper só existe no app instalado (.app) — pergunta a
+      // origem e, só se for pacote, o estado da instalação.
+      try {
+        const resVersao = await fetch("/api/versao");
+        if (resVersao.ok) {
+          const versao = (await resVersao.json()) as { origem?: string };
+          if (versao.origem === "pacote") {
+            const resWhisper = await fetch("/api/ferramentas/whisper");
+            if (resWhisper.ok) {
+              const estadoWhisper = (await resWhisper.json()) as {
+                suportado: boolean;
+                instalado: boolean;
+              };
+              if (!cancelado) setWhisper(estadoWhisper);
+            }
+          }
+        }
+      } catch {
+        // Sem a rota, a seção simplesmente não aparece.
+      }
       const handle = await obterPastaSalva();
       if (cancelado) return;
       if (!handle) {
@@ -113,6 +136,24 @@ export function ConfiguracoesClient() {
     // Ligou agora: se já houver vídeo done parado (de antes de existir a
     // pasta), tenta exportar na hora — não espera a pessoa navegar.
     if (ativo) void sincronizarExportacoesPendentes();
+  }
+
+  async function instalarWhisper() {
+    setInstalandoWhisper(true);
+    try {
+      const res = await fetchApp("/api/ferramentas/whisper", { method: "POST" });
+      if (!res.ok) {
+        const corpo = (await res.json().catch(() => null)) as { error?: string } | null;
+        toast.error(corpo?.error ?? "Não foi possível instalar a transcrição local.");
+        return;
+      }
+      setWhisper({ suportado: true, instalado: true });
+      toast.success("Transcrição local instalada. Vídeos sem legenda já podem ser processados.");
+    } catch {
+      toast.error("Não foi possível instalar a transcrição local. Verifique a internet.");
+    } finally {
+      setInstalandoWhisper(false);
+    }
   }
 
   if (!suportado) {
@@ -202,6 +243,35 @@ export function ConfiguracoesClient() {
           aria-label="Exportar automaticamente"
         />
       </section>
+
+      {whisper?.suportado && (
+        <section className="flex items-center justify-between gap-4 rounded-lg border border-border bg-card p-4">
+          <div>
+            <h2 className="font-semibold">Transcrição local (Whisper)</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              É o que permite destrinchar vídeo sem legenda (Instagram, TikTok). A instalação
+              baixa cerca de 2 GB de modelo e dependências, uma única vez, e roda toda no seu
+              computador.
+            </p>
+          </div>
+          {whisper.instalado ? (
+            <p className="flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground">
+              <CheckCircle2 className="size-4 text-emerald-500" />
+              Instalado
+            </p>
+          ) : (
+            <Button
+              onClick={instalarWhisper}
+              disabled={instalandoWhisper}
+              variant="outline"
+              className="shrink-0 gap-1.5"
+            >
+              <Download className="size-4" />
+              {instalandoWhisper ? "Instalando… (pode levar alguns minutos)" : "Instalar (~2 GB)"}
+            </Button>
+          )}
+        </section>
+      )}
     </div>
   );
 }

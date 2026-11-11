@@ -14,11 +14,9 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { DATA_ROOT } from "@/pipeline/lib/paths";
-
-const MIGRATIONS_DIR = path.join(process.cwd(), "drizzle");
-const DB_PATH = path.join(DATA_ROOT, "bruto.db");
+import { pathToFileURL } from "node:url";
 
 /** Nome da tabela de controle do Drizzle. Fixo na biblioteca; repetido aqui
  *  porque o baseline precisa criá-la antes de o migrator existir. */
@@ -30,22 +28,22 @@ interface EntradaJournal {
   tag: string;
 }
 
-function lerJournal(): EntradaJournal[] {
-  const p = path.join(MIGRATIONS_DIR, "meta", "_journal.json");
+function lerJournal(migrationsDir: string): EntradaJournal[] {
+  const p = path.join(migrationsDir, "meta", "_journal.json");
   const journal = JSON.parse(fs.readFileSync(p, "utf8")) as { entries: EntradaJournal[] };
   return journal.entries;
 }
 
 /** Nomes das tabelas que uma migração cria — lidos do próprio SQL, para a
  *  lista nunca divergir do arquivo quando o schema crescer. */
-function tabelasCriadasPor(tag: string): string[] {
-  const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, `${tag}.sql`), "utf8");
+function tabelasCriadasPor(migrationsDir: string, tag: string): string[] {
+  const sql = fs.readFileSync(path.join(migrationsDir, `${tag}.sql`), "utf8");
   return [...sql.matchAll(/CREATE TABLE\s+`([^`]+)`/gi)].map((m) => m[1]);
 }
 
 /** O mesmo hash que o Drizzle grava: sha256 do conteúdo bruto do .sql. */
-function hashDaMigracao(tag: string): string {
-  const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, `${tag}.sql`), "utf8");
+function hashDaMigracao(migrationsDir: string, tag: string): string {
+  const sql = fs.readFileSync(path.join(migrationsDir, `${tag}.sql`), "utf8");
   return crypto.createHash("sha256").update(sql).digest("hex");
 }
 
@@ -73,12 +71,17 @@ function tabelaExiste(sqlite: Database.Database, nome: string): boolean {
  *
  * Retorna true se carimbou o baseline.
  */
-function carimbarBaselineSeNecessario(sqlite: Database.Database, entradas: EntradaJournal[]): boolean {
+function carimbarBaselineSeNecessario(
+  sqlite: Database.Database,
+  entradas: EntradaJournal[],
+  migrationsDir: string,
+  dbPath: string,
+): boolean {
   if (entradas.length === 0) return false;
   if (tabelaExiste(sqlite, TABELA_JOURNAL)) return false; // banco já controlado
 
   const base = entradas[0];
-  const esperadas = tabelasCriadasPor(base.tag);
+  const esperadas = tabelasCriadasPor(migrationsDir, base.tag);
   const presentes = esperadas.filter((t) => tabelaExiste(sqlite, t));
 
   // Banco vazio (clone novo): nada a carimbar — a 0000 roda de verdade.
@@ -94,7 +97,7 @@ function carimbarBaselineSeNecessario(sqlite: Database.Database, entradas: Entra
       `Banco em estado intermediário: tem ${presentes.join(", ")} mas falta ${faltando.join(", ")}.\n` +
         `Não dá para carimbar o baseline com segurança. Saídas: (a) rode uma vez ` +
         `\`npx drizzle-kit push\` para completar o schema e depois \`npm run db:migrate\`; ` +
-        `ou (b) se o banco for descartável, apague ${DB_PATH} e rode a migração do zero.`,
+        `ou (b) se o banco for descartável, apague ${dbPath} e rode a migração do zero.`,
     );
   }
 
@@ -107,13 +110,29 @@ function carimbarBaselineSeNecessario(sqlite: Database.Database, entradas: Entra
   );
   sqlite
     .prepare(`INSERT INTO ${TABELA_JOURNAL} ("hash", "created_at") VALUES (?, ?)`)
-    .run(hashDaMigracao(base.tag), base.when);
+    .run(hashDaMigracao(migrationsDir, base.tag), base.when);
   return true;
 }
 
-function principal(): void {
-  fs.mkdirSync(DATA_ROOT, { recursive: true });
-  const sqlite = new Database(DB_PATH);
+/**
+ * Aplica as migrações de `drizzle/` ao banco da biblioteca. Exportada para o
+ * boot do app empacotado (`instrumentation.ts`) chamar antes de re-enfileirar
+ * órfãos — o `npm run db:migrate` continua chamando a mesma função pelo
+ * gatilho de execução direta no fim do arquivo (INVARIANTE F2: o script não
+ * muda de comportamento).
+ *
+ * A pasta `drizzle/` é relativa ao `cwd` (no pacote, `…/Resources/app`, para
+ * onde o W1 a copia). A raiz de dados segue a mesma regra de `paths.ts`
+ * (`BRUTO_DATA_ROOT` ?? `~/.bruto`), calculada por CHAMADA — não na carga do
+ * módulo — porque o boot e os testes ajustam `BRUTO_DATA_ROOT` por execução.
+ */
+export function aplicarMigracoes(): void {
+  const migrationsDir = path.join(process.cwd(), "drizzle");
+  const dataRoot = process.env.BRUTO_DATA_ROOT ?? path.join(os.homedir(), ".bruto");
+  const dbPath = path.join(dataRoot, "bruto.db");
+
+  fs.mkdirSync(dataRoot, { recursive: true });
+  const sqlite = new Database(dbPath);
   // Mesmos pragmas do client: o migrator abre a sua própria conexão e não
   // herdaria nada de lá.
   sqlite.pragma("busy_timeout = 5000");
@@ -121,15 +140,24 @@ function principal(): void {
   sqlite.pragma("foreign_keys = ON");
 
   try {
-    const carimbou = carimbarBaselineSeNecessario(sqlite, lerJournal());
+    const carimbou = carimbarBaselineSeNecessario(
+      sqlite,
+      lerJournal(migrationsDir),
+      migrationsDir,
+      dbPath,
+    );
     if (carimbou) {
       console.log("ℹ️  Banco pré-existente detectado: baseline marcado como aplicado (nada foi executado).");
     }
-    migrate(drizzle(sqlite), { migrationsFolder: MIGRATIONS_DIR });
-    console.log(`✅ Migrações aplicadas em ${DB_PATH}`);
+    migrate(drizzle(sqlite), { migrationsFolder: migrationsDir });
+    console.log(`✅ Migrações aplicadas em ${dbPath}`);
   } finally {
     sqlite.close();
   }
 }
 
-principal();
+// Executado como script (`npm run db:migrate` → `tsx src/db/migrate.ts`):
+// roda na hora. Importado (boot do app): exporta e nada mais.
+if (process.argv[1] && import.meta.url === pathToFileURL(fs.realpathSync(process.argv[1])).href) {
+  aplicarMigracoes();
+}

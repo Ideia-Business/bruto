@@ -27,6 +27,7 @@ import os from "node:os";
 import path from "node:path";
 import { dividirPath, localizarBinario, pythonDaFerramentaUv } from "@/pipeline/lib/binario";
 import { FILHO_EM_GRUPO_PROPRIO, registrarFilho } from "@/pipeline/lib/cancelamento";
+import { caminhoDe, modoPacote } from "@/pipeline/lib/ferramentas";
 import { DATA_ROOT } from "@/pipeline/lib/paths";
 import { redact } from "@/pipeline/lib/llm/redact";
 import { PipelineError } from "@/pipeline/types";
@@ -174,6 +175,24 @@ function noPath(bin: string): boolean {
   return localizarBinario(bin, { diretorios: dirs }) !== null;
 }
 
+/**
+ * A ferramenta existe? ÚNICO ponto de decisão "PATH vs pacote" deste módulo:
+ * no modo clone olha o PATH (comportamento histórico — F2); no modo pacote
+ * testa o caminho ABSOLUTO resolvido pelo contrato (F1) e o PATH nunca é
+ * consultado para ferramenta do pacote.
+ */
+function existeFerramenta(nome: string): boolean {
+  if (modoPacote()) {
+    try {
+      fs.accessSync(caminhoDe(nome), fs.constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return noPath(nome);
+}
+
 /** Script que pergunta ao Python se o módulo `mlx_whisper` está instalado. */
 const SONDA_MLX = `import importlib.util, sys
 sys.exit(0 if importlib.util.find_spec("mlx_whisper") else 1)
@@ -198,8 +217,29 @@ let cachePythonMlx: string | null | undefined; // undefined = ainda não resolvi
 function pythonParaMlx(): string | null {
   if (cachePythonMlx !== undefined) return cachePythonMlx;
   const daFerramenta = pythonDaFerramentaUv("mlx-whisper");
-  cachePythonMlx = daFerramenta ?? (noPath("python3") ? "python3" : null);
+  if (daFerramenta) {
+    cachePythonMlx = daFerramenta;
+    return cachePythonMlx;
+  }
+  // Modo pacote: o Whisper do pacote só vem do `uv` (instalado sob pedido).
+  // O `python3` do PATH é ferramenta DO USUÁRIO — e nunca teria o módulo do
+  // pacote instalado — então aqui não há fallback para ele (F1).
+  if (modoPacote()) {
+    cachePythonMlx = null;
+    return cachePythonMlx;
+  }
+  cachePythonMlx = noPath("python3") ? "python3" : null;
   return cachePythonMlx;
+}
+
+/**
+ * Rearma a detecção memoizada (sonda mlx e Python do venv). Quem chama é o
+ * endpoint de instalação do Whisper, depois de instalar com sucesso — sem
+ * isto, o processo continuaria vendo "não instalado" até reiniciar.
+ */
+export function rearmarDeteccao(): void {
+  cacheMlx = null;
+  cachePythonMlx = undefined;
 }
 
 /**
@@ -224,6 +264,13 @@ async function temMlx(): Promise<boolean> {
 }
 
 function binWhisperCpp(): string | null {
+  if (modoPacote()) {
+    // Modo pacote: caminho absoluto do contrato, nunca o PATH (F1).
+    for (const nome of ["whisper-cli", "whisper-cpp"]) {
+      if (existeFerramenta(nome)) return caminhoDe(nome);
+    }
+    return null;
+  }
   if (noPath("whisper-cli")) return "whisper-cli";
   if (noPath("whisper-cpp")) return "whisper-cpp";
   return null;
@@ -254,28 +301,30 @@ export function modeloWhisperCpp(): string | null {
 /** O primeiro backend utilizável, ou null se não houver nenhum. */
 export async function detectarBackend(): Promise<Backend | null> {
   if (await temMlx()) return "mlx";
-  if (noPath("whisper")) return "whisper";
+  if (existeFerramenta("whisper")) return "whisper";
   if (binWhisperCpp() && modeloWhisperCpp()) return "whisper-cpp";
   return null;
 }
 
 /** True se há ffmpeg E algum backend — a transcrição precisa dos dois. */
 export async function transcricaoDisponivel(): Promise<boolean> {
-  return noPath("ffmpeg") && (await detectarBackend()) !== null;
+  return existeFerramenta("ffmpeg") && (await detectarBackend()) !== null;
 }
 
 // ── extração de áudio ────────────────────────────────────────────────────────
 
 /** Extrai wav mono 16 kHz — o formato que todos os backends esperam. */
 async function extrairAudioWav(origem: string, destino: string): Promise<void> {
-  if (!noPath("ffmpeg")) {
+  if (!existeFerramenta("ffmpeg")) {
     throw new PipelineError(
       "NO_TRANSCRIPT",
-      "ffmpeg ausente — rode o instalador de novo (install/instalar.sh no macOS/Linux, install\\instalar.ps1 no Windows)",
+      modoPacote()
+        ? "ffmpeg ausente no pacote — reinstale o Bruto.app"
+        : "ffmpeg ausente — rode o instalador de novo (install/instalar.sh no macOS/Linux, install\\instalar.ps1 no Windows)",
     );
   }
   const r = await rodar(
-    "ffmpeg",
+    caminhoDe("ffmpeg"),
     // prettier-ignore
     [
       "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
@@ -348,7 +397,7 @@ async function rodarWhisperCli(wav: string, lang: string): Promise<string> {
   try {
     const args = [wav, "--model", MODELO, "--output_format", "txt", "--output_dir", outdir, "--verbose", "False"];
     if (lang) args.push("--language", lang);
-    const r = await rodar("whisper", args, { timeoutMs: TIMEOUT_TRANSCRICAO_MS });
+    const r = await rodar(caminhoDe("whisper"), args, { timeoutMs: TIMEOUT_TRANSCRICAO_MS });
     if (r.timedOut) throw new PipelineError("NO_TRANSCRIPT", tempoEsgotado(wav));
     if (r.code !== 0) {
       throw new PipelineError(
@@ -427,7 +476,7 @@ export async function transcreverAudio(audioPath: string, idioma?: string): Prom
 
   const backend = await detectarBackend();
   if (!backend) {
-    throw new PipelineError("NO_TRANSCRIPT", SEM_BACKEND);
+    throw new PipelineError("NO_TRANSCRIPT", mensagemSemBackend());
   }
 
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "bruto-audio-"));
@@ -509,17 +558,33 @@ export const SEM_BACKEND =
   "sem --sem-whisper. Ou instale à mão: uv tool install mlx-whisper (Mac com Apple Silicon) " +
   "ou uv tool install openai-whisper (demais sistemas).";
 
+/**
+ * A mensagem certa para o modo em que o app roda: no pacote não existe
+ * "rodar o instalador de novo" — o Whisper se instala sob pedido na tela de
+ * Configurações (com aviso de ~2 GB), e é isso que a mensagem diz.
+ */
+export function mensagemSemBackend(): string {
+  if (modoPacote()) {
+    return (
+      "Vídeo sem legenda e a transcrição local (Whisper) não está instalada. " +
+      "Abra as Configurações e toque em “Instalar transcrição local” " +
+      "(cerca de 2 GB, só na primeira vez)."
+    );
+  }
+  return SEM_BACKEND;
+}
+
 /** Diagnóstico para o `npm run doctor`. */
 export async function transcricaoDoctor(): Promise<{ ok: boolean; linhas: string[] }> {
   const linhas: string[] = [];
-  const temFfmpeg = noPath("ffmpeg");
+  const temFfmpeg = existeFerramenta("ffmpeg");
   const backend = await detectarBackend();
 
   // Nomes curtos: esta lista é impressa numa linha só. A única exceção é o
   // whisper.cpp sem modelo, porque aí o aviso É a informação útil — o binário
   // está lá e mesmo assim não transcreve.
   if (await temMlx()) linhas.push("mlx-whisper");
-  if (noPath("whisper")) linhas.push("whisper CLI");
+  if (existeFerramenta("whisper")) linhas.push("whisper CLI");
   const bin = binWhisperCpp();
   if (bin) linhas.push(modeloWhisperCpp() ? bin : `${bin} (sem o modelo ggml)`);
 
