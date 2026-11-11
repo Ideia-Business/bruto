@@ -4,7 +4,11 @@
 // Lê UMA mensagem, responde UMA, sai com 0. Só dois comandos:
 //   {"cmd":"status"}  e  {"cmd":"ligar"}
 // A mensagem NUNCA vira argumento, caminho, variável de ambiente ou comando: o
-// único programa executado é o serve.sh desta pasta, com argv fixo.
+// único programa executado é o serve.sh desta pasta OU — quando o wrapper do
+// PACOTE define BRUTO_LANCADOR — o lançador do Bruto.app, e sempre com argv
+// fixo (nenhum argumento). O BRUTO_LANCADOR só é aceito se for caminho
+// absoluto terminando em /Bruto.app/Contents/MacOS/Bruto: formato diferente é
+// recusado sem executar nada (o host não é executor de comando arbitrário).
 //
 // Nada além do protocolo pode ir para o stdout.
 
@@ -87,16 +91,30 @@ function servidorResponde() {
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Pacote (.app): o wrapper define BRUTO_LANCADOR apontando para
+// …/Bruto.app/Contents/MacOS/Bruto. Só esse formato é aceito — devolve o
+// caminho válido, `false` para formato inválido e `null` quando não há
+// pacote (modo clone: serve.sh, como sempre).
+const SUFIXO_LANCADOR = "/Bruto.app/Contents/MacOS/Bruto";
+function lancadorDoPacote() {
+  const p = process.env.BRUTO_LANCADOR;
+  if (p === undefined || p === "") return null;
+  if (!path.isAbsolute(p) || !p.endsWith(SUFIXO_LANCADOR)) return false;
+  return p;
+}
+
 async function ligar() {
   if (await servidorResponde()) {
     return responder({ ok: true, cmd: "ligar", rodando: true, iniciado: false, url });
   }
-  const serve = path.join(path.dirname(fileURLToPath(import.meta.url)), "serve.sh");
+  const lancador = lancadorDoPacote();
+  if (lancador === false) return erro("lancador-invalido");
+  const alvo = lancador ?? path.join(path.dirname(fileURLToPath(import.meta.url)), "serve.sh");
   let saiu = false;
   let codigoSaida = 0;
   let filho;
   try {
-    filho = spawn("/bin/bash", [serve], {
+    filho = spawn("/bin/bash", [alvo], {
       detached: true,
       stdio: "ignore",
       env: { ...process.env, BRUTO_SEM_JANELA: "1" },
@@ -108,7 +126,8 @@ async function ligar() {
     saiu = true;
     codigoSaida = -1;
   });
-  // serve.sh sai 0 ao terminar de garantir o servidor; saída != 0 é falha.
+  // serve.sh (ou o lançador do pacote) sai 0 ao terminar de garantir o
+  // servidor; saída != 0 é falha.
   filho.on("exit", (codigo) => {
     saiu = true;
     codigoSaida = codigo ?? -1;

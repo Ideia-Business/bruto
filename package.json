@@ -16,6 +16,7 @@
     "process": "tsx --env-file-if-exists=.env src/scripts/process-cli.ts",
     "reclassificar": "tsx --env-file-if-exists=.env src/scripts/reclassificar-cli.ts",
     "app": "node launcher/serve.mjs",
+    "instalador:macos": "bash scripts/instalador-macos/construir.sh",
     "build:ext": "node scripts/build-extension.mjs",
     "dev:ext": "node scripts/build-extension.mjs --watch",
     "package:ext": "npm run build:ext && node scripts/package-extension.mjs",
