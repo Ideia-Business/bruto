@@ -1,119 +1,97 @@
 # Roteiro do MacBook Air — testar o instalador `.dmg` do Bruto
 
 O objetivo é provar o instalador numa máquina que nunca viu o Bruto, do jeito que uma
-pessoa de verdade vai viver: baixar (receber) o `.dmg`, instalar, passar pelo aviso da
-Apple e usar. Duas máquinas entram na história:
+pessoa de verdade vai viver: receber o `.dmg`, instalar, passar pelo aviso da Apple e
+usar. Duas máquinas entram na história:
 
 - **MAC MINI** — onde o `.dmg` é construído (`npm run instalador:macos`). Não é a máquina
   do teste; é só a origem do arquivo.
 - **MACBOOK AIR** — a "máquina da pessoa". É nela que tudo abaixo roda.
 
-O roteiro é o script `scripts/instalador-macos/roteiro-macbook-air.sh`, com quatro
-subcomandos: `listar` (somente leitura), `limpar --listagem <arquivo>` (reversível),
-`testar` (depois de instalar) e `restaurar [--rodada <arquivo>]` (desfaz a rodada
-registrada pelo `limpar`).
-Ajuda completa: `bash roteiro-macbook-air.sh --ajuda`.
+> **O roteiro é SOMENTE LEITURA (decisão de 11/11/2026).** O script
+> `scripts/instalador-macos/roteiro-macbook-air.sh` nunca move, apaga, renomeia ou cria
+> nada (a única escrita é o relatório na Mesa) e nunca envia sinal a processo nenhum.
+> Ele tem só dois subcomandos: `listar` (inventário do que existe) e `testar` (coleta o
+> material da prova e **não julga nada** — quem confere é a orquestradora). **Limpar a
+> máquina e desfazer o teste são passos seus, à mão, escritos neste documento** (passos
+> 2 e 5): um comando por linha, conferindo o resultado de cada um com `ls -ld`. Os
+> antigos subcomandos `limpar` e `restaurar` não existem mais no script.
 
-> **Regra de ouro (mudança da rodada 4):** o roteiro **nunca** encerra processo nenhum —
-> nem o do Bruto, nem o de outra pessoa. Quando algo precisa estar fechado para um passo
-> acontecer, o script **recusa** o passo (termina com erro, sem mexer em nada) e diz
-> **como você fecha** (Cmd+Q no Bruto; fechar a janela do Terminal onde o `serve.sh`
-> rodou; se não souber, reiniciar o Mac). Feche e rode o mesmo comando de novo.
+Para levar o roteiro ao Air: AirDrop do arquivo `scripts/instalador-macos/roteiro-macbook-air.sh`
+(saindo do MAC MINI, do repositório) — ele chega em **Downloads** e roda com `bash`,
+sem instalar nada.
 
-## Por que o `.dmg` vai de AirDrop
+## 1. No MACBOOK AIR — fechar o Bruto, listar e mandar o arquivo
 
-O AirDrop marca o arquivo recebido com o atributo de quarentena, como um download real.
-É exatamente o que uma pessoa que baixa o `.dmg` do site vai ter — então o aviso da
-Apple ("não pode ser verificado") e o caminho de liberação ("Abrir Mesmo Assim") são
-exerciciados de verdade. Copiar o arquivo por pendrive ou `rsync` não marca a quarentena
-e pularia justamente a parte mais assustadora para quem nunca usou terminal.
-
-## A ordem (passos numerados)
-
-### 1. No MAC MINI: mandar o roteiro para o Air
-
-AirDrop do arquivo `scripts/instalador-macos/roteiro-macbook-air.sh` (do repositório)
-para o MacBook Air. Ele chega em **Downloads**. O script é pequeno e não precisa de
-quarentena — roda com `bash`.
-
-### 2. No MACBOOK AIR: listar o que já existe
-
-1. Abra o **Terminal** (**Command + Espaço**, digite `Terminal`, Enter).
-2. Rode:
+1. Feche o Bruto e o que possa estar rodando dele:
+   - **Bruto aberto?** Clique nele e saia com **Cmd+Q** (fechar só a janela não fecha
+     o app).
+   - **Rodou o `serve.sh` do clone noutra janela do Terminal?** Feche **aquela** janela
+     (**Cmd+W**) ou pare o comando com **Ctrl+C** nela.
+   - **Não souber o que está aberto?** **Reinicie o Mac** — é a forma mais simples de
+     garantir.
+2. Abra o **Terminal** (**Command + Espaço**, digite `Terminal`, Enter) e rode — o
+   `uname -m` tem de dar `arm64` (o `.dmg` do Bruto é Apple Silicon; der outra
+   coisa, mande para a orquestradora antes de seguir):
 
    ```bash
+   uname -m
    bash ~/Downloads/roteiro-macbook-air.sh listar
    ```
 
-3. O script imprime tudo do Bruto que existir na máquina — clone (`~/Bruto`), os dois
-   `Bruto.app` (`~/Applications` e `/Applications`), os dados (`~/.bruto`, só as
-   subpastas de 1º nível e o tamanho, nunca o conteúdo), os manifestos do host nativo
+3. O script imprime, sem mexer em nada: o clone (`~/Bruto`), os dois `Bruto.app`
+   (`~/Applications` e `/Applications`), os dados (`~/.bruto` com tamanho e subpastas de
+   1º nível — nunca o conteúdo), os manifestos do host nativo
    (`com.ideiabusiness.bruto.json` de Chrome/Chromium/Edge/Brave), o que escuta na
    porta 3000 (**PID e comando, sem julgar se é do Bruto**) e se há
    `yt-dlp`/`ffmpeg`/`node`/`uv` no PATH (só informativo — **não** são do Bruto e
-   **não** serão removidos).
-4. A listagem fica gravada em `~/Desktop/bruto-listagem-<data>.txt`.
+   **não** serão tocados).
+4. Mande o arquivo `~/Desktop/bruto-listagem-<data>.txt` para a orquestradora
+   (AirDrop, e-mail — o que for) e **espere a conferência dela** antes do passo 2.
+   Se a máquina está realmente "virgem", a listagem vem quase vazia — e o passo 2
+   não tem o que mover, o que também é resultado.
 
-É somente leitura: nada é removido, nada é encerrado.
+## 2. No MACBOOK AIR — mover à mão (SÓ depois de a orquestradora conferir a listagem)
 
-### 3. No MACBOOK AIR: mandar a listagem para a orquestradora
-
-Mande o arquivo `~/Desktop/bruto-listagem-<data>.txt` de volta (AirDrop, e-mail — o que
-for). A orquestradora confere que só tem item do Bruto e autoriza o `limpar`. Se a
-máquina está realmente "virgem", a listagem vai quase vazia — e o `limpar` a seguir não
-tem o que fazer, o que também é resultado.
-
-### 4. No MACBOOK AIR: fechar o Bruto ANTES, e só então limpar (reversível)
-
-**Antes de rodar o `limpar`, a máquina tem de estar parada.** O `limpar` recusa a rodada
-inteira (termina com erro, sem mexer em nada) se acontecer qualquer um destes:
-
-- algo escuta na porta 3000;
-- há algum processo com `Bruto.app` no caminho do executável (o app aberto);
-- algum processo está rodando com diretório de trabalho dentro de `~/Bruto`.
-
-Como fechar, na ordem:
-
-1. **Bruto aberto?** Clique nele e saia com **Cmd+Q** (fechar só a janela não fecha o app).
-2. **Rodou o `serve.sh` do clone noutra janela do Terminal?** Feche **aquela** janela
-   (**Cmd+W**) ou pare o comando com **Ctrl+C** nela.
-3. **Não souber o que está aberto?** **Reinicie o Mac** — é a forma mais simples de garantir.
-
-Depois de fechar, rode de novo:
+Não faça nada aqui antes de a orquestradora conferir a listagem. Cada comando vai em
+uma linha; depois de cada um, confira o resultado com `ls -ld` no caminho de destino.
+Cada `mv` vem embrulhado numa guarda: se o destino já existe, o comando imprime uma
+linha `PARE` e não move nada — um `mv` simples, com destino pasta que já existe, não
+daria erro nenhum: moveria a origem PARA DENTRO do destino, em silêncio.
 
 ```bash
-bash ~/Downloads/roteiro-macbook-air.sh limpar --listagem ~/Desktop/bruto-listagem-<data>.txt
+[ -e ~/Bruto-antes-do-teste ] && echo "PARE: ~/Bruto-antes-do-teste já existe" || mv ~/Bruto ~/Bruto-antes-do-teste
 ```
 
-O que o `limpar` faz:
+```bash
+[ -e ~/.bruto-antes-do-teste ] && echo "PARE: ~/.bruto-antes-do-teste já existe" || mv ~/.bruto ~/.bruto-antes-do-teste
+```
 
-- remove **exatamente** os itens do arquivo de listagem que sejam do Bruto — mas só
-  o que é **regenerável sem perda**: os dois `Bruto.app` e os manifestos do host
-  nativo (o instalador e o registrador os recriam);
-- **nunca apaga `~/Bruto` nem `~/.bruto`**: o clone pode ter o `.env` da pessoa
-  (chaves de API) e mudanças locais que não existem em lugar nenhum, e `~/.bruto` é
-  a biblioteca de vídeos — os dois são **movidos** para `<nome>-antes-do-teste-<data>`
-  (`~/Bruto-antes-do-teste-<data>` e `~/.bruto-antes-do-teste-<data>`);
-- **registra a rodada** em `~/.bruto-roteiro/rodada-<carimbo>.txt` (modo 600): cada
-  item movido fica documentado como `origem → backup`. É **esse registro** que o
-  `restaurar` usa — não a data de hoje;
-- se já existe **qualquer** backup `*-antes-do-teste-*` no HOME, a rodada é recusada
-  antes de mexer em qualquer coisa (desfaça a rodada anterior com o `restaurar`
-  primeiro);
-- pede a confirmação digitada **LIMPAR** antes de qualquer remoção — errar a palavra
-  (ou só dar Enter) não remove nada;
-- se algo na listagem **não** é do Bruto (alguém editou o arquivo e pôs, por exemplo,
-  `~/Documents`), a rodada inteira é **recusada**: nada é removido.
+- Para o app da instalação antiga: arraste `~/Applications/Bruto.app` para o **Lixo**
+  (pelo Finder).
 
-O que o `limpar` **nunca** faz: `sudo`; encerrar processo nenhum; tocar no Homebrew, no
-`uv` global, no Node, ou em qualquer coisa que esteja no PATH e não seja do Bruto.
+> Se aparecer uma linha começando com **PARE**, não tente de novo com outro nome:
+> mande a mensagem para a orquestradora. A linha só aparece quando o destino já
+> existe — significa que já há um backup antigo no lugar, e sobrescrever backup é
+> justamente o que nunca se faz.
+>
+> Se o erro for "No such file or directory" na ORIGEM (`~/.bruto`, por exemplo, quando
+> ela não existe nesta máquina), pode seguir para o comando seguinte.
 
-### 5. No MAC MINI: AirDrop do `.dmg`
+`~/Bruto` pode ter o seu `.env` e mudanças locais; `~/.bruto` é a sua biblioteca de
+vídeos. Os dois são **movidos, nunca apagados** — é por isso que este passo existe e é
+à mão.
 
-AirDrop do `dist/Bruto-<versão>-arm64.dmg` para o MacBook Air. Ele chega em **Downloads**
-com a quarentena — que é o que a gente quer (ver "Por que o `.dmg` vai de AirDrop").
+## 3. No MAC MINI — AirDrop do `.dmg`
 
-### 6. No MACBOOK AIR: instalar como uma pessoa instala
+AirDrop do `dist/Bruto-<versão>-arm64.dmg` para o MacBook Air. **Por que AirDrop:** o
+AirDrop marca o arquivo recebido com o atributo de quarentena, como um download real.
+É exatamente o que uma pessoa que baixa o `.dmg` do site vai ter — então o aviso da
+Apple ("não pode ser verificado") e o caminho de liberação ("Abrir Mesmo Assim") são
+exerciciados de verdade. Copiar o arquivo por pendrive ou `rsync` não marca a
+quarentena e pularia justamente a parte mais assustadora para quem nunca usou terminal.
+
+## 4. No MACBOOK AIR — instalar como uma pessoa e testar
 
 1. Duplo-clique no `.dmg` (em **Downloads**).
 2. Arraste o **Bruto** para a pasta **Applications**.
@@ -121,76 +99,66 @@ com a quarentena — que é o que a gente quer (ver "Por que o `.dmg` vai de Air
    o app não tem assinatura Apple na v1.
 4. **Ajustes do Sistema → Privacidade e Segurança → seção Segurança → "Abrir Mesmo
    Assim" → confirmar "Abrir"** (pode pedir a senha). Em macOS recentes o
-   clique-direito → Abrir **não** basta.
+   clique-direito → Abrir **não** basta (igual ao INSTALAR.md).
+5. Cole um vídeo curto do YouTube (ex.: `https://www.youtube.com/watch?v=jNQXAC9IVRw`)
+   e deixe correr: metadados → legenda → resumo → mapa → categoria → export. O
+   primeiro vídeo baixa o baixador de vídeos (alguns minutos); o primeiro export baixa
+   o navegador que gera os arquivos.
+6. Agora rode o teste:
 
-### 7. No MACBOOK AIR: testar
+   ```bash
+   bash ~/Downloads/roteiro-macbook-air.sh testar
+   ```
 
-```bash
-bash ~/Downloads/roteiro-macbook-air.sh testar
-```
+   O `testar` confere o atributo de quarentena e diz o que a pessoa vai ver, verifica a
+   assinatura (`codesign`), abre o app (`open -a /Applications/Bruto.app` — a única
+   ação dele além de ler) e **coleta**: o **corpo bruto** da resposta de `/api/versao`
+   (exatamente o que veio, sem análise nenhuma), a versão do `Info.plist` do app
+   instalado (`PlistBuddy`) e as últimas 20 linhas de `~/.bruto/logs/servidor.log`.
+   **Ele não decide resultado** — não existe "aprovado" nem "reprovado" no roteiro; ele
+   termina mandando o arquivo para a orquestradora conferir. Sai com exit 0 quando
+   consegue coletar; sai com exit ≠ 0 só quando não consegue coletar nem o corpo (o
+   motivo fica no próprio resumo).
+7. Mande `~/Desktop/bruto-teste-<data>.txt` para a orquestradora.
 
-O `testar` confere a quarentena e diz o que a pessoa vai ver, verifica a assinatura
-(`codesign`), abre o app (`open -a /Applications/Bruto.app`) e espera `/api/versao`
-por até 90 s. A aprovação é **só com prova**: a resposta tem de ser **JSON estrito** —
-validada com `JSON.parse` de verdade (`osascript -l JavaScript`), e o resultado tem de
-ser um objeto — com `app=bruto`, `origem=pacote` e **versão igual à do `Info.plist` do
-app instalado** (lida com `/usr/libexec/PlistBuddy`). Qualquer outra coisa — `origem=clone`,
-corpo não-JSON, corpo **plist/XML** (mesmo com os campos certos), versão diferente —
-**reprova** o teste: o script termina com código ≠ 0 e o motivo fica no resumo. No fim,
-diz o próximo passo (colar um vídeo curto do YouTube e processar até o export) e onde
-está o log (`~/.bruto/logs/servidor.log`). O resumo fica em `~/Desktop/bruto-teste-<data>.txt`.
+## 5. No MACBOOK AIR — desfazer o teste (à mão, com o Bruto fechado)
 
-### 8. No MACBOOK AIR: usar de verdade e mandar o resumo
+Primeiro feche o Bruto como no passo 1 (Cmd+Q; feche a janela do Terminal se o
+`serve.sh` estiver rodando; na dúvida, reinicie o Mac). Depois, um comando por linha,
+conferindo o resultado de cada um com `ls -ld`:
 
-Cole um vídeo curto do YouTube (uns 20 s) e deixe correr: metadados → legenda → resumo →
-mapa → categoria → export. O primeiro vídeo baixa o baixador de vídeos (alguns minutos);
-o primeiro export baixa o Chromium. Depois, mande
-`~/Desktop/bruto-teste-<data>.txt` de volta para a orquestradora.
+1. Arraste `/Applications/Bruto.app` para o **Lixo** (pelo Finder).
+2. Preserve o que o teste recriou:
 
-## Rollback (desfazer o teste, PELA RODADA)
+   ```bash
+   [ -e ~/.bruto-do-teste ] && echo "PARE: ~/.bruto-do-teste já existe" || mv ~/.bruto ~/.bruto-do-teste
+   ```
 
-```bash
-bash ~/Downloads/roteiro-macbook-air.sh restaurar
-```
+3. Devolva a biblioteca antiga:
 
-O `restaurar` desfaz **a rodada que o `limpar` registrou** — a mais recente em
-`~/.bruto-roteiro/rodada-<carimbo>.txt` — e **não** "os backups da data de hoje" (foi o
-furo da rodada 4: `limpar` num dia e `restaurar` no seguinte acabava em "nada para
-restaurar" com sucesso, deixando a biblioteca deslocada). Para escolher uma rodada
-específica (o arquivo pode ter sido guardado ou mandado por e-mail):
+   ```bash
+   [ -e ~/.bruto ] && echo "PARE: ~/.bruto já existe" || mv ~/.bruto-antes-do-teste ~/.bruto
+   ```
 
-```bash
-bash ~/Downloads/roteiro-macbook-air.sh restaurar --rodada ~/Downloads/rodada-<carimbo>.txt
-```
+4. Devolva o clone antigo:
 
-Não use `mv` na mão: depois do `testar`, o app pode ter **recriado** `~/.bruto` (e
-`~/Bruto`), e um `mv` do backup para o lugar poria o backup **dentro** da pasta nova,
-deixando a antiga fora do caminho. O `restaurar`:
+   ```bash
+   [ -e ~/Bruto ] && echo "PARE: ~/Bruto já existe" || mv ~/Bruto-antes-do-teste ~/Bruto
+   ```
 
-1. exige a máquina parada (porta 3000 livre, sem processo com `Bruto.app`, sem processo
-   rodando de dentro de `~/Bruto`) — e **nunca encerra nada**: se estiver ocupado,
-   recusa sem mover nada e diz como fechar (Cmd+Q; fechar a janela do Terminal do
-   `serve.sh`; reiniciar o Mac);
-2. lê o registro da rodada: cada linha `origem → backup` documentada pelo `limpar`;
-3. **preserva** o que o teste recriou: a `~/.bruto` da rodada de teste vai para
-   `~/.bruto-do-teste-<data>` e o `~/Bruto` da rodada vai para
-   `~/Bruto-do-teste-<data>` — nada é apagado;
-4. devolve os backups registrados: `~/.bruto-antes-do-teste-<data>` volta a ser
-   `~/.bruto` (biblioteca inteira, com os vídeos da pessoa) e
-   `~/Bruto-antes-do-teste-<data>` volta a ser `~/Bruto` (`.env` e mudanças locais
-   intactos) — **na data em que o `limpar` rodou**, registrada na rodada;
-5. recusa a rodada inteira (antes de mexer em qualquer coisa) se alguma pasta
-   `-do-teste-<data>` de hoje já existir, ou se algum item do registro não puder ser
-   tratado;
-6. **se não existe registro de rodada nenhum**, falha (código ≠ 0) explicando o motivo
-   — e, se houver backups `*-antes-do-teste-*` no HOME, **lista todos e para**: nunca
-   termina "nada para restaurar" com sucesso enquanto existir backup deslocado.
+> **O mesmo aviso do passo 2:** se aparecer uma linha começando com **PARE**, não
+> tente de novo com outro nome — mande a mensagem para a orquestradora.
+>
+> Se o erro for "No such file or directory" na ORIGEM (`~/.bruto` no item 2, por
+> exemplo, quando o teste não recriou a pasta), pode seguir para o comando seguinte.
 
-Os itens removidos pelo `limpar` (apps e manifestos — regeneráveis) podem ser
-recriados com o instalador de terminal (`curl | bash`), se a máquina precisar voltar
-ao estado anterior.
+Nada é apagado: o que o teste recriou fica preservado em `~/.bruto-do-teste` para
+conferência. Se a máquina precisar voltar ao estado anterior por completo, os itens
+regeneráveis (app de `~/Applications` e manifestos do host, se existiam) são recriados
+pelo instalador de terminal (`curl | bash`).
 
-## Sinal amarelo durante o teste
+## No MACBOOK AIR — sinal amarelo durante o teste
 
-Se algum comando falhar com **"Operation not permitted"**, não contorne: anote o comando
-e o contexto no resumo (`bruto-teste-<data>.txt`) e mande para a orquestradora.
+Se algum comando falhar com **"Operation not permitted"**, não contorne: anote o
+comando e o contexto no arquivo da Mesa (`bruto-teste-<data>.txt` ou
+`bruto-listagem-<data>.txt`) e mande para a orquestradora.
