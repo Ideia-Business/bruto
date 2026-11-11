@@ -54,6 +54,8 @@ Tudo local. O app não passa por servidor nosso: fala só com o provedor de IA q
 
 ## Instalação
 
+> **macOS com chip Apple (M1 ou mais novo)?** Baixe o app pronto — `Bruto-<versão>-arm64.dmg` em [releases/latest](https://github.com/Ideia-Business/bruto/releases/latest) — e arraste para Aplicativos, sem terminal. Passo a passo (incluindo a primeira abertura sem assinatura Apple): [INSTALAR.md](INSTALAR.md).
+
 ### Modo fácil (recomendado)
 
 Escolha seu sistema e copie o comando:
@@ -83,6 +85,8 @@ npx playwright install chromium     # exports .pdf + imagem do mapa
 npm run db:migrate && npm run db:seed
 npm run doctor                      # confere as dependências
 ```
+
+Construir o instalador (o `.dmg` autocontido para macOS Apple Silicon): `npm run instalador:macos` — ver [install/CONTRATO.md](install/CONTRATO.md).
 
 ### Vídeo sem legenda — o transcritor
 
