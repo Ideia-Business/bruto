@@ -6,7 +6,7 @@ import { db } from "@/db/client";
 import { brutos } from "@/db/schema";
 import { downloadBestVtt, downloadAudio } from "@/pipeline/lib/ytdlp";
 import { parseVtt } from "@/pipeline/lib/vtt-parser";
-import { transcreverAudio, transcricaoDisponivel, SEM_BACKEND } from "@/pipeline/lib/transcribe";
+import { transcreverAudio, transcricaoDisponivel, mensagemSemBackend } from "@/pipeline/lib/transcribe";
 import { artifactPaths } from "@/pipeline/lib/paths";
 import { recordArtifact } from "@/pipeline/lib/artifacts";
 import { PipelineError, type TranscriptResult, type VideoMetadata } from "@/pipeline/types";
@@ -69,7 +69,7 @@ export async function runTranscript(
   // ── Tier D: áudio → whisper (transcrição local) ────────────────────────────
   if (!result) {
     if (!(await transcricaoDisponivel())) {
-      throw new PipelineError("NO_TRANSCRIPT", SEM_BACKEND);
+      throw new PipelineError("NO_TRANSCRIPT", mensagemSemBackend());
     }
     onTick(30, "Baixando áudio");
     const audioPath = await downloadAudio(url, paths.dir);

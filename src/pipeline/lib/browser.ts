@@ -1,5 +1,6 @@
 import { chromium, type Browser } from "playwright";
 import { registrarAcaoDeCancelamento } from "@/pipeline/lib/cancelamento";
+import { garantirChromium } from "@/pipeline/lib/ferramentas";
 
 /**
  * Instância Chromium headless compartilhada (warm) — usada para renderizar o
@@ -16,6 +17,9 @@ export async function getBrowser(): Promise<Browser> {
     registrarBrowserParaCancelamento(existing);
     return existing;
   }
+  // Modo pacote: o Chromium headless baixa no primeiro export (contrato do
+  // instalador) — garante antes de lançar. Modo clone: no-op, igual a hoje.
+  await garantirChromium();
   const browser = await chromium.launch({ headless: true });
   // O browser quente precisa NOTAR que fechou (cancelamento de job o fecha):
   // sem isto o global seguraria um browser morto para sempre.
