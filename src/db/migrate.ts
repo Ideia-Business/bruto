@@ -16,7 +16,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { juntarCaminho } from "@/lib/caminho-opaco";
 
 /** Nome da tabela de controle do Drizzle. Fixo na biblioteca; repetido aqui
  *  porque o baseline precisa criá-la antes de o migrator existir. */
@@ -29,7 +29,11 @@ interface EntradaJournal {
 }
 
 function lerJournal(migrationsDir: string): EntradaJournal[] {
-  const p = path.join(migrationsDir, "meta", "_journal.json");
+  // juntarCaminho (não path.join) em todo o arquivo: os literais de
+  // diretório/arquivo ao lado de partes dinâmicas fazem o tracer do
+  // standalone varrer o projeto atrás deles (ver caminho-opaco.ts) — foi o
+  // que duplicou o diretório drizzle a partir de dist/Bruto.app no payload.
+  const p = juntarCaminho(migrationsDir, "meta", "_journal.json");
   const journal = JSON.parse(fs.readFileSync(p, "utf8")) as { entries: EntradaJournal[] };
   return journal.entries;
 }
@@ -37,13 +41,13 @@ function lerJournal(migrationsDir: string): EntradaJournal[] {
 /** Nomes das tabelas que uma migração cria — lidos do próprio SQL, para a
  *  lista nunca divergir do arquivo quando o schema crescer. */
 function tabelasCriadasPor(migrationsDir: string, tag: string): string[] {
-  const sql = fs.readFileSync(path.join(migrationsDir, `${tag}.sql`), "utf8");
+  const sql = fs.readFileSync(juntarCaminho(migrationsDir, `${tag}.sql`), "utf8");
   return [...sql.matchAll(/CREATE TABLE\s+`([^`]+)`/gi)].map((m) => m[1]);
 }
 
 /** O mesmo hash que o Drizzle grava: sha256 do conteúdo bruto do .sql. */
 function hashDaMigracao(migrationsDir: string, tag: string): string {
-  const sql = fs.readFileSync(path.join(migrationsDir, `${tag}.sql`), "utf8");
+  const sql = fs.readFileSync(juntarCaminho(migrationsDir, `${tag}.sql`), "utf8");
   return crypto.createHash("sha256").update(sql).digest("hex");
 }
 
@@ -117,9 +121,11 @@ function carimbarBaselineSeNecessario(
 /**
  * Aplica as migrações de `drizzle/` ao banco da biblioteca. Exportada para o
  * boot do app empacotado (`instrumentation.ts`) chamar antes de re-enfileirar
- * órfãos — o `npm run db:migrate` continua chamando a mesma função pelo
- * gatilho de execução direta no fim do arquivo (INVARIANTE F2: o script não
- * muda de comportamento).
+ * órfãos — o `npm run db:migrate` chama a mesma função pelo entrypoint de
+ * CLI separado (`cli-migrate.ts`), porque o gatilho "sou o módulo principal?"
+ * neste arquivo fazia o tracer do build standalone arrastar a toolchain do
+ * build para o pacote (INVARIANTE F2 mantida: o script não muda de
+ * comportamento).
  *
  * A pasta `drizzle/` é relativa ao `cwd` (no pacote, `…/Resources/app`, para
  * onde o W1 a copia). A raiz de dados segue a mesma regra de `paths.ts`
@@ -127,7 +133,7 @@ function carimbarBaselineSeNecessario(
  * módulo — porque o boot e os testes ajustam `BRUTO_DATA_ROOT` por execução.
  */
 export function aplicarMigracoes(): void {
-  const migrationsDir = path.join(process.cwd(), "drizzle");
+  const migrationsDir = juntarCaminho(process.cwd(), "drizzle");
   const dataRoot = process.env.BRUTO_DATA_ROOT ?? path.join(os.homedir(), ".bruto");
   const dbPath = path.join(dataRoot, "bruto.db");
 
@@ -154,10 +160,4 @@ export function aplicarMigracoes(): void {
   } finally {
     sqlite.close();
   }
-}
-
-// Executado como script (`npm run db:migrate` → `tsx src/db/migrate.ts`):
-// roda na hora. Importado (boot do app): exporta e nada mais.
-if (process.argv[1] && import.meta.url === pathToFileURL(fs.realpathSync(process.argv[1])).href) {
-  aplicarMigracoes();
 }

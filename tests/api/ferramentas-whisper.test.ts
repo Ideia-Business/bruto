@@ -4,9 +4,10 @@
  * ~2 GB). Este endpoint é a ação:
  *
  *   GET  /api/ferramentas/whisper → { suportado, instalado }
- *   POST /api/ferramentas/whisper → instala via `uv tool install mlx-whisper`
- *          (guarda de cliente; erro legível se falhar; nunca instala duas
- *          vezes ao mesmo tempo — F3)
+ *   POST /api/ferramentas/whisper → instala via `uv tool install
+ *          --python-preference only-managed mlx-whisper` (guarda de cliente;
+ *          erro legível se falhar; nunca instala duas vezes ao mesmo tempo
+ *          — F3; a preferência de Python gerenciado é a classe W)
  *
  * O dublê do uv "instala" criando o venv da ferramenta em $UV_TOOL_DIR
  * (com `bin/python`), que é como o app detecta o Whisper no modo pacote.
@@ -40,14 +41,16 @@ function escreverUvDuble(destino: string): void {
     `#!/bin/sh
 printf '%s\\n' "$*" >> "${registroUv}"
 if [ -n "$BRUTO_UV_FALHA" ]; then echo "network unreachable" >&2; exit 1; fi
-if [ "$1" = "tool" ] && [ "$2" = "install" ] && [ "$3" = "mlx-whisper" ]; then
-  mkdir -p "$UV_TOOL_DIR/mlx-whisper/bin"
-  cat > "$UV_TOOL_DIR/mlx-whisper/bin/python" <<'EOF'
+case "$*" in
+  *"tool install"*mlx-whisper*)
+    mkdir -p "$UV_TOOL_DIR/mlx-whisper/bin"
+    cat > "$UV_TOOL_DIR/mlx-whisper/bin/python" <<'EOF'
 #!/bin/sh
 exit 0
 EOF
-  chmod +x "$UV_TOOL_DIR/mlx-whisper/bin/python"
-fi
+    chmod +x "$UV_TOOL_DIR/mlx-whisper/bin/python"
+    ;;
+esac
 exit 0
 `,
     { mode: 0o755 },
@@ -142,7 +145,7 @@ describe("POST /api/ferramentas/whisper — instalação sob pedido", () => {
   test("instala com o uv do pacote e passa a constar instalado", async () => {
     const res = await POST(req("POST"));
     assert.equal(res.status, 200);
-    assert.deepEqual(chamadasUv(), ["tool install mlx-whisper"]);
+    assert.deepEqual(chamadasUv(), ["tool install --python-preference only-managed mlx-whisper"]);
 
     const estado = await GET();
     assert.deepEqual(await estado.json(), { suportado: true, instalado: true });
@@ -152,7 +155,7 @@ describe("POST /api/ferramentas/whisper — instalação sob pedido", () => {
     const [a, b] = await Promise.all([POST(req("POST")), POST(req("POST"))]);
     assert.equal(a.status, 200);
     assert.equal(b.status, 200);
-    assert.deepEqual(chamadasUv(), ["tool install mlx-whisper"]);
+    assert.deepEqual(chamadasUv(), ["tool install --python-preference only-managed mlx-whisper"]);
   });
 
   test("falha de rede do uv: erro legível, e não fica 'instalado'", async () => {

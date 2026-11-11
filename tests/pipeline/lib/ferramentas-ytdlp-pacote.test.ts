@@ -9,8 +9,9 @@
  *  - o falso do PATH NUNCA é chamado; quem roda é o dublê de
  *    `$BRUTO_FERRAMENTAS/bin/yt-dlp` (resolução por caminho absoluto);
  *  - em modo pacote o yt-dlp recebe `--ffmpeg-location $BRUTO_FFMPEG`;
- *  - primeiro uso: yt-dlp ausente → `uv tool install yt-dlp` (F3: UMA
- *    instalação compartilhada entre chamadas concorrentes);
+ *  - primeiro uso: yt-dlp ausente → `uv tool install --python-preference
+ *    only-managed yt-dlp` (F3: UMA instalação compartilhada entre chamadas
+ *    concorrentes; a preferência de Python gerenciado é a classe W);
  *  - upgrade no máximo uma vez a cada 7 dias (marca de tempo em
  *    `$BRUTO_FERRAMENTAS`);
  *  - falha de instalação vira erro tipado e legível, nunca job preso.
@@ -56,9 +57,11 @@ function escreverYtDlpDuble(destino: string): void {
 }
 
 /**
- * O dublê do uv grava cada chamada. Em `tool install yt-dlp` ele "instala":
- * cria o binário em $UV_TOOL_BIN_DIR. Com `BRUTO_UV_FALHA=1`, sai com erro
- * (simula máquina sem internet).
+ * O dublê do uv grava cada chamada. Em `tool install ... yt-dlp` ele
+ * "instala": cria o binário em $UV_TOOL_BIN_DIR (o match é por substring —
+ * a classe W pôs `--python-preference only-managed` entre o subcomando e o
+ * pacote). Com `BRUTO_UV_FALHA=1`, sai com erro (simula máquina sem
+ * internet).
  */
 function escreverUvDuble(destino: string): void {
   fs.writeFileSync(
@@ -66,16 +69,18 @@ function escreverUvDuble(destino: string): void {
     `#!/bin/sh
 printf '%s\\n' "$*" >> "${registroUv}"
 if [ -n "$BRUTO_UV_FALHA" ]; then echo "network unreachable" >&2; exit 1; fi
-if [ "$1" = "tool" ] && [ "$2" = "install" ] && [ "$3" = "yt-dlp" ]; then
-  mkdir -p "$UV_TOOL_BIN_DIR"
-  cat > "$UV_TOOL_BIN_DIR/yt-dlp" <<'EOF'
+case "$*" in
+  *"tool install"*yt-dlp*)
+    mkdir -p "$UV_TOOL_BIN_DIR"
+    cat > "$UV_TOOL_BIN_DIR/yt-dlp" <<'EOF'
 #!/bin/sh
 printf '%s\\n' "$@" >> "${registroYtDlp}"
 printf '%s\\n' '---' >> "${registroYtDlp}"
 printf '{"id":"instalado","title":"t"}'
 EOF
-  chmod +x "$UV_TOOL_BIN_DIR/yt-dlp"
-fi
+    chmod +x "$UV_TOOL_BIN_DIR/yt-dlp"
+    ;;
+esac
 exit 0
 `,
     { mode: 0o755 },
@@ -200,7 +205,7 @@ describe("F3 — primeiro uso: instalação do yt-dlp pelo uv do pacote", () => 
   test("yt-dlp ausente dispara `uv tool install yt-dlp` e o job segue", async () => {
     assert.equal(fs.existsSync(path.join(binDir, "yt-dlp")), false);
     await fetchMetadata("https://www.youtube.com/watch?v=abc12345678");
-    assert.deepEqual(chamadasUv(), ["tool install yt-dlp"]);
+    assert.deepEqual(chamadasUv(), ["tool install --python-preference only-managed yt-dlp"]);
     assert.equal(fs.existsSync(path.join(binDir, "yt-dlp")), true);
     // E quem rodou o metadata foi o yt-dlp INSTALADO, não o falso do PATH.
     assert.equal(pathFalsoFoiChamado(), false);
@@ -211,7 +216,9 @@ describe("F3 — primeiro uso: instalação do yt-dlp pelo uv do pacote", () => 
       fetchMetadata("https://www.youtube.com/watch?v=abc12345678"),
       fetchMetadata("https://www.youtube.com/watch?v=def12345678"),
     ]);
-    const instalacoes = chamadasUv().filter((c) => c === "tool install yt-dlp");
+    const instalacoes = chamadasUv().filter(
+      (c) => c === "tool install --python-preference only-managed yt-dlp",
+    );
     assert.equal(instalacoes.length, 1, `instalações: ${JSON.stringify(chamadasUv())}`);
   });
 
@@ -269,7 +276,7 @@ describe("F3 — upgrade do yt-dlp no máximo uma vez a cada 7 dias", () => {
     );
     await fetchMetadata("https://www.youtube.com/watch?v=abc12345678");
     await fetchMetadata("https://www.youtube.com/watch?v=def12345678");
-    assert.deepEqual(chamadasUv(), ["tool upgrade yt-dlp"]);
+    assert.deepEqual(chamadasUv(), ["tool upgrade --python-preference only-managed yt-dlp"]);
   });
 
   test("upgrade que falha NÃO derruba o job (a ferramenta já existe e funciona)", async () => {

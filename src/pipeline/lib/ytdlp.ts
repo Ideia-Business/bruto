@@ -304,10 +304,16 @@ export async function downloadBestVtt(
     url,
   ]);
 
-  // Localiza o .vtt gerado (nome final inclui o código de idioma: <id>.<lang>.vtt).
-  const vttFile = fs.readdirSync(workdir).find((f) => f.endsWith(".vtt"));
-  if (!vttFile) {
-    console.warn(`downloadBestVtt: yt-dlp saiu com sucesso mas nenhum .vtt em ${workdir}`);
+  // O .vtt gerado tem nome DETERMINÍSTICO pelo template `-o` acima:
+  // `<id>.<lang>.vtt` (ids de vídeo e códigos de idioma são filename-safe).
+  // Nada de `readdirSync(workdir)`: leitura de pasta com caminho dinâmico é
+  // um dos padrões que o tracer do build standalone não consegue limitar
+  // (classe V — ver ferramentas.ts, que abandonou o readdirSync pelo mesmo
+  // motivo). O workdir é limpo e isolado por chamada, então o caminho montado
+  // É o arquivo baixado — quando ele existe.
+  const vttFile = `${meta.id}.${chosen.lang}.vtt`;
+  if (!fs.existsSync(path.join(workdir, vttFile))) {
+    console.warn(`downloadBestVtt: yt-dlp saiu com sucesso mas sem ${vttFile} em ${workdir}`);
     return null;
   }
 

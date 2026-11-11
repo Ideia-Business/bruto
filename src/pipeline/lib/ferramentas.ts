@@ -31,6 +31,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { juntarCaminho } from "@/lib/caminho-opaco";
 import { FILHO_EM_GRUPO_PROPRIO, registrarFilho } from "@/pipeline/lib/cancelamento";
 import { pythonDaFerramentaUv } from "@/pipeline/lib/binario";
 import { PipelineError } from "@/pipeline/types";
@@ -72,7 +73,10 @@ export function caminhoDe(nome: string): string {
       "modo pacote sem BRUTO_FERRAMENTAS definida — o lançador do Bruto.app está quebrado",
     );
   }
-  return path.join(base, "bin", nome);
+  // juntarCaminho (não path.join): o literal "bin" ao lado da base dinâmica
+  // fazia o tracer do standalone varrer `*bin*` no projeto inteiro e arrastar
+  // 441 MB de dist/ para o payload (ver caminho-opaco.ts).
+  return juntarCaminho(base, "bin", nome);
 }
 
 /** Existe e é executável? (o mesmo critério de `binario.ts`) */
@@ -88,6 +92,18 @@ function executavel(caminho: string): boolean {
 // ── execução de instalação, com teto e cancelamento (F3) ────────────────────
 
 /**
+ * Preferência de Python do uv: NUNCA o interpretador do sistema. Prova em
+ * ambiente zerado (orquestradora, 11/11/2026): `uv tool install yt-dlp` sem
+ * ela usou o Python 3.9 de `/usr/bin/python3`, instalou um yt-dlp antigo que
+ * o YouTube recusa — e em Mac sem Command Line Tools a sonda do
+ * `/usr/bin/python3` pode abrir o diálogo da Apple. Vai nos DOIS canais: a
+ * flag no argv e a variável no ambiente do filho, então a preferência vale
+ * mesmo se o lançador não a definir (e qualquer um dos dois basta para o uv
+ * honrar). Inerte para o filho que não é uv (o node da CLI do Playwright).
+ */
+const ARGS_PYTHON_GERENCIADO = ["--python-preference", "only-managed"];
+
+/**
  * Roda o instalador (uv, ou o node da CLI do Playwright) com teto de tempo e
  * registro de cancelamento: se o processo rodar DENTRO de um job, cancelar o
  * job o mata em grupo. Rejeita em timeout ou exit != 0 com o rabo do stderr.
@@ -98,7 +114,9 @@ function rodarInstalacao(cmd: string, args: string[], timeoutMs: number): Promis
       shell: false,
       detached: FILHO_EM_GRUPO_PROPRIO,
       // As variáveis UV_* e PLAYWRIGHT_BROWSERS_PATH chegam pelo ambiente do
-      // processo (o lançador as define) — o filho herda.
+      // processo (o lançador as define) — o filho herda. UV_PYTHON_PREFERENCE
+      // é imposta AQUI, não delegada ao lançador (ver ARGS_PYTHON_GERENCIADO).
+      env: { ...process.env, UV_PYTHON_PREFERENCE: "only-managed" },
     });
     registrarFilho(child);
 
@@ -191,7 +209,11 @@ function talvezAtualizarYtDlp(timeoutMs: number): Promise<void> {
   if (marcaDeUpgradeRecente()) return Promise.resolve();
   carimbarUpgradeAgora();
   if (!upgradeYtDlp) {
-    upgradeYtDlp = rodarInstalacao(caminhoDe("uv"), ["tool", "upgrade", "yt-dlp"], timeoutMs)
+    upgradeYtDlp = rodarInstalacao(
+      caminhoDe("uv"),
+      ["tool", "upgrade", ...ARGS_PYTHON_GERENCIADO, "yt-dlp"],
+      timeoutMs,
+    )
       .catch((err) => {
         // Upgrade falho NÃO derruba o job: a ferramenta instalada funciona.
         console.warn(
@@ -207,12 +229,68 @@ function talvezAtualizarYtDlp(timeoutMs: number): Promise<void> {
   return upgradeYtDlp;
 }
 
+/** Diretório dos Pythons gerenciados pelo uv (o contrato o põe em $BRUTO_FERRAMENTAS). */
+function diretorioPythonGerenciado(): string {
+  const base = process.env.BRUTO_FERRAMENTAS;
+  if (!base) throw new Error("modo pacote sem BRUTO_FERRAMENTAS definida");
+  return process.env.UV_PYTHON_INSTALL_DIR ?? juntarCaminho(base, "uv", "python");
+}
+
+/** Diretório dos venvs das ferramentas do uv (idem: $BRUTO_FERRAMENTAS por contrato). */
+function diretorioToolsUv(): string {
+  const base = process.env.BRUTO_FERRAMENTAS;
+  if (!base) throw new Error("modo pacote sem BRUTO_FERRAMENTAS definida");
+  return process.env.UV_TOOL_DIR ?? juntarCaminho(base, "uv", "tools");
+}
+
+/**
+ * O venv da ferramenta foi montado sobre um Python GERENCIADO pelo uv?
+ *
+ * Quem instalou ANTES da preferência `only-managed` existir (ex.: o yt-dlp
+ * montado sobre o Python 3.9 de `/usr/bin`, que o YouTube recusa) precisa ser
+ * refeito — a marca de upgrade semanal não basta, porque `uv tool upgrade`
+ * não troca o interpretador de um venv existente.
+ *
+ * A prova é o `home` do `pyvenv.cfg` do venv: o venv registra ali o diretório
+ * do interpretador-base. Com Python gerenciado, `home` mora dentro de
+ * `$UV_PYTHON_INSTALL_DIR`; com o Python do sistema, aponta para `/usr/bin`
+ * e afins. Leitura de arquivo de caminho FIXO (resolve + readFileSync), que o
+ * tracer do build standalone aceita sem varredura — o mesmo critério da
+ * marca do Chromium.
+ *
+ * Sem `pyvenv.cfg` legível (binário que não veio de `uv tool install`), não
+ * dá para provar nada: assume-se OK e NÃO se reinstala às cegas — uma
+ * reinstalação sem venv de origem poderia entrar em laço a cada garantia.
+ */
+function venvComPythonGerenciado(nomeFerramenta: string): boolean {
+  let cfg: string;
+  try {
+    cfg = fs.readFileSync(
+      juntarCaminho(diretorioToolsUv(), nomeFerramenta, "pyvenv.cfg"),
+      "utf8",
+    );
+  } catch {
+    return true;
+  }
+  const home = cfg
+    .split("\n")
+    .find((l) => l.startsWith("home"))
+    ?.split("=")[1]
+    ?.trim();
+  if (!home) return true;
+  const gerenciado = diretorioPythonGerenciado();
+  return home === gerenciado || home.startsWith(gerenciado + path.sep);
+}
+
 /**
  * Garante o yt-dlp antes do primeiro job que precisa dele (modo pacote):
- * instala com `"$BRUTO_UV" tool install yt-dlp` se ausente e roda o upgrade
- * semanal se a marca estiver velha. Modo clone: no-op (o yt-dlp vem do PATH,
- * como sempre). Falha de INSTALAÇÃO vira PipelineError legível; falha de
- * upgrade é só warning.
+ * instala com `"$BRUTO_UV" tool install --python-preference only-managed
+ * yt-dlp` se ausente, REINSTALA se o venv existente foi montado sobre o
+ * Python do sistema (`--reinstall` — ver `venvComPythonGerenciado`) e roda o
+ * upgrade semanal se a marca estiver velha. Modo clone: no-op (o yt-dlp vem
+ * do PATH, como sempre). Falha de INSTALAÇÃO vira PipelineError legível;
+ * falha de reinstalação ou de upgrade é só warning (a ferramenta existente
+ * segue em uso).
  */
 export async function garantirYtDlp(opcoes: { timeoutMs?: number } = {}): Promise<void> {
   if (!modoPacote()) return;
@@ -221,11 +299,42 @@ export async function garantirYtDlp(opcoes: { timeoutMs?: number } = {}): Promis
     if (!instalacaoYtDlp) {
       const p = (async () => {
         try {
-          await rodarInstalacao(caminhoDe("uv"), ["tool", "install", "yt-dlp"], timeoutMs);
+          await rodarInstalacao(
+            caminhoDe("uv"),
+            ["tool", "install", ...ARGS_PYTHON_GERENCIADO, "yt-dlp"],
+            timeoutMs,
+          );
           // Recém-instalado = atualizado: a marca nasce fresca.
           carimbarUpgradeAgora();
         } catch {
           throw new PipelineError("UNKNOWN", MSG_FALHA_YTDLP);
+        } finally {
+          instalacaoYtDlp = null;
+        }
+      })();
+      instalacaoYtDlp = p;
+    }
+    await instalacaoYtDlp;
+  } else if (!venvComPythonGerenciado("yt-dlp")) {
+    // Montado com o Python do sistema (instalação anterior à preferência
+    // only-managed): refaz. Falha NÃO derruba o job — a ferramenta que está
+    // lá segue em uso, como no upgrade semanal.
+    if (!instalacaoYtDlp) {
+      const p = (async () => {
+        try {
+          await rodarInstalacao(
+            caminhoDe("uv"),
+            ["tool", "install", "--reinstall", ...ARGS_PYTHON_GERENCIADO, "yt-dlp"],
+            timeoutMs,
+          );
+          carimbarUpgradeAgora();
+        } catch (err) {
+          console.warn(
+            `[bruto] não foi possível remontar o yt-dlp com Python gerenciado ` +
+              `(a instalação existente segue em uso): ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+          );
         } finally {
           instalacaoYtDlp = null;
         }
@@ -405,9 +514,10 @@ export function whisperInstalado(): boolean {
 
 /**
  * Instala o backend de transcrição sob pedido (endpoint das Configurações):
- * `"$BRUTO_UV" tool install mlx-whisper` (~2 GB de modelo e dependências — o
- * aviso é da UI). Modo clone: rejeita — lá quem instala é o instalador do
- * repositório, não o app. UMA instalação por vez, com teto e cancelamento.
+ * `"$BRUTO_UV" tool install --python-preference only-managed mlx-whisper`
+ * (~2 GB de modelo e dependências — o aviso é da UI). Modo clone: rejeita —
+ * lá quem instala é o instalador do repositório, não o app. UMA instalação
+ * por vez, com teto e cancelamento.
  */
 export function instalarWhisper(opcoes: { timeoutMs?: number } = {}): Promise<void> {
   if (!modoPacote()) {
@@ -420,7 +530,11 @@ export function instalarWhisper(opcoes: { timeoutMs?: number } = {}): Promise<vo
     const timeoutMs = opcoes.timeoutMs ?? TIMEOUT_WHISPER_MS;
     const p = (async () => {
       try {
-        await rodarInstalacao(caminhoDe("uv"), ["tool", "install", "mlx-whisper"], timeoutMs);
+        await rodarInstalacao(
+          caminhoDe("uv"),
+          ["tool", "install", ...ARGS_PYTHON_GERENCIADO, "mlx-whisper"],
+          timeoutMs,
+        );
       } catch {
         throw new Error(
           "Não foi possível instalar a transcrição local (Whisper). " +
