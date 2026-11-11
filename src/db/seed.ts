@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import { pathToFileURL } from "node:url";
 import { db } from "./client";
 import { categories } from "./schema";
 
@@ -13,8 +15,22 @@ const SEED: Array<{ name: string; slug: string; sortOrder: number }> = [
   { name: "Outros", slug: "outros", sortOrder: 9 },
 ];
 
-for (const cat of SEED) {
-  db.insert(categories).values(cat).onConflictDoNothing().run();
+/**
+ * Garante as categorias-base. Exportada para o boot do app empacotado
+ * (`instrumentation.ts`) chamar logo depois das migrações — o
+ * `npm run db:seed` continua chamando a mesma função pelo gatilho de
+ * execução direta no fim do arquivo (INVARIANTE F2: o script não muda de
+ * comportamento). Idempotente (`onConflictDoNothing`).
+ */
+export function aplicarSeed(): void {
+  for (const cat of SEED) {
+    db.insert(categories).values(cat).onConflictDoNothing().run();
+  }
+  console.log(`✅ Seed concluído: ${SEED.length} categorias garantidas.`);
 }
 
-console.log(`✅ Seed concluído: ${SEED.length} categorias garantidas.`);
+// Executado como script (`npm run db:seed` → `tsx src/db/seed.ts`): roda na
+// hora. Importado (boot do app): exporta e nada mais.
+if (process.argv[1] && import.meta.url === pathToFileURL(fs.realpathSync(process.argv[1])).href) {
+  aplicarSeed();
+}
