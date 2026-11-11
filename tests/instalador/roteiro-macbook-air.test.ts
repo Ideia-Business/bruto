@@ -3,24 +3,29 @@
  * testa) um MacBook Air "virgem" para a prova do .dmg. Aqui o script roda com
  * HOME temporário, itens falsos e binários falsos (`lsof`, `ps`, `open`) na
  * frente do PATH; a porta NUNCA é a 3000 (`BRUTO_ROTEIRO_PORTA` aponta para
- * uma porta livre de verdade) e o `~/.bruto` da pessoa nunca é tocado.
+ * uma porta livre de verdade), a data é injetada (`BRUTO_ROTEIRO_DATA`) e o
+ * `~/.bruto` da pessoa nunca é tocado.
  *
- * O fio condutor é a segurança do `limpar`: sem a confirmação digitada LIMPAR
- * nada é removido; o clone `~/Bruto` (pode ter `.env` e mudanças locais) e
- * `~/.bruto` são MOVIDOS, nunca apagados; item que não é do Bruto na listagem
- * reprova a rodada inteira.
- *
- * Rodada 3 (achados do Codex):
- * - AA: o servidor da porta só é encerrado se a identidade for PROVADA —
- *   executável/cwd dentro dos caminhos do Bruto e, respondendo /api/versao,
- *   app=bruto. O nome no comando (`server.js`, `next-server`) NÃO prova nada:
- *   um `node /tmp/outro-projeto/server.js` alheio não pode ser morto.
- * - BB: `testar` só aprova com JSON real (plutil), app=bruto, origem=pacote e
- *   versão igual à do Info.plist do app instalado; qualquer outra coisa é
- *   REPROVADO com exit ≠ 0 e o motivo no resumo.
- * - CC: rollback é o subcomando `restaurar` — a `~/.bruto` recriada pelo
- *   teste vai para `~/.bruto-do-teste-<data>` (nada é apagado) antes de o
- *   backup `-antes-do-teste-<data>` voltar ao lugar.
+ * Rodada 4 (achados do Codex — decisões EE/FF/GG):
+ * - EE: o roteiro NUNCA envia sinal a processo nenhum — o script não contém
+ *   kill/pkill/killall (nem em comentário). `limpar` e `restaurar` RECUSAM
+ *   rodar (exit ≠ 0, nada alterado) se algo escuta na porta, se há processo
+ *   com Bruto.app no caminho do executável ou se o clone ~/Bruto é cwd de
+ *   algum processo; a mensagem diz COMO a pessoa fecha (Cmd+Q, fechar a
+ *   janela do Terminal do serve.sh, reiniciar o Mac) e manda rodar de novo.
+ *   Um servidor alheio — mesmo com $HOME/Bruto nos argumentos — continua
+ *   vivo. O `listar` só informa o que escuta na porta (PID e comando), sem
+ *   julgar se é do Bruto.
+ * - FF: a restauração restaura a RODADA que o `limpar` fez (registro em
+ *   ~/.bruto-roteiro/rodada-<carimbo>.txt, modo 600, cada item movido
+ *   "origem → backup"), não a data de hoje. Sem registro o `restaurar`
+ *   FALHA (exit ≠ 0) explicando — e listando os backups
+ *   `*-antes-do-teste-*` que houver no HOME; nunca "nada para restaurar"
+ *   com sucesso.
+ * - GG: `testar` aceita SÓ JSON estrito (JSON.parse de verdade via
+ *   osascript JXA, e o resultado tem de ser objeto): corpo plist/XML com os
+ *   campos certos REPROVA; JSON certo com app=bruto, origem=pacote e a
+ *   versão do Info.plist do app instalado aprova.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -100,9 +105,9 @@ async function montar(): Promise<Cenario> {
   });
 
   // lsof falso: só a sonda DA PORTA (-iTCP…) é controlada pelo teste (devolve
-  // FALSO_PID). Qualquer outra chamada — em especial a do cwd,
-  // `lsof -p <pid> -a -d cwd -Fn` — vai para o lsof REAL, porque o cwd é
-  // justamente a prova da classe AA e tem de ser medido de verdade.
+  // FALSO_PID). Qualquer outra chamada — em especial a varredura de cwd,
+  // `lsof -nP -a -d cwd -Fn` — vai para o lsof REAL, porque o cwd é medido
+  // de verdade (gate EE: alguém rodando DE DENTRO do clone bloqueia a rodada).
   escreverExecutavel(
     path.join(bin, "lsof"),
     [
@@ -119,10 +124,11 @@ async function montar(): Promise<Cenario> {
       "",
     ].join("\n"),
   );
-  // ps falso: o "comando" do processo vem de FALSO_CMD (o teste conhece o
-  // argv REAL do servidor que subiu — process.execPath + argumentos). Não dá
-  // para delegar ao /bin/ps: exec aninhado dele é bloqueado no ambiente de
-  // teste (EPERM) — e o que está sob prova é o julgamento do comando, não o ps.
+  // ps falso: qualquer varredura de processos (o comando do PID e a procura
+  // por Bruto.app no caminho do executável) vê o que o teste puser em
+  // FALSO_CMD. Não dá para delegar ao /bin/ps: exec aninhado dele é
+  // bloqueado no ambiente de teste (EPERM) — e o que está sob prova é o
+  // julgamento, não o ps.
   escreverExecutavel(
     path.join(bin, "ps"),
     '#!/bin/bash\nprintf \'%s\\n\' "${FALSO_CMD:-}"\nexit 0\n',
@@ -240,6 +246,19 @@ const hoje = (): string => {
 const backupsDoClone = (home: string): string[] =>
   fs.readdirSync(home).filter((n) => n.startsWith("Bruto-antes-do-teste-"));
 
+/** Backups *-antes-do-teste-* (clone e dados) existentes no HOME. */
+const backupsNoHome = (home: string): string[] =>
+  fs.readdirSync(home).filter((n) => n.includes("-antes-do-teste-")).sort();
+
+/** Registro de rodadas do limpar (~/.bruto-roteiro/rodada-<carimbo>.txt). */
+const dirRodadas = (home: string): string => path.join(home, ".bruto-roteiro");
+const rodadasDoHome = (home: string): string[] => {
+  const dir = dirRodadas(home);
+  return fs.existsSync(dir)
+    ? fs.readdirSync(dir).filter((n) => n.startsWith("rodada-") && n.endsWith(".txt")).sort()
+    : [];
+};
+
 const caminhoDaListagem = (out: string): string => {
   const m = out.match(/Listagem gravada em: (\S+)/);
   assert.ok(m, `a saída do listar deveria dizer onde gravou a listagem. Saída: ${out}`);
@@ -275,10 +294,17 @@ interface ServidorFalso {
  * Sobe um servidor HTTP falso (node DE VERDADE, criado por ESTE teste) com um
  * `server.js` na pasta dada, escutando na porta de teste e respondendo
  * `/api/versao` com `resposta`. `argvAbsoluto` reproduz o caso do achado:
- * `node /caminho/fora/do/Bruto/server.js` (o nome "server.js" no comando
- * NÃO pode mais contar como prova).
+ * `node /caminho/fora/do/Bruto/server.js` (o nome "server.js" no comando não
+ * prova nada); `argsExtra` permite espelhar o repro do revisor —
+ * `node /tmp/outro/server.js --assets $HOME/Bruto/public`.
  */
-const subirServidor = (c: Cenario, pasta: string, resposta: string, argvAbsoluto: boolean): ServidorFalso => {
+const subirServidor = (
+  c: Cenario,
+  pasta: string,
+  resposta: string,
+  argvAbsoluto: boolean,
+  argsExtra: string[] = [],
+): ServidorFalso => {
   fs.mkdirSync(pasta, { recursive: true });
   const arquivo = path.join(pasta, "server.js");
   fs.writeFileSync(
@@ -298,13 +324,13 @@ const subirServidor = (c: Cenario, pasta: string, resposta: string, argvAbsoluto
     { mode: 0o755 },
   );
   const argv = argvAbsoluto ? arquivo : "server.js";
-  const proc = spawn(process.execPath, [argv], {
+  const proc = spawn(process.execPath, [argv, ...argsExtra], {
     cwd: pasta,
     stdio: "ignore",
     env: { ...c.env, FALSA_RESPOSTA: resposta },
   });
   proc.unref();
-  return { proc, comando: `${process.execPath} ${argv}` };
+  return { proc, comando: [process.execPath, argv, ...argsExtra].join(" ") };
 };
 
 /** Espera o servidor falso aceitar conexões na porta de teste. */
@@ -325,6 +351,13 @@ const esperarPorta = (porta: number): Promise<void> =>
     };
     tentar();
   });
+
+/** Listagem mínima (clone + dados) para o `limpar --listagem`. */
+const listagemMinima = (c: Cenario): string => {
+  const listagem = path.join(c.home, "Desktop", "listagem-do-teste.txt");
+  fs.writeFileSync(listagem, [linha("clone", c.clone), linha("dados", c.dados), ""].join("\n"));
+  return listagem;
+};
 
 test("listar é somente leitura: nada muda (a não ser o arquivo de listagem)", async () => {
   const c = await montar();
@@ -458,8 +491,7 @@ test("limpar com LIMPAR move ~/Bruto (nunca apaga): .env e arquivo local chegam 
     );
 
     // O plano promete MOVER (não REMOVER) o clone, e o fim manda usar o
-    // subcomando `restaurar` — um `mv` solto para copiar e colar colocaria o
-    // backup DENTRO da ~/.bruto recriada pelo teste (achado 3 da rodada 3).
+    // subcomando `restaurar` — o rollback é pela rodada registrada.
     assert.match(r.out, new RegExp(`MOVER\\s+${escaparRegex(c.clone)}\\s+→\\s+${escaparRegex(backup)}`));
     assert.match(r.out, /roteiro-macbook-air\.sh restaurar/, "o fim deveria mandar o subcomando restaurar");
     assert.doesNotMatch(r.out, /^ {2}mv /m, "nenhum `mv` de rollback é impresso para copiar e colar");
@@ -515,7 +547,7 @@ test("item que não é do Bruto no arquivo de listagem é RECUSADO (nada é remo
     const r = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\n");
     assert.notEqual(r.rc, 0, "a rodada deveria ser recusada");
     assert.match(r.out, /não são do Bruto|NÃO são do Bruto/);
-    assert.match(r.out, new RegExp(documents.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), "a recusa deveria apontar o item");
+    assert.match(r.out, new RegExp(escaparRegex(documents)), "a recusa deveria apontar o item");
 
     assert.ok(fs.existsSync(path.join(documents, "importante.txt")), "Documents não pode ser tocado");
     assert.ok(fs.existsSync(c.clone), "nem o item VÁLIDO é removido quando a listagem é recusada");
@@ -531,151 +563,371 @@ test("item que não é do Bruto no arquivo de listagem é RECUSADO (nada é remo
   }
 });
 
-test("servidor na porta que NÃO é do Bruto não é encerrado", async () => {
-  const c = await montar();
-  const alheio = spawn("sleep", ["600"], { stdio: "ignore" });
-  alheio.unref();
-  try {
-    const listagem = path.join(c.home, "Desktop", "listagem-do-teste.txt");
-    fs.writeFileSync(listagem, [linha("clone", c.clone), linha("dados", c.dados), ""].join("\n"));
+// --- rodada 4: classe EE (o roteiro NUNCA envia sinal a processo nenhum) ------
 
-    // "s\n" de sobra no stdin: se o roteiro pedisse a confirmação de encerrar
-    // (não deveria), o teste quebraria ao ver o processo morto.
-    const r = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\ns\n", {
-      FALSO_PID: String(alheio.pid),
-      FALSO_CMD: "/usr/local/bin/servidor-alheio --http",
-    });
-    assert.equal(r.rc, 0, r.out);
-    assert.match(r.out, /NÃO provado ser do Bruto/);
-    assert.ok(vivo(alheio.pid), "o processo alheio deveria continuar vivo");
-  } finally {
-    try {
-      alheio.kill("SIGTERM");
-    } catch {
-      /* já saiu */
-    }
-    c.limpar();
-  }
+test("EE (a): o script NÃO contém kill/pkill/killall — o roteiro nunca encerra processo nenhum", async () => {
+  const conteudo = fs.readFileSync(ROTEIRO, "utf8");
+  assert.doesNotMatch(conteudo, /kill/i, "o script não pode conter kill/pkill/killall (nem em comentário)");
 });
 
-test("servidor do Bruto na porta (server.js) É encerrado quando a pessoa confirma", async () => {
+test("EE (b): servidor alheio na porta (com $HOME/Bruto nos argumentos) — limpar RECUSA, nada é movido, servidor vivo", async () => {
   const c = await montar();
-  const servidor = spawn("sleep", ["600"], { stdio: "ignore" });
-  servidor.unref();
-  try {
-    const listagem = path.join(c.home, "Desktop", "listagem-do-teste.txt");
-    fs.writeFileSync(listagem, [linha("clone", c.clone), linha("dados", c.dados), ""].join("\n"));
-
-    // O comando tem de apontar para o app do Bruto DESTA máquina de teste
-    // (o caminho é a prova — o nome "server.js" sozinho não conta mais).
-    const r = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\ns\n", {
-      FALSO_PID: String(servidor.pid),
-      FALSO_CMD: `${c.appSistema}/Contents/Resources/node server.js`,
-    });
-    assert.equal(r.rc, 0, r.out);
-    assert.match(r.out, /TERM enviado/);
-
-    let saiu = false;
-    for (let i = 0; i < 30 && !saiu; i++) {
-      await new Promise((res) => setTimeout(res, 100));
-      saiu = !vivo(servidor.pid);
-    }
-    assert.ok(saiu, "o servidor do Bruto deveria ter saído após a confirmação");
-  } finally {
-    try {
-      servidor.kill("SIGTERM");
-    } catch {
-      /* já saiu */
-    }
-    c.limpar();
-  }
-});
-
-// --- rodada 3: classe AA (identidade provada, não adivinhada pelo nome) ------
-
-test("AA: server.js de OUTRO projeto na porta NÃO é do Bruto — a listagem diz e o limpar não encerra", async () => {
-  const c = await montar();
+  // O repro do revisor: node /fora/do/Bruto/server.js --assets $HOME/Bruto/public
+  // escutando na porta. Nenhuma "prova de identidade" autoriza encerrar —
+  // agora a CLASSE foi cortada: com a porta ocupada o limpar nem começa.
   const fora = path.join(c.tmp, "fora-do-bruto");
-  const { proc: servidor, comando } = subirServidor(c, fora, '{"app":"outro-projeto","versao":"1.0.0","origem":"clone"}', true);
+  const { proc: servidor, comando } = subirServidor(c, fora, "", true, [
+    "--assets",
+    path.join(c.clone, "public"),
+  ]);
   try {
     await esperarPorta(Number(c.env.BRUTO_ROTEIRO_PORTA));
+    const listagem = listagemMinima(c);
 
-    const listado = await rodar(c, ["listar"], "", { FALSO_PID: String(servidor.pid), FALSO_CMD: comando });
-    assert.equal(listado.rc, 0, listado.out);
-    assert.match(listado.out, /NÃO provado ser do Bruto/, "a listagem deveria dizer que não é do Bruto");
-    assert.doesNotMatch(listado.out, /pode encerrá-lo/, "não pode oferecer encerrar um processo não provado");
-
-    const listagem = caminhoDaListagem(listado.out);
-    // "s\n" de sobra: se o roteiro oferecesse encerrar (não deveria), o
-    // servidor morreria e o teste veria o crime.
+    // "LIMPAR\ns\n": o "s" de sobra não é mais consumido por pergunta nenhuma
+    // — o roteiro não oferece encerrar nada.
     const r = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\ns\n", {
       FALSO_PID: String(servidor.pid),
       FALSO_CMD: comando,
     });
-    assert.equal(r.rc, 0, r.out);
-    assert.match(r.out, /NÃO provado ser do Bruto/);
-    assert.ok(vivo(servidor.pid), "o servidor do outro projeto deveria continuar vivo");
+    assert.notEqual(r.rc, 0, "com a porta ocupada o limpar tem de recusar a rodada inteira");
+    assert.match(r.out, /NUNCA encerra/i);
+    assert.match(r.out, /porta/i, "a recusa deveria falar da porta");
+    assert.match(r.out, /Cmd\+Q/, "a recusa deveria dizer como fechar (Cmd+Q)");
+    assert.match(r.out, /reinicie o Mac/, "a recusa deveria oferecer reiniciar o Mac");
+    assert.match(r.out, /de novo/, "a recusa deveria mandar rodar de novo");
+
+    assert.ok(vivo(servidor.pid), "o servidor alheio deveria continuar vivo");
+    assert.ok(fs.existsSync(path.join(c.clone, "launcher", "serve.sh")), "nada movido: clone no lugar");
+    assert.ok(fs.existsSync(path.join(c.dados, "library", "item.txt")), "nada movido: dados no lugar");
+    assert.equal(backupsDoClone(c.home).length, 0, "nenhum backup do clone é criado");
+    assert.equal(
+      fs.readdirSync(c.home).filter((n) => n.startsWith(".bruto-antes-do-teste-")).length,
+      0,
+      "nenhum backup dos dados é criado",
+    );
+    assert.equal(rodadasDoHome(c.home).length, 0, "nenhum registro de rodada é criado numa rodada recusada");
   } finally {
     matar(servidor);
     c.limpar();
   }
 });
 
-test("AA: servidor com cwd no clone ~/Bruto e /api/versao app=bruto É provado do Bruto (e encerrado com confirmação)", async () => {
+test("EE (b): servidor com cwd no clone ~/Bruto e app=bruto — MESMO assim o limpar só recusa (não encerra)", async () => {
   const c = await montar();
+  // Rodada 3 chamava isto de "provado do Bruto" e encerrava com confirmação.
+  // Agora não existe encerramento: a recusa é a única saída.
   const { proc: servidor, comando } = subirServidor(c, c.clone, '{"app":"bruto","versao":"0.0.1","origem":"clone"}', false);
   try {
     await esperarPorta(Number(c.env.BRUTO_ROTEIRO_PORTA));
+    const listagem = listagemMinima(c);
 
-    const listado = await rodar(c, ["listar"], "", { FALSO_PID: String(servidor.pid), FALSO_CMD: comando });
-    assert.equal(listado.rc, 0, listado.out);
-    assert.match(listado.out, /PROVADO servidor DO BRUTO/, "a listagem deveria dizer PROVADO");
-    assert.match(listado.out, /provas: /, "a listagem deveria mostrar as provas (cwd/comando)");
-
-    const listagem = caminhoDaListagem(listado.out);
     const r = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\ns\n", {
       FALSO_PID: String(servidor.pid),
       FALSO_CMD: comando,
     });
-    assert.equal(r.rc, 0, r.out);
-    assert.match(r.out, /TERM enviado/);
-
-    let saiu = false;
-    for (let i = 0; i < 30 && !saiu; i++) {
-      await new Promise((res) => setTimeout(res, 100));
-      saiu = !vivo(servidor.pid);
-    }
-    assert.ok(saiu, "o servidor provado do Bruto deveria ter saído após a confirmação");
+    assert.notEqual(r.rc, 0, "porta ocupada → rodada recusada, sem perguntar nada");
+    assert.match(r.out, /NUNCA encerra/i);
+    assert.ok(vivo(servidor.pid), "o servidor continua vivo (ninguém encerra nada)");
+    assert.ok(fs.existsSync(path.join(c.clone, "launcher", "serve.sh")), "nada movido");
+    assert.equal(backupsDoClone(c.home).length, 0, "nenhum backup é criado");
   } finally {
     matar(servidor);
     c.limpar();
   }
 });
 
-test("AA: cwd no ~/Bruto mas /api/versao SEM app=bruto é dúvida — NÃO é do Bruto, não é encerrado", async () => {
+test("EE: processo com Bruto.app no caminho do executável (porta livre) também bloqueia o limpar", async () => {
   const c = await montar();
-  const { proc: servidor, comando } = subirServidor(c, c.clone, '{"app":"coisa-outra","versao":"1.0.0","origem":"clone"}', false);
+  try {
+    const listagem = listagemMinima(c);
+    // FALSO_PID vazio → porta livre; o bloqueio vem da varredura de processos
+    // com Bruto.app no caminho do executável (o app aberto).
+    const r = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\n", {
+      FALSO_CMD: `${c.appUsuario}/Contents/MacOS/Bruto --serve`,
+    });
+    assert.notEqual(r.rc, 0, "app do Bruto aberto → rodada recusada");
+    assert.match(r.out, /NUNCA encerra/i);
+    assert.match(r.out, /Bruto\.app/, "a recusa deveria apontar o Bruto.app no comando");
+    assert.match(r.out, /Cmd\+Q/);
+    assert.ok(fs.existsSync(path.join(c.clone, "launcher", "serve.sh")), "nada movido");
+    assert.equal(backupsDoClone(c.home).length, 0, "nenhum backup é criado");
+  } finally {
+    c.limpar();
+  }
+});
+
+test("EE: processo com cwd DENTRO do clone (porta livre) também bloqueia o limpar", async () => {
+  const c = await montar();
+  // Processo de verdade (criado por ESTE teste), parado, sem escutar porta
+  // nenhuma — só rodando de dentro de ~/Bruto. O cwd é medido pelo lsof REAL.
+  const ocioso = spawn("sleep", ["600"], { cwd: c.clone, stdio: "ignore" });
+  ocioso.unref();
+  try {
+    await new Promise((res) => setTimeout(res, 200));
+    const listagem = listagemMinima(c);
+
+    const r = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\n");
+    assert.notEqual(r.rc, 0, "alguém rodando de dentro do clone → rodada recusada");
+    assert.match(r.out, /NUNCA encerra/i);
+    assert.match(r.out, /cwd/i, "a recusa deveria falar do cwd no clone");
+    assert.ok(vivo(ocioso.pid), "o processo segue vivo (ninguém encerra nada)");
+    assert.ok(fs.existsSync(path.join(c.clone, "launcher", "serve.sh")), "nada movido");
+    assert.equal(backupsDoClone(c.home).length, 0, "nenhum backup é criado");
+  } finally {
+    matar(ocioso);
+    c.limpar();
+  }
+});
+
+test("EE: listar informa o que escuta na porta (PID e comando), SEM julgar se é do Bruto", async () => {
+  const c = await montar();
+  const fora = path.join(c.tmp, "fora-do-bruto");
+  const { proc: servidor, comando } = subirServidor(c, fora, '{"app":"outro"}', true, [
+    "--assets",
+    path.join(c.clone, "public"),
+  ]);
   try {
     await esperarPorta(Number(c.env.BRUTO_ROTEIRO_PORTA));
-
-    const listado = await rodar(c, ["listar"], "", { FALSO_PID: String(servidor.pid), FALSO_CMD: comando });
-    assert.equal(listado.rc, 0, listado.out);
-    assert.match(listado.out, /NÃO provado ser do Bruto/);
-
-    const listagem = caminhoDaListagem(listado.out);
-    const r = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\ns\n", {
-      FALSO_PID: String(servidor.pid),
-      FALSO_CMD: comando,
-    });
+    const r = await rodar(c, ["listar"], "", { FALSO_PID: String(servidor.pid), FALSO_CMD: comando });
     assert.equal(r.rc, 0, r.out);
-    assert.ok(vivo(servidor.pid), "dúvida ≠ prova: o servidor deveria continuar vivo");
+    assert.match(
+      r.out,
+      new RegExp(`pid ${servidor.pid}: ${escaparRegex(comando)}`),
+      "deveria informar PID e comando do que escuta na porta",
+    );
+    assert.doesNotMatch(r.out, /provado/i, "o listar não julga mais se o processo é do Bruto");
+    assert.doesNotMatch(r.out, /pode encerr/i, "o listar não oferece encerrar nada");
+    assert.ok(vivo(servidor.pid), "o listar não toca em processo nenhum");
   } finally {
     matar(servidor);
     c.limpar();
   }
 });
 
-// --- rodada 3: classe BB (testar só aprova o que provou) ----------------------
+test("EE (b): restaurar com servidor na porta RECUSA sem mover nada — backups intactos, servidor vivo", async () => {
+  const c = await montar();
+  const D1 = "2020-01-01";
+  try {
+    // 1) o limpar do "dia 1" rodou com a máquina parada.
+    const listagem = listagemMinima(c);
+    const l = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\n", { BRUTO_ROTEIRO_DATA: D1 });
+    assert.equal(l.rc, 0, l.out);
+
+    // 2) o teste recriou ~/.bruto; alguém subiu um servidor na porta.
+    fs.mkdirSync(path.join(c.dados, "library"), { recursive: true });
+    fs.writeFileSync(path.join(c.dados, "library", "recriada.txt"), "biblioteca do teste");
+    const { proc: servidor, comando } = subirServidor(c, path.join(c.tmp, "serve-do-clone"), '{"app":"bruto"}', false);
+    await esperarPorta(Number(c.env.BRUTO_ROTEIRO_PORTA));
+
+    const r = await rodar(c, ["restaurar"], "n\n", {
+      FALSO_PID: String(servidor.pid),
+      FALSO_CMD: comando,
+      BRUTO_ROTEIRO_DATA: "2020-01-02",
+    });
+    assert.notEqual(r.rc, 0, "porta ocupada → o restaurar tem de recusar a rodada inteira");
+    assert.match(r.out, /NUNCA encerra/i);
+    assert.ok(vivo(servidor.pid), "o servidor continua vivo (ninguém encerra nada)");
+    assert.ok(
+      fs.existsSync(path.join(c.home, `Bruto-antes-do-teste-${D1}`, "launcher", "serve.sh")),
+      "o backup do clone não pode ser consumido numa rodada recusada",
+    );
+    assert.ok(
+      fs.existsSync(path.join(c.home, `.bruto-antes-do-teste-${D1}`, "library", "item.txt")),
+      "o backup dos dados não pode ser consumido numa rodada recusada",
+    );
+    assert.ok(fs.existsSync(path.join(c.dados, "library", "recriada.txt")), "~/.bruto recriada fica no lugar");
+  } finally {
+    c.limpar();
+  }
+});
+
+// --- rodada 4: classe FF (restaurar desfaz a RODADA, não a data de hoje) ------
+
+test("FF (c): limpar no dia 1, restaurar no dia 2 — restaura tudo PELO REGISTRO da rodada", async () => {
+  const c = await montar();
+  const D1 = "2020-01-01";
+  const D2 = "2020-01-02";
+  try {
+    // Dia 1: o limpar move clone e dados e REGISTRA a rodada.
+    const listagem = listagemMinima(c);
+    const l = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\n", { BRUTO_ROTEIRO_DATA: D1 });
+    assert.equal(l.rc, 0, l.out);
+
+    const cloneBackup = path.join(c.home, `Bruto-antes-do-teste-${D1}`);
+    const dadosBackup = path.join(c.home, `.bruto-antes-do-teste-${D1}`);
+    assert.ok(fs.existsSync(path.join(cloneBackup, "launcher", "serve.sh")), "backup do clone criado no dia 1");
+    assert.ok(fs.existsSync(path.join(dadosBackup, "library", "item.txt")), "backup dos dados criado no dia 1");
+
+    const registros = rodadasDoHome(c.home);
+    assert.equal(registros.length, 1, "o limpar deveria gravar exatamente um registro de rodada");
+    assert.ok(registros[0].startsWith(`rodada-${D1}-`), "o registro deveria carregar o carimbo do dia do limpar");
+    const registro = path.join(dirRodadas(c.home), registros[0]);
+    assert.equal(
+      fs.statSync(registro).mode & 0o777,
+      0o600,
+      "o registro da rodada deveria ter modo 600 (caminhos do usuário)",
+    );
+    const conteudo = fs.readFileSync(registro, "utf8");
+    assert.ok(conteudo.includes(`${c.clone}\t${cloneBackup}`), "o registro deveria documentar o MOVE do clone");
+    assert.ok(conteudo.includes(`${c.dados}\t${dadosBackup}`), "o registro deveria documentar o MOVE dos dados");
+
+    // O teste do .dmg recriou ~/.bruto e ~/Bruto com coisa NOVA.
+    fs.mkdirSync(path.join(c.dados, "library"), { recursive: true });
+    fs.writeFileSync(path.join(c.dados, "library", "novo-do-teste.txt"), "biblioteca recriada pelo teste");
+    fs.mkdirSync(path.join(c.clone, "novapasta"), { recursive: true });
+    fs.writeFileSync(path.join(c.clone, "novapasta", "local.txt"), "clone recriado");
+
+    // Dia 2 (OUTRA data): o restaurar acha a rodada do dia 1 pelo registro.
+    const r = await rodar(c, ["restaurar"], "", { BRUTO_ROTEIRO_DATA: D2 });
+    assert.equal(r.rc, 0, r.out);
+
+    assert.ok(fs.existsSync(path.join(c.clone, "launcher", "serve.sh")), "o clone voltou INTEIRO pelo registro");
+    assert.ok(fs.existsSync(path.join(c.dados, "library", "item.txt")), "a biblioteca voltou INTEIRA pelo registro");
+    assert.ok(!fs.existsSync(cloneBackup), "o backup do dia 1 foi consumido");
+    assert.ok(!fs.existsSync(dadosBackup), "o backup dos dados do dia 1 foi consumido");
+    assert.ok(
+      fs.existsSync(path.join(c.home, `.bruto-do-teste-${D2}`, "library", "novo-do-teste.txt")),
+      "a biblioteca recriada pelo teste deveria estar preservada em ~/.bruto-do-teste-<dia 2>",
+    );
+    assert.ok(
+      fs.existsSync(path.join(c.home, `Bruto-do-teste-${D2}`, "novapasta", "local.txt")),
+      "o clone recriado pelo teste deveria estar preservado em ~/Bruto-do-teste-<dia 2>",
+    );
+    assert.ok(!fs.existsSync(path.join(c.dados, "library", "novo-do-teste.txt")), "as pastas não se misturam");
+    assert.equal(rodadasDoHome(c.home).length, 1, "o registro fica, para conferência");
+  } finally {
+    c.limpar();
+  }
+});
+
+test("FF (c): sem registro e COM backups no HOME → exit ≠ 0 LISTANDO os backups (nunca sucesso oco)", async () => {
+  const c = await montar();
+  try {
+    // Backups de uma rodada cujo registro se perdeu (ou de um limpar antigo).
+    const b1 = path.join(c.home, "Bruto-antes-do-teste-2019-12-31");
+    fs.mkdirSync(b1);
+    fs.writeFileSync(path.join(b1, ".env"), "CHAVE=backup-orfao\n");
+    fs.mkdirSync(path.join(c.home, ".bruto-antes-do-teste-2019-12-31"));
+
+    const r = await rodar(c, ["restaurar"], "");
+    assert.notEqual(r.rc, 0, "sem registro o restaurar FALHA — não existe 'nada para restaurar' com sucesso");
+    assert.match(r.out, /registro de rodada|nenhum registro/i);
+    assert.match(r.out, /Bruto-antes-do-teste-2019-12-31/, "deveria listar o backup órfão do clone");
+    assert.match(r.out, /\.bruto-antes-do-teste-2019-12-31/, "deveria listar o backup órfão dos dados");
+    assert.ok(fs.existsSync(path.join(b1, ".env")), "o backup órfão não pode ser tocado");
+  } finally {
+    c.limpar();
+  }
+});
+
+test("FF: sem registro e SEM backups no HOME → exit ≠ 0 explicando (nunca sucesso oco)", async () => {
+  const c = await montar();
+  try {
+    const r = await rodar(c, ["restaurar"], "");
+    assert.notEqual(r.rc, 0, "não há o que restaurar — mas a resposta é ERRO, não sucesso");
+    assert.match(r.out, /registro de rodada|nenhum registro/i);
+  } finally {
+    c.limpar();
+  }
+});
+
+test("FF: restaurar --rodada <arquivo> restaura exatamente a rodada escolhida", async () => {
+  const c = await montar();
+  const D1 = "2020-01-01";
+  try {
+    const listagem = listagemMinima(c);
+    const l = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\n", { BRUTO_ROTEIRO_DATA: D1 });
+    assert.equal(l.rc, 0, l.out);
+
+    // A pessoa guardou o registro em outro lugar (ex.: mandou por e-mail).
+    const registros = rodadasDoHome(c.home);
+    assert.equal(registros.length, 1, "deveria haver um registro");
+    const guardado = path.join(c.home, "Desktop", "minha-rodada.txt");
+    fs.renameSync(path.join(dirRodadas(c.home), registros[0]), guardado);
+
+    const r = await rodar(c, ["restaurar", "--rodada", guardado], "", { BRUTO_ROTEIRO_DATA: "2020-01-02" });
+    assert.equal(r.rc, 0, r.out);
+    assert.ok(fs.existsSync(path.join(c.clone, "launcher", "serve.sh")), "o clone voltou pela rodada explícita");
+    assert.ok(fs.existsSync(path.join(c.dados, "library", "item.txt")), "os dados voltaram pela rodada explícita");
+    assert.ok(!fs.existsSync(path.join(c.home, `Bruto-antes-do-teste-${D1}`)), "backup consumido");
+  } finally {
+    c.limpar();
+  }
+});
+
+test("FF: sem --rodada, o restaurar usa o registro MAIS RECENTE (registro antigo é ignorado)", async () => {
+  const c = await montar();
+  const D1 = "2020-01-01";
+  const D2 = "2020-01-02";
+  const D3 = "2020-01-03";
+  try {
+    // Rodada 1 (dia 1) e sua restauração (dia 2).
+    const listagem = listagemMinima(c);
+    const l1 = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\n", { BRUTO_ROTEIRO_DATA: D1 });
+    assert.equal(l1.rc, 0, l1.out);
+    const r2 = await rodar(c, ["restaurar"], "", { BRUTO_ROTEIRO_DATA: D2 });
+    assert.equal(r2.rc, 0, r2.out);
+
+    // Rodada 2 (dia 3) + um registro ANTIGO falsificado com par inexistente:
+    // se o restaurar escolhesse o mais antigo, tropeçaria nele.
+    const l3 = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\n", { BRUTO_ROTEIRO_DATA: D3 });
+    assert.equal(l3.rc, 0, l3.out);
+    const chamariz = path.join(dirRodadas(c.home), "rodada-2020-01-02-000000.txt");
+    fs.writeFileSync(chamariz, `${c.home}/caminho-que-nao-existe\t${c.home}/backup-que-nao-existe\n`);
+
+    const r = await rodar(c, ["restaurar"], "", { BRUTO_ROTEIRO_DATA: "2020-01-04" });
+    assert.equal(r.rc, 0, `deveria restaurar pela rodada mais recente: ${r.out}`);
+    assert.ok(fs.existsSync(path.join(c.clone, "launcher", "serve.sh")), "o clone da rodada do dia 3 voltou");
+    assert.ok(fs.existsSync(path.join(c.dados, "library", "item.txt")), "os dados da rodada do dia 3 voltaram");
+    assert.ok(fs.existsSync(chamariz), "o registro antigo não é consumido nem apagado");
+  } finally {
+    c.limpar();
+  }
+});
+
+test("FF: restaurar --rodada <arquivo inexistente> → exit ≠ 0", async () => {
+  const c = await montar();
+  try {
+    const r = await rodar(c, ["restaurar", "--rodada", "/nao/existe/rodada.txt"], "");
+    assert.notEqual(r.rc, 0, "arquivo de rodada inexistente é erro");
+    assert.match(r.out, /não encontrado/i);
+  } finally {
+    c.limpar();
+  }
+});
+
+test("CC: restaurar RECUSA (sem mover nada) quando o destino -do-teste- do dia já existe", async () => {
+  const c = await montar();
+  const D = "2020-01-01";
+  try {
+    const listagem = listagemMinima(c);
+    const l = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\n", { BRUTO_ROTEIRO_DATA: D });
+    assert.equal(l.rc, 0, l.out);
+
+    // o teste recriou ~/.bruto e já existe um -do-teste- de hoje (de uma
+    // restauração anterior): a rodada tem de ser recusada inteira.
+    fs.mkdirSync(path.join(c.dados, "library"), { recursive: true });
+    fs.writeFileSync(path.join(c.dados, "library", "recriada.txt"), "biblioteca do teste");
+    const doTeste = path.join(c.home, `.bruto-do-teste-${D}`);
+    fs.mkdirSync(doTeste);
+    fs.writeFileSync(path.join(doTeste, "marca.txt"), "não me sobrescreva");
+
+    const r = await rodar(c, ["restaurar"], "", { BRUTO_ROTEIRO_DATA: D });
+    assert.notEqual(r.rc, 0, "a restauração deveria ser recusada");
+    assert.match(r.out, /não vou sobrescrever|Já existe/);
+    assert.ok(fs.existsSync(path.join(doTeste, "marca.txt")), "o -do-teste- existente não pode ser tocado");
+    assert.ok(fs.existsSync(path.join(c.dados, "library", "recriada.txt")), "~/.bruto recriada fica no lugar");
+    assert.ok(
+      fs.existsSync(path.join(c.home, `.bruto-antes-do-teste-${D}`, "library", "item.txt")),
+      "o backup não pode ser consumido numa rodada recusada",
+    );
+  } finally {
+    c.limpar();
+  }
+});
+
+// --- rodada 4: classe GG/BX (testar só aprova JSON ESTRITO do pacote) ---------
 
 const resumoDoTeste = (c: Cenario): string =>
   fs.readFileSync(path.join(c.home, "Desktop", `bruto-teste-${hoje()}.txt`), "utf8");
@@ -712,6 +964,35 @@ test("BB: testar REPROVA corpo que não é JSON (exit ≠ 0 e o motivo no resumo
   }
 });
 
+test("GG (d): testar REPROVA corpo plist/XML com os campos certos — só JSON ESTRITO vale", async () => {
+  const c = await montar();
+  // O achado da rodada 4: um corpo plist XML com app=bruto, origem=pacote e a
+  // versão certa era APROVADO porque o plutil extrai campos de plist também.
+  // Agora o parser é JSON.parse de verdade: plist/XML/HTML/texto reprovam.
+  const plist = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+    '<plist version="1.0"><dict>',
+    "<key>app</key><string>bruto</string>",
+    "<key>origem</key><string>pacote</string>",
+    "<key>versao</key><string>9.9.9</string>",
+    "</dict></plist>",
+    "",
+  ].join("\n");
+  const { proc: servidor } = subirServidor(c, path.join(c.tmp, "app-plist"), plist, false);
+  try {
+    await esperarPorta(Number(c.env.BRUTO_ROTEIRO_PORTA));
+    const r = await rodar(c, ["testar"], "");
+    assert.notEqual(r.rc, 0, "plist com os campos certos NÃO pode ser aprovado");
+    assert.match(r.out, /REPROVADO/);
+    assert.match(r.out, /não é JSON/);
+    assert.match(resumoDoTeste(c), /não é JSON/, "o resumo deveria dizer o porquê");
+  } finally {
+    matar(servidor);
+    c.limpar();
+  }
+});
+
 test("BB: testar REPROVA versão diferente da do Info.plist do app instalado", async () => {
   const c = await montar();
   const { proc: servidor } = subirServidor(c, path.join(c.tmp, "app-versao-errada"), '{"app":"bruto","versao":"0.0.1","origem":"pacote"}', false);
@@ -729,7 +1010,7 @@ test("BB: testar REPROVA versão diferente da do Info.plist do app instalado", a
   }
 });
 
-test("BB: testar APROVA o servidor provado do pacote (app=bruto, origem=pacote, versão igual à do Info.plist)", async () => {
+test("BB/GG (d): testar APROVA o JSON certo (app=bruto, origem=pacote, versão igual à do Info.plist)", async () => {
   const c = await montar();
   const { proc: servidor } = subirServidor(c, path.join(c.tmp, "app-bom"), '{"app":"bruto","versao":"9.9.9","origem":"pacote"}', false);
   try {
@@ -738,113 +1019,6 @@ test("BB: testar APROVA o servidor provado do pacote (app=bruto, origem=pacote, 
     assert.equal(r.rc, 0, r.out);
     assert.match(r.out, /PROVADO/);
     assert.match(r.out, /9\.9\.9/);
-  } finally {
-    matar(servidor);
-    c.limpar();
-  }
-});
-
-// --- rodada 3: classe CC (rollback seguro no estado em que a pessoa está) -----
-
-test("CC: restaurar preserva a ~/.bruto recriada pelo teste em -do-teste- e devolve o backup INTEIRO", async () => {
-  const c = await montar();
-  try {
-    // 1) o limpar de antes do teste moveu clone e dados para os backups.
-    const listagem = path.join(c.home, "Desktop", "listagem-do-teste.txt");
-    fs.writeFileSync(listagem, [linha("clone", c.clone), linha("dados", c.dados), ""].join("\n"));
-    const l = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\n");
-    assert.equal(l.rc, 0, l.out);
-
-    // 2) o teste do .dmg recriou ~/.bruto (e ~/Bruto) com coisa NOVA.
-    fs.mkdirSync(path.join(c.dados, "library"), { recursive: true });
-    fs.writeFileSync(path.join(c.dados, "library", "novo-do-teste.txt"), "biblioteca recriada pelo teste");
-    fs.mkdirSync(path.join(c.clone, "novapasta"), { recursive: true });
-    fs.writeFileSync(path.join(c.clone, "novapasta", "local.txt"), "clone recriado");
-
-    // 3) o rollback certo agora é o subcomando restaurar.
-    const r = await rodar(c, ["restaurar"], "");
-    assert.equal(r.rc, 0, r.out);
-
-    const dadosDoTeste = path.join(c.home, `.bruto-do-teste-${hoje()}`);
-    const cloneDoTeste = path.join(c.home, `Bruto-do-teste-${hoje()}`);
-    assert.ok(
-      fs.existsSync(path.join(dadosDoTeste, "library", "novo-do-teste.txt")),
-      "a biblioteca recriada pelo teste deveria estar preservada em ~/.bruto-do-teste-<data>",
-    );
-    assert.ok(
-      fs.existsSync(path.join(cloneDoTeste, "novapasta", "local.txt")),
-      "o clone recriado pelo teste deveria estar preservado em ~/Bruto-do-teste-<data>",
-    );
-    assert.ok(fs.existsSync(path.join(c.dados, "library", "item.txt")), "o backup da biblioteca deveria voltar INTEIRO");
-    assert.ok(!fs.existsSync(path.join(c.dados, "library", "novo-do-teste.txt")), "a pasta do teste não pode se misturar com a restaurada");
-    assert.ok(fs.existsSync(path.join(c.clone, "launcher", "serve.sh")), "o backup do clone deveria voltar inteiro");
-    assert.ok(
-      !fs.existsSync(path.join(c.home, `.bruto-antes-do-teste-${hoje()}`)),
-      "o backup dos dados não deveria mais existir (foi restaurado)",
-    );
-    assert.ok(
-      !fs.existsSync(path.join(c.home, `Bruto-antes-do-teste-${hoje()}`)),
-      "o backup do clone não deveria mais existir (foi restaurado)",
-    );
-    assert.match(r.out, /roteiro|✓/, "a saída deveria narrar o que moveu");
-  } finally {
-    c.limpar();
-  }
-});
-
-test("CC: restaurar RECUSA (sem mover nada) quando o destino -do-teste- de hoje já existe", async () => {
-  const c = await montar();
-  try {
-    const listagem = path.join(c.home, "Desktop", "listagem-do-teste.txt");
-    fs.writeFileSync(listagem, [linha("clone", c.clone), linha("dados", c.dados), ""].join("\n"));
-    const l = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\n");
-    assert.equal(l.rc, 0, l.out);
-
-    // o teste recriou ~/.bruto e já existe um -do-teste- de hoje (de uma
-    // restauração anterior): a rodada tem de ser recusada inteira.
-    fs.mkdirSync(path.join(c.dados, "library"), { recursive: true });
-    fs.writeFileSync(path.join(c.dados, "library", "recriada.txt"), "biblioteca do teste");
-    const doTeste = path.join(c.home, `.bruto-do-teste-${hoje()}`);
-    fs.mkdirSync(doTeste);
-    fs.writeFileSync(path.join(doTeste, "marca.txt"), "não me sobrescreva");
-
-    const r = await rodar(c, ["restaurar"], "");
-    assert.notEqual(r.rc, 0, "a restauração deveria ser recusada");
-    assert.match(r.out, /não vou sobrescrever|Já existe/);
-    assert.ok(fs.existsSync(path.join(doTeste, "marca.txt")), "o -do-teste- existente não pode ser tocado");
-    assert.ok(fs.existsSync(path.join(c.dados, "library", "recriada.txt")), "~/.bruto recriada fica no lugar");
-    assert.ok(
-      fs.existsSync(path.join(c.home, `.bruto-antes-do-teste-${hoje()}`, "library", "item.txt")),
-      "o backup não pode ser consumido numa rodada recusada",
-    );
-  } finally {
-    c.limpar();
-  }
-});
-
-test("CC: restaurar com servidor PROVADO do Bruto no ar e a pessoa recusando fechar: aborta sem mover nada", async () => {
-  const c = await montar();
-  const pastaApp = path.join(c.appSistema, "Contents", "Resources", "app");
-  const { proc: servidor, comando } = subirServidor(c, pastaApp, '{"app":"bruto","versao":"9.9.9","origem":"pacote"}', false);
-  try {
-    const listagem = path.join(c.home, "Desktop", "listagem-do-teste.txt");
-    fs.writeFileSync(listagem, [linha("clone", c.clone), linha("dados", c.dados), ""].join("\n"));
-    const l = await rodar(c, ["limpar", "--listagem", listagem], "LIMPAR\n");
-    assert.equal(l.rc, 0, l.out);
-    await esperarPorta(Number(c.env.BRUTO_ROTEIRO_PORTA));
-
-    fs.mkdirSync(path.join(c.dados, "library"), { recursive: true });
-    fs.writeFileSync(path.join(c.dados, "library", "recriada.txt"), "biblioteca do teste");
-
-    const r = await rodar(c, ["restaurar"], "n\n", { FALSO_PID: String(servidor.pid), FALSO_CMD: comando });
-    assert.notEqual(r.rc, 0, "recusar fechar o Bruto deveria abortar a restauração");
-    assert.match(r.out, /nada foi movido|ABORTADO/);
-    assert.ok(vivo(servidor.pid), "a decisão da pessoa (não fechar) é respeitada");
-    assert.ok(fs.existsSync(path.join(c.dados, "library", "recriada.txt")), "~/.bruto recriada fica no lugar");
-    assert.ok(
-      fs.existsSync(path.join(c.home, `.bruto-antes-do-teste-${hoje()}`)),
-      "o backup não pode ser consumido numa rodada abortada",
-    );
   } finally {
     matar(servidor);
     c.limpar();

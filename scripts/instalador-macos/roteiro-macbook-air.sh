@@ -12,52 +12,60 @@
 #             os manifestos do host, que o instalador/registrador recria).
 #             O clone (~/Bruto — pode ter .env e mudanças locais) e ~/.bruto
 #             NUNCA são apagados: são MOVIDOS para <nome>-antes-do-teste-<data>
-#             (reversível com o subcomando `restaurar`).
+#             e a rodada fica REGISTRADA em ~/.bruto-roteiro/rodada-<carimbo>.txt
+#             (modo 600; é esse registro que o `restaurar` desfaz).
 #   testar  — depois de instalar o .dmg em /Applications: quarentena,
 #             assinatura, abre o app e espera /api/versao (até 90 s). SÓ
-#             aprova com JSON válido, app=bruto, origem=pacote e versão
-#             igual à do Info.plist do app instalado; qualquer outra coisa
-#             é REPROVADO (exit ≠ 0, motivo no resumo). Grava o resumo em
+#             aprova com JSON ESTRITO (JSON.parse de verdade) — app=bruto,
+#             origem=pacote e versão igual à do Info.plist do app instalado.
+#             Corpo plist/XML/HTML/texto, ou qualquer campo errado, é
+#             REPROVADO (exit ≠ 0, motivo no resumo). Grava o resumo em
 #             ~/Desktop/bruto-teste-<data>.txt
-#   restaurar — desfaz o `limpar` DEPOIS do teste, no estado em que a
-#             máquina está: o app pode ter recriado ~/.bruto e ~/Bruto, e um
-#             `mv` solto poria o backup DENTRO da pasta nova. O restaurar
-#             preserva o que o teste recriou em <nome>-do-teste-<data> (nada
-#             é apagado) e devolve o backup -antes-do-teste-<data> ao lugar.
+#   restaurar — desfaz a RODADA registrada pelo `limpar` (a mais recente em
+#             ~/.bruto-roteiro/, ou a escolhida com --rodada <arquivo>), NÃO
+#             "a data de hoje": o que o teste recriou é preservado em
+#             <nome>-do-teste-<data> (nada é apagado) e o backup registrado
+#             volta ao lugar. Sem registro nenhum o restaurar FALHA
+#             explicando — e listando os backups *-antes-do-teste-* que
+#             houver no HOME. Nunca "nada para restaurar" com sucesso.
 #
 # Regras que este script cumpre (e não contorna):
 # - Nunca sudo. Nunca toca no Homebrew, no uv global nem no Node do sistema.
 # - yt-dlp/ffmpeg/node/uv achados no PATH NÃO são do Bruto: só aparecem como
 #   informação no `listar` e nunca são removidos.
-# - O servidor da porta SÓ é encerrado se a identidade for PROVADA: o
-#   executável (comando completo) ou o cwd (lsof -p <pid> -a -d cwd) dentro
-#   de um caminho do Bruto (/Applications/Bruto.app, ~/Applications/Bruto.app
-#   ou ~/Bruto) E, respondendo /api/versao, app=bruto. O nome no comando
-#   (server.js, next-server, serve.sh) NÃO prova nada — qualquer dúvida
-#   significa NÃO é do Bruto, e nada é encerrado.
+# - O roteiro NUNCA envia sinal a processo nenhum — não encerra nada, de
+#   ninguém, por melhor que a "prova de identidade" pareça. `limpar` e
+#   `restaurar` RECUSAM rodar (exit ≠ 0, nada alterado) se: algo escuta na
+#   porta; há processo com Bruto.app no caminho do executável; ou o clone
+#   ~/Bruto é cwd de algum processo. A mensagem diz COMO a pessoa fecha
+#   (Cmd+Q no Bruto; fechar a janela do Terminal onde rodou o serve.sh; se
+#   não souber, reiniciar o Mac) e manda rodar de novo. O `listar` só
+#   informa o que escuta na porta (PID e comando), sem julgar se é do Bruto.
 # - Item de listagem que não é do Bruto (ex.: alguém editou o arquivo e pôs
 #   ~/Documents) reprova a rodada inteira: NADA é removido.
 #
-# Duas variáveis de ambiente desviam alvos SEM mudar comportamento (para os
+# Variáveis de ambiente que desviam alvos SEM mudar comportamento (para os
 # testes automatizados, que não podem usar a porta 3000 nem /Applications):
-# BRUTO_ROTEIRO_PORTA (default 3000) e BRUTO_ROTEIRO_APP_SISTEMA (default
-# /Applications/Bruto.app).
+# BRUTO_ROTEIRO_PORTA (default 3000), BRUTO_ROTEIRO_APP_SISTEMA (default
+# /Applications/Bruto.app), BRUTO_ROTEIRO_DATA (default: hoje) e
+# BRUTO_DATA_ROOT (default ~/.bruto).
 
 set -euo pipefail
 
-DATA="$(date +%Y-%m-%d)"
+DATA="${BRUTO_ROTEIRO_DATA:-$(date +%Y-%m-%d)}"
 PORTA="${BRUTO_ROTEIRO_PORTA:-3000}"
 APP_SISTEMA="${BRUTO_ROTEIRO_APP_SISTEMA:-/Applications/Bruto.app}"
 CLONE="$HOME/Bruto"
 CLONE_MOVIDO="$HOME/Bruto-antes-do-teste-$DATA"
-CLONE_DO_TESTE="$HOME/Bruto-do-teste-$DATA"
 APP_USUARIO="$HOME/Applications/Bruto.app"
 DADOS="${BRUTO_DATA_ROOT:-$HOME/.bruto}"
 DADOS_MOVIDO="$HOME/.bruto-antes-do-teste-$DATA"
-DADOS_DO_TESTE="$HOME/.bruto-do-teste-$DATA"
 MESA="$HOME/Desktop"
 ARQUIVO_HOST="com.ideiabusiness.bruto.json"
 BASE_NAV="$HOME/Library/Application Support"
+DIR_RODADAS="$HOME/.bruto-roteiro"
+CARIMBO="${DATA}-$(date +%H%M%S)"
+RODADA_ATUAL="$DIR_RODADAS/rodada-$CARIMBO.txt"
 
 # Os quatro navegadores cujo NativeMessagingHosts o instalador do Bruto usa.
 diretorios_navegador() {
@@ -77,9 +85,10 @@ Uso: bash roteiro-macbook-air.sh <subcomando>
       Bruto que existir nesta máquina: o clone ($CLONE), os dois Bruto.app
       ($APP_USUARIO e $APP_SISTEMA), os dados ($DADOS — sem listar o
       conteúdo, só as subpastas de 1º nível), os manifestos do host nativo
-      ($ARQUIVO_HOST) de Chrome/Chromium/Edge/Brave, o que escuta na porta
-      $PORTA (PID e comando) e se há yt-dlp/ffmpeg/node/uv no PATH (só
-      informativo — NÃO são do Bruto e NÃO serão removidos).
+      ($ARQUIVO_HOST) de Chrome/Chromium/Edge/Brave e o que escuta na porta
+      $PORTA (PID e comando — SEM julgar se é do Bruto). Mostra também se
+      há yt-dlp/ffmpeg/node/uv no PATH (só informativo — NÃO são do Bruto e
+      NÃO serão removidos).
       Grava a lista em $MESA/bruto-listagem-$DATA.txt.
 
   limpar --listagem <arquivo>
@@ -87,63 +96,68 @@ Uso: bash roteiro-macbook-air.sh <subcomando>
       — mas só o que é regenerável sem perda: os dois Bruto.app e os
       manifestos do host (o instalador/registrador os recria). O clone
       ($CLONE — pode ter .env e mudanças locais) e $DADOS NUNCA são
-      apagados: são MOVIDOS para $CLONE_MOVIDO e $DADOS_MOVIDO (para
-      desfazer, use o subcomando restaurar). Se um backup datado de hoje
-      já existe, a rodada é recusada antes de mexer em qualquer coisa. O
-      servidor da porta $PORTA só é encerrado se a identidade for PROVADA
-      (executável/cwd num caminho do Bruto e, respondendo /api/versao,
-      app=bruto), com confirmação. Pede a confirmação digitada LIMPAR
-      antes de qualquer remoção. Nunca usa sudo.
+      apagados: são MOVIDOS para $CLONE_MOVIDO e $DADOS_MOVIDO, e a rodada
+      é REGISTRADA em $DIR_RODADAS/rodada-<carimbo>.txt (modo 600; é o
+      registro que o subcomando restaurar desfaz). Se já existe qualquer
+      backup *-antes-do-teste-* no HOME, a rodada é recusada antes de
+      mexer em qualquer coisa (restaure a rodada anterior primeiro).
+      RECUSA rodar (nada é alterado) se algo escuta na porta $PORTA, se há
+      processo com Bruto.app no caminho do executável ou se $CLONE é cwd
+      de algum processo — este roteiro NUNCA encerra processos; a saída diz
+      COMO fechar (Cmd+Q no Bruto; fechar a janela do Terminal onde rodou
+      o serve.sh; se não souber, reiniciar o Mac) e manda rodar de novo.
+      Pede a confirmação digitada LIMPAR antes de qualquer remoção.
+      Nunca usa sudo.
 
   testar
       Depois de instalar o .dmg em $APP_SISTEMA: confere o atributo de
       quarentena e informa o que a pessoa vai ver, verifica a assinatura
       (codesign), abre o app e espera /api/versao por até 90 s. SÓ aprova
-      se a resposta for JSON válido (parser real: plutil) com app=bruto,
-      origem=pacote e versão igual à do Info.plist do app instalado —
-      qualquer outra coisa REPROVA o teste (exit ≠ 0, motivo no resumo).
-      Diz o próximo passo e onde está o log ($DADOS/logs/servidor.log).
+      se a resposta for JSON ESTRITO — validado com JSON.parse de verdade
+      (osascript -l JavaScript), e o resultado tem de ser um objeto;
+      plist/XML/HTML/texto NÃO valem — com app=bruto, origem=pacote e
+      versão igual à do Info.plist do app instalado. Qualquer outra coisa
+      REPROVA o teste (exit ≠ 0, motivo no resumo). Diz o próximo passo e
+      onde está o log ($DADOS/logs/servidor.log).
       Grava o resumo em $MESA/bruto-teste-$DATA.txt.
 
-  restaurar
-      Desfaz o `limpar` DEPOIS do teste, no estado em que a máquina está:
-      o app do teste pode ter recriado $DADOS e $CLONE — e um mv solto
-      poria o backup DENTRO da pasta nova. O restaurar fecha o servidor
-      do Bruto da porta $PORTA (só o PROVADO, com confirmação; recusar
-      fechar ABORTA sem mover nada), MOVE o que o teste recriou para
-      $DADOS_DO_TESTE e $CLONE_DO_TESTE (nada é apagado) e devolve os
-      backups -antes-do-teste-$DATA ao lugar. Recusa a rodada inteira se
-      algum destino -do-teste- de hoje já existir (antes de mexer em
-      qualquer coisa).
+  restaurar [--rodada <arquivo>]
+      Desfaz a RODADA que o `limpar` registrou — a mais recente em
+      $DIR_RODADAS/rodada-*.txt, ou a do arquivo passado com --rodada — e
+      não "a data de hoje". O app do teste pode ter recriado $DADOS e
+      $CLONE: o restaurar preserva o recriado em <nome>-do-teste-$DATA
+      (nada é apagado) e devolve o backup registrado ao lugar. RECUSA a
+      rodada inteira se algum destino -do-teste- de hoje já existir, se um
+      item do registro não puder ser tratado, ou se a máquina estiver
+      ocupada (porta $PORTA, processo com Bruto.app, cwd no $CLONE) —
+      nunca encerra nada; a saída diz como fechar. Sem registro nenhum:
+      FALHA (exit ≠ 0) explicando e listando os backups
+      *-antes-do-teste-* que houver no HOME — nunca "nada para restaurar"
+      com sucesso.
 
 Variáveis de ambiente (testes): BRUTO_ROTEIRO_PORTA (default 3000),
 BRUTO_ROTEIRO_APP_SISTEMA (default /Applications/Bruto.app),
-BRUTO_DATA_ROOT (default ~/.bruto).
+BRUTO_ROTEIRO_DATA (default: hoje), BRUTO_DATA_ROOT (default ~/.bruto).
 EOF
 }
 
 # --- sondas -------------------------------------------------------------------
-# PID do processo que ESCUTA na porta. lsof não existe ou não acha nada →
-# saída vazia (nunca falha a rodada).
-pid_na_porta() {
-  lsof -nP -iTCP:"$PORTA" -sTCP:LISTEN -F p 2>/dev/null | sed -n 's/^p//p' | head -n 1 || true
+
+# PIDs de TUDO que escuta na porta (lsof não existe ou não acha nada →
+# saída vazia; nunca falha a rodada).
+pids_na_porta() {
+  lsof -nP -iTCP:"$PORTA" -sTCP:LISTEN -F p 2>/dev/null | sed -n 's/^p//p' || true
 }
 
 comando_do_pid() {
   ps -p "$1" -o command= 2>/dev/null || true
 }
 
-# cwd REAL do processo, medido pelo lsof (lsof não existe ou não acha nada →
-# saída vazia, que conta como "sem essa prova" — nunca reprova sozinha).
-cwd_do_pid() {
-  lsof -p "$1" -a -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1 || true
-}
-
 # Caminho físico (symlinks do diretório resolvidos). No macOS o lsof devolve
 # o caminho RESOLVIDO (/private/var/… enquanto o $HOME pode aparecer como
-# /var/…) — sem comparar as duas formas, a prova do cwd falharia em falso.
-# Diretório inexistente → devolve o caminho como veio (a forma crua ainda é
-# comparada em prefixo_do_bruto).
+# /var/…) — sem comparar as duas formas, o casamento do cwd falharia em
+# falso. Diretório inexistente → devolve o caminho como veio (a forma crua
+# ainda é comparada no case).
 caminho_fisico() {
   local dir nome
   dir="$(dirname -- "$1")"
@@ -155,94 +169,92 @@ caminho_fisico() {
   fi
 }
 
-APP_SISTEMA_FIS="$(caminho_fisico "$APP_SISTEMA")"
-APP_USUARIO_FIS="$(caminho_fisico "$APP_USUARIO")"
 CLONE_FIS="$(caminho_fisico "$CLONE")"
 
-# Caminho está DENTRO de um dos alvos do Bruto (o app do sistema, o app do
-# usuário ou o clone)? Exato ou com qualquer profundidade abaixo — na forma
-# crua OU na física (a prova do cwd vem resolvida pelo lsof).
-prefixo_do_bruto() {
-  case "$1" in
-    "$APP_SISTEMA" | "$APP_SISTEMA"/*) return 0 ;;
-    "$APP_USUARIO" | "$APP_USUARIO"/*) return 0 ;;
-    "$CLONE" | "$CLONE"/*) return 0 ;;
-  esac
-  local fis=""
-  fis="$(caminho_fisico "$1")"
-  case "$fis" in
-    "$APP_SISTEMA_FIS" | "$APP_SISTEMA_FIS"/*) return 0 ;;
-    "$APP_USUARIO_FIS" | "$APP_USUARIO_FIS"/*) return 0 ;;
-    "$CLONE_FIS" | "$CLONE_FIS"/*) return 0 ;;
-    *) return 1 ;;
-  esac
+# Linhas de comando que passam por um Bruto.app (o app instalado, aberto).
+# O "[B]" na expressão evita que a própria procura apareça no resultado.
+# Best effort: ps indisponível → saída vazia.
+processos_com_bruto_app() {
+  ps -axo command= 2>/dev/null | grep -- '[B]ruto\.app' || true
 }
 
-# Campo de um corpo JSON, com parser DE VERDADE: o corpo vai para um arquivo
-# e o plutil (CoreFoundation, presente em todo macOS) extrai a chave. Não
-# usamos o python3 do sistema porque ele só existe com Command Line Tools
-# instaladas — a máquina da pessoa pode não ter. JSON inválido ou chave
-# ausente → saída vazia (quem chama trata como falta de prova).
-json_campo_plist() {
-  local corpo="$1" campo="$2" arq=""
-  arq="$(mktemp "${TMPDIR:-/tmp}/bruto-json.XXXXXX")" || return 1
-  printf '%s' "$corpo" >"$arq"
-  plutil -extract "$campo" raw "$arq" 2>/dev/null || true
-  rm -f "$arq"
-}
-
-# Identidade do servidor da porta — CLASSE AA: só age sobre processo cuja
-# identidade foi PROVADA, nunca adivinhada pelo nome no comando. Provas:
-#   (1) o PID escuta na porta;
-#   (2) o comando completo (ps) OU o cwd (lsof) aponta para um caminho do
-#       Bruto — /Applications/Bruto.app, ~/Applications/Bruto.app ou ~/Bruto;
-#   (3) se a porta responder /api/versao, o campo app tem de ser "bruto".
-# Qualquer dúvida → SERV_PROVADO=0 com o motivo em SERV_MOTIVO. Nunca falha
-# a rodada (sempre retorna 0; o chamador decide olhando as variáveis).
-analisar_servidor_da_porta() {
-  SERV_PID="" SERV_CMD="" SERV_CWD="" SERV_PROVADO=0 SERV_MOTIVO=""
-  SERV_PID="$(pid_na_porta)"
-  [ -n "$SERV_PID" ] || {
-    SERV_MOTIVO="nada escutando na porta $PORTA"
-    return 0
-  }
-  SERV_CMD="$(comando_do_pid "$SERV_PID")"
-  SERV_CWD="$(cwd_do_pid "$SERV_PID")"
-
-  local token prova_caminho=""
-  for token in $SERV_CMD; do
-    case "$token" in
-      /*)
-        if prefixo_do_bruto "$token"; then
-          prova_caminho="comando: $token"
-          break
-        fi
-        ;;
+# cwds de processos DENTRO do clone ~/Bruto (o servidor do clone rodando de
+# lá, um editor aberto…). Best effort: lsof indisponível → saída vazia.
+cwds_no_clone() {
+  lsof -nP -a -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | while IFS= read -r um; do
+    case "$um" in
+      "$CLONE" | "$CLONE"/*) printf '%s\n' "$um" ;;
+      "$CLONE_FIS" | "$CLONE_FIS"/*) printf '%s\n' "$um" ;;
     esac
-  done
-  if [ -z "$prova_caminho" ] && [ -n "$SERV_CWD" ] && prefixo_do_bruto "$SERV_CWD"; then
-    prova_caminho="cwd: $SERV_CWD"
-  fi
-  if [ -z "$prova_caminho" ]; then
-    SERV_MOTIVO="nem o comando nem o cwd apontam para um caminho do Bruto (comando: ${SERV_CMD:-?} · cwd: ${SERV_CWD:-?}) — o nome no comando (server.js, next-server…) não prova nada"
-    return 0
-  fi
+  done || true
+}
 
-  local resposta=""
-  resposta="$(curl -fsS --max-time 3 "http://127.0.0.1:$PORTA/api/versao" 2>/dev/null || true)"
-  if [ -n "$resposta" ]; then
-    local app=""
-    app="$(json_campo_plist "$resposta" app)"
-    if [ "$app" != "bruto" ]; then
-      SERV_MOTIVO="o caminho é do Bruto ($prova_caminho), mas /api/versao respondeu app=${app:-?} (≠ bruto) — dúvida não é prova"
-      return 0
-    fi
-    SERV_MOTIVO="$prova_caminho · /api/versao: app=bruto"
-  else
-    SERV_MOTIVO="$prova_caminho · /api/versao: sem resposta (a prova é o caminho)"
+# EE — como fechar o que está aberto. O roteiro NUNCA encerra processo
+# nenhum: ele diz o caminho e a pessoa fecha.
+como_fechar() {
+  printf '  Como fechar, para rodar de novo:\n' >&2
+  printf '    1. o Bruto está aberto? Clique nele e saia com Cmd+Q (fechar só a janela não fecha o app);\n' >&2
+  printf '    2. rodou o serve.sh do clone noutra janela do Terminal? Feche AQUELA janela (Cmd+W) ou pare o comando com Ctrl+C nela;\n' >&2
+  printf '    3. se não souber o que está aberto: reinicie o Mac — é a forma mais simples de garantir.\n' >&2
+  printf '  Feche e rode o MESMO comando de novo.\n' >&2
+}
+
+# EE — limpar/restaurar só rodam com a máquina parada. Qualquer ocupação
+# recusa a rodada INTEIRA (exit ≠ 0) antes de mexer em qualquer coisa.
+exigir_maquina_parada() {
+  local pid="" achou=""
+  for pid in $(pids_na_porta); do
+    [ -n "$pid" ] || continue
+    printf '✗ O roteiro NUNCA encerra processos — e algo escuta na porta %s:\n' "$PORTA" >&2
+    printf '    pid %s: %s\n' "$pid" "$(comando_do_pid "$pid")" >&2
+    como_fechar
+    exit 1
+  done
+  achou="$(processos_com_bruto_app | head -n 1 || true)"
+  if [ -n "$achou" ]; then
+    printf '✗ O roteiro NUNCA encerra processos — e há processo com Bruto.app no caminho do executável (o app aberto?):\n' >&2
+    processos_com_bruto_app | sed 's/^/    /' >&2
+    como_fechar
+    exit 1
   fi
-  SERV_PROVADO=1
-  return 0
+  achou="$(cwds_no_clone | head -n 1 || true)"
+  if [ -n "$achou" ]; then
+    printf '✗ O roteiro NUNCA encerra processos — e há processo rodando com diretório de trabalho (cwd) DENTRO de %s:\n' "$CLONE" >&2
+    printf '    cwd: %s\n' "$achou" >&2
+    como_fechar
+    exit 1
+  fi
+}
+
+# FF — registro de rodada mais recente (vazio se não houver nenhum).
+registro_mais_recente() {
+  [ -d "$DIR_RODADAS" ] || return 1
+  find "$DIR_RODADAS" -maxdepth 1 -name 'rodada-*.txt' 2>/dev/null | LC_ALL=C sort | tail -n 1
+}
+
+# GG — validação ESTRITA de JSON: JSON.parse de verdade (osascript -l
+# JavaScript, presente em todo macOS) sobre o corpo lido de ARQUIVO, e o
+# resultado só vale se for um OBJETO. Devolve uma linha:
+#   "JSON\t<app>\t<versao>\t<origem>" — objeto JSON válido, campos extraídos
+#   "NAO_JSON"                       — plist/XML/HTML/texto/escalar
+#   "ERRO_LER"                       — nem conseguiu ler o arquivo
+# plutil NÃO serve aqui: parser de plist aprova corpo plist (achado da
+# rodada 4). python3 do sistema não é usado: só existe com Command Line
+# Tools instaladas — a máquina da pessoa pode não ter.
+JSON_ESTRITO_JS='function run(argv) {
+  var app = Application.currentApplication();
+  app.includeStandardAdditions = true;
+  var corpo = "";
+  try { corpo = app.read(Path(argv[0])); } catch (e) { return "ERRO_LER"; }
+  var obj = null;
+  try { obj = JSON.parse(corpo); } catch (e) { return "NAO_JSON"; }
+  if (obj === null || typeof obj !== "object" || Array.isArray(obj)) { return "NAO_JSON"; }
+  function campo(k) { var v = obj[k]; return (typeof v === "string") ? v : ""; }
+  return ["JSON", campo("app"), campo("versao"), campo("origem")].join("\t");
+}'
+
+json_estrito() {
+  osascript -l JavaScript -e "$JSON_ESTRITO_JS" "$1" 2>/dev/null || true
 }
 
 # --- listar (somente leitura) -------------------------------------------------
@@ -311,16 +323,17 @@ EOF
   [ "$achou" -eq 1 ] || nota "nenhum manifesto encontrado (Chrome, Chromium, Edge, Brave)"
   nota ""
 
+  # EE — só informa PID e comando; o julgamento "é do Bruto?" não existe
+  # mais (era a porta de entrada para encerrar processo).
   nota "== Porta $PORTA =="
-  analisar_servidor_da_porta
-  if [ -n "$SERV_PID" ]; then
-    nota "# pid $SERV_PID: $SERV_CMD"
-    if [ "$SERV_PROVADO" = "1" ]; then
-      nota "#   · PROVADO servidor DO BRUTO — provas: $SERV_MOTIVO. O 'limpar' pode encerrá-lo (com confirmação)."
-    else
-      nota "#   · NÃO provado ser do Bruto — o 'limpar' NÃO encerra este processo."
-      nota "#     motivo: $SERV_MOTIVO"
-    fi
+  local pid="" viu=0
+  for pid in $(pids_na_porta); do
+    viu=1
+    nota "# pid $pid: $(comando_do_pid "$pid")"
+  done
+  if [ "$viu" -eq 1 ]; then
+    nota "# (o roteiro NUNCA encerra processos — só informa. O limpar/restaurar"
+    nota "#  RECUSAM rodar com esta porta ocupada: feche o que a usa e rode de novo.)"
   else
     nota "nada escutando na porta $PORTA"
   fi
@@ -382,14 +395,24 @@ limpar() {
   done
   [ -n "$listagem" ] || { ajuda; exit 1; }
   [ -f "$listagem" ] || { printf '✗ Arquivo de listagem não encontrado: %s\n' "$listagem" >&2; exit 1; }
-  if [ -d "$CLONE_MOVIDO" ]; then
-    printf '✗ Já existe %s — não vou sobrescrever um backup anterior.\n' "$CLONE_MOVIDO" >&2
-    printf '  Trate-o antes (rollback: mv %s %s) e rode de novo.\n' "$CLONE_MOVIDO" "$CLONE" >&2
-    exit 1
-  fi
-  if [ -d "$DADOS_MOVIDO" ]; then
-    printf '✗ Já existe %s — não vou sobrescrever um backup anterior.\n' "$DADOS_MOVIDO" >&2
-    printf '  Trate-o antes (rollback: mv %s %s) e rode de novo.\n' "$DADOS_MOVIDO" "$DADOS" >&2
+
+  # 0) EE — nada roda com a máquina ocupada. O roteiro NUNCA encerra
+  #    processos: a recusa diz como fechar e manda rodar de novo.
+  exigir_maquina_parada
+
+  # 0.1) backup de rodada anterior ainda no HOME → recusa antes de mexer em
+  #      qualquer coisa (desfaça a rodada anterior com o restaurar).
+  local anteriores="" um=""
+  anteriores="$(find "$HOME" -maxdepth 1 -name '*-antes-do-teste-*' 2>/dev/null | LC_ALL=C sort)"
+  if [ -n "$anteriores" ]; then
+    printf '✗ Já existe backup de rodada anterior — não vou sobrescrever um backup anterior:\n' >&2
+    while IFS= read -r um; do
+      [ -n "$um" ] || continue
+      printf '  · %s\n' "$um" >&2
+    done <<EOF
+$anteriores
+EOF
+    printf '  Desfaça a rodada anterior primeiro (bash roteiro-macbook-air.sh restaurar) e rode de novo.\n' >&2
     exit 1
   fi
 
@@ -436,30 +459,18 @@ EOF
   read -r resposta || { printf '\n✗ Sem confirmação — nada foi removido.\n' >&2; exit 1; }
   [ "$resposta" = "LIMPAR" ] || { printf '✗ Confirmação errada ("%s") — nada foi removido. É preciso digitar LIMPAR.\n' "$resposta" >&2; exit 1; }
 
-  # 3) servidor da porta: só o de identidade PROVADA (classe AA), e com
-  #    confirmação. Dúvida → não é do Bruto, não se oferece encerrar.
-  analisar_servidor_da_porta
-  if [ -n "$SERV_PID" ]; then
-    if [ "$SERV_PROVADO" = "1" ]; then
-      printf 'A porta %s tem um servidor PROVADO do Bruto (pid %s):\n  %s\n  provas: %s\n' "$PORTA" "$SERV_PID" "$SERV_CMD" "$SERV_MOTIVO" >&2
-      printf 'Encerrar agora para liberar a porta? [s/N] ' >&2
-      local resp_serv=""
-      read -r resp_serv || true
-      case "$resp_serv" in
-        s | S)
-          if kill "$SERV_PID" 2>/dev/null; then
-            printf '  · TERM enviado ao pid %s\n' "$SERV_PID"
-          else
-            printf '  ✗ não consegui encerrar o pid %s (Operation not permitted? relate — nada é contornado)\n' "$SERV_PID" >&2
-          fi
-          ;;
-        *)
-          printf '  · mantido no ar (pode continuar servindo da pasta antiga até ser fechado).\n' >&2
-          ;;
-      esac
-    else
-      printf 'porta %s: pid %s NÃO provado ser do Bruto — não encerrado.\n  motivo: %s\n' "$PORTA" "$SERV_PID" "$SERV_MOTIVO" >&2
+  # 3) FF — registro da rodada: cada MOVE vira uma linha "origem<TAB>backup";
+  #    é esse registro (modo 600) que o restaurar desfaz, não a data de hoje.
+  if [ -n "$acoes" ]; then
+    mkdir -p "$DIR_RODADAS"
+    chmod 700 "$DIR_RODADAS"
+    if [ -e "$RODADA_ATUAL" ]; then
+      printf '✗ Já existe um registro com este carimbo (%s) — nada foi feito; espere um minuto e rode de novo.\n' "$RODADA_ATUAL" >&2
+      exit 1
     fi
+    : >"$RODADA_ATUAL"
+    chmod 600 "$RODADA_ATUAL"
+    printf '# rodada do limpar — carimbo %s — cada linha "origem<TAB>backup" é um MOVE feito agora\n' "$CARIMBO" >>"$RODADA_ATUAL"
   fi
 
   # 4) executa: MOVE o que pode guardar dado da pessoa (clone e dados),
@@ -472,6 +483,7 @@ EOF
         if [ -e "$caminho" ]; then
           mv "$caminho" "$CLONE_MOVIDO"
           printf '  ✓ movido: %s → %s\n' "$caminho" "$CLONE_MOVIDO"
+          printf '%s\t%s\n' "$caminho" "$CLONE_MOVIDO" >>"$RODADA_ATUAL"
           moveu=1
         else
           printf '  · já não existia: %s\n' "$caminho"
@@ -481,6 +493,7 @@ EOF
         if [ -e "$caminho" ]; then
           rm -rf "$caminho"
           printf '  ✓ removido: %s\n' "$caminho"
+          printf '# removido (regenerável): %s\n' "$caminho" >>"$RODADA_ATUAL"
         else
           printf '  · já não existia: %s\n' "$caminho"
         fi
@@ -489,6 +502,7 @@ EOF
         if [ -f "$caminho" ]; then
           rm -f "$caminho"
           printf '  ✓ removido: %s\n' "$caminho"
+          printf '# removido (regenerável): %s\n' "$caminho" >>"$RODADA_ATUAL"
         else
           printf '  · já não existia: %s\n' "$caminho"
         fi
@@ -497,6 +511,7 @@ EOF
         if [ -d "$caminho" ]; then
           mv "$caminho" "$DADOS_MOVIDO"
           printf '  ✓ movido: %s → %s\n' "$caminho" "$DADOS_MOVIDO"
+          printf '%s\t%s\n' "$caminho" "$DADOS_MOVIDO" >>"$RODADA_ATUAL"
           moveu=1
         else
           printf '  · já não existia: %s\n' "$caminho"
@@ -511,8 +526,8 @@ EOF
   printf 'que estiver no PATH (yt-dlp, ffmpeg…) — não são do Bruto.\n'
   if [ -n "$moveu" ]; then
     printf 'Para desfazer (depois do teste): bash roteiro-macbook-air.sh restaurar\n'
-    printf '  (o restaurar preserva o que o teste recriar em *-do-teste-%s antes de\n' "$DATA"
-    printf '   devolver os backups ao lugar — nada é apagado)\n'
+    printf '  (registro desta rodada: %s — o restaurar desfaz pela RODADA registrada,\n' "$RODADA_ATUAL"
+    printf '   não pela data; o que o teste recriar é preservado em *-do-teste-%s)\n' "$DATA"
   fi
   return 0
 }
@@ -593,22 +608,38 @@ testar() {
   fi
   rel "resposta recebida de /api/versao: $json"
 
-  # Validação com parser REAL (plutil/CoreFoundation) — nunca sed. python3
-  # do sistema não é usado: só existe com Command Line Tools.
-  local app="" versao="" origem="" reprovado=""
-  app="$(json_campo_plist "$json" app)"
-  versao="$(json_campo_plist "$json" versao)"
-  origem="$(json_campo_plist "$json" origem)"
-  if [ -z "$app" ] && [ -z "$versao" ] && [ -z "$origem" ]; then
-    reprovado="o corpo de /api/versao não é JSON válido (ou não tem NENHUM dos campos app/versao/origem) — resposta: $json"
-  elif [ -z "$versao_esperada" ]; then
-    reprovado="não consegui ler a versão esperada do app instalado (/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' $APP_SISTEMA/Contents/Info.plist)"
-  elif [ "$app" != "bruto" ]; then
-    reprovado="/api/versao respondeu app=${app:-?} — só se aprova app=bruto"
-  elif [ "$origem" != "pacote" ]; then
-    reprovado="/api/versao respondeu origem=${origem:-?} — o servidor da porta NÃO provou ser o do pacote (.dmg)"
-  elif [ "$versao" != "$versao_esperada" ]; then
-    reprovado="/api/versao respondeu versao=$versao, mas o app instalado diz $versao_esperada (CFBundleShortVersionString do Info.plist)"
+  # GG — validação com parser ESTRITO: JSON.parse de verdade (osascript
+  # JXA), e o resultado só vale se for objeto. plutil não serve: parser de
+  # plist aprovaria corpo plist (achado da rodada 4). python3 do sistema
+  # não é usado: só existe com Command Line Tools.
+  local arq_corpo="" veredito="" app="" versao="" origem="" reprovado=""
+  arq_corpo="$(mktemp "${TMPDIR:-/tmp}/bruto-corpo.XXXXXX")"
+  printf '%s' "$json" >"$arq_corpo"
+  veredito="$(json_estrito "$arq_corpo")"
+  rm -f "$arq_corpo"
+  case "$veredito" in
+    "JSON"*)
+      app="$(printf '%s' "$veredito" | cut -f2)"
+      versao="$(printf '%s' "$veredito" | cut -f3)"
+      origem="$(printf '%s' "$veredito" | cut -f4)"
+      ;;
+    "NAO_JSON")
+      reprovado="o corpo de /api/versao não é JSON válido (parser estrito JSON.parse — plist/XML/HTML/texto NÃO valem) — resposta: $json"
+      ;;
+    *)
+      reprovado="não consegui validar o corpo de /api/versao como JSON estrito (osascript) — nada é aprovado sem prova; resposta: $json"
+      ;;
+  esac
+  if [ -z "$reprovado" ]; then
+    if [ -z "$versao_esperada" ]; then
+      reprovado="não consegui ler a versão esperada do app instalado (/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' $APP_SISTEMA/Contents/Info.plist)"
+    elif [ "$app" != "bruto" ]; then
+      reprovado="/api/versao respondeu app=${app:-?} — só se aprova app=bruto"
+    elif [ "$origem" != "pacote" ]; then
+      reprovado="/api/versao respondeu origem=${origem:-?} — o servidor da porta NÃO provou ser o do pacote (.dmg)"
+    elif [ "$versao" != "$versao_esperada" ]; then
+      reprovado="/api/versao respondeu versao=$versao, mas o app instalado diz $versao_esperada (CFBundleShortVersionString do Info.plist)"
+    fi
   fi
   if [ -n "$reprovado" ]; then
     rel "✗ REPROVADO: $reprovado"
@@ -629,95 +660,121 @@ testar() {
   return 0
 }
 
-# --- restaurar (classe CC: rollback seguro no estado em que a pessoa está) ----
-# O `limpar` move clone e dados para *-antes-do-teste-<data>. Depois do
-# `testar`, o app pode ter RECREADO ~/.bruto e ~/Bruto — um `mv` solto para
-# copiar e colar poria o backup DENTRO da pasta nova (achado 3 da rodada 3).
-# O restaurar preserva a pasta recriada em *-do-teste-<data> (nada é apagado)
-# antes de devolver o backup ao lugar, e recusa a rodada inteira se não
-# conseguir preservar.
+# --- restaurar (FF: desfaz a RODADA registrada, no estado em que a pessoa está)
+# O `limpar` registra cada MOVE em ~/.bruto-roteiro/rodada-<carimbo>.txt.
+# O restaurar desfaz ESSA rodada (a mais recente, ou a escolhida com
+# --rodada) — nunca "os backups da data de hoje". O que o teste recriou é
+# preservado em <nome>-do-teste-<data> (nada é apagado) antes de o backup
+# registrado voltar ao lugar; e a máquina tem de estar parada (EE: o
+# roteiro nunca encerra processo nenhum).
 restaurar() {
-  # 1) valida TUDO antes de mexer em qualquer coisa.
-  local recusas=""
-  if [ -d "$DADOS_MOVIDO" ] && [ -e "$DADOS" ] && [ -e "$DADOS_DO_TESTE" ]; then
-    recusas="${recusas}  ✗ já existe $DADOS_DO_TESTE — não vou sobrescrever o que uma restauração anterior preservou.\n"
+  local rodada=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --rodada)
+        [ $# -ge 2 ] || { printf '✗ --rodada exige um arquivo\n' >&2; exit 1; }
+        rodada="$2"
+        shift 2
+        ;;
+      *)
+        printf '✗ Opção desconhecida: %s (use --rodada <arquivo>)\n' "$1" >&2
+        exit 1
+        ;;
+    esac
+  done
+
+  # 0) EE — nada roda com a máquina ocupada. O roteiro NUNCA encerra
+  #    processos: a recusa diz como fechar e manda rodar de novo.
+  exigir_maquina_parada
+
+  # 1) resolve a rodada: a escolhida com --rodada, ou a mais recente.
+  if [ -n "$rodada" ]; then
+    [ -f "$rodada" ] || {
+      printf '✗ Arquivo de rodada não encontrado: %s\n' "$rodada" >&2
+      exit 1
+    }
+  else
+    rodada="$(registro_mais_recente || true)"
+    if [ -z "$rodada" ]; then
+      printf '✗ restaurar: NENHUM registro de rodada em %s (rodada-*.txt) — o restaurar desfaz RODADAS registradas pelo limpar, não adivinha pela data de hoje.\n' "$DIR_RODADAS" >&2
+      local lista="" bak=""
+      lista="$(find "$HOME" -maxdepth 1 -name '*-antes-do-teste-*' 2>/dev/null | LC_ALL=C sort)"
+      if [ -n "$lista" ]; then
+        printf '  E há backups *-antes-do-teste-* no HOME SEM registro — NADA foi mexido e NADA deve ser apagado à mão:\n' >&2
+        while IFS= read -r bak; do
+          [ -n "$bak" ] || continue
+          printf '  · %s\n' "$bak" >&2
+        done <<EOF
+$lista
+EOF
+      else
+        printf '  (também não há backups *-antes-do-teste-* no HOME: não existe rodada registrada para desfazer.)\n' >&2
+      fi
+      exit 1
+    fi
   fi
-  if [ -d "$CLONE_MOVIDO" ] && [ -e "$CLONE" ] && [ -e "$CLONE_DO_TESTE" ]; then
-    recusas="${recusas}  ✗ já existe $CLONE_DO_TESTE — não vou sobrescrever o que uma restauração anterior preservou.\n"
-  fi
+  printf 'Restaurando pela rodada: %s\n' "$rodada"
+
+  # 2) valida TUDO antes de mexer em qualquer coisa: cada linha do registro
+  #    é "origem<TAB>backup" (linhas # são informação, não MOVE).
+  local recusas="" pares="" origem="" backup=""
+  while IFS=$'\t' read -r origem backup _ || [ -n "${origem:-}" ]; do
+    [ -n "${origem:-}" ] || continue
+    case "$origem" in
+      '#'*) continue ;;
+    esac
+    if [ -z "${backup:-}" ]; then
+      recusas="${recusas}  ✗ linha do registro sem backup: ${origem}\n"
+      continue
+    fi
+    pares="${pares}${origem}"$'\t'"${backup}"$'\n'
+    if [ -e "$backup" ] && [ -e "$origem" ] && [ -e "${origem}-do-teste-$DATA" ]; then
+      recusas="${recusas}  ✗ já existe ${origem}-do-teste-$DATA — não vou sobrescrever o que uma restauração anterior preservou.\n"
+    fi
+  done <"$rodada"
   if [ -n "$recusas" ]; then
     printf '✗ Restauração RECUSADA — NADA foi movido:\n%b' "$recusas" >&2
     printf '  Trate a(s) pasta(s) -do-teste-%s antes de rodar o restaurar de novo.\n' "$DATA" >&2
     exit 1
   fi
-
-  # 2) servidor do Bruto na porta: só o PROVADO (classe AA), com confirmação.
-  #    Restaurar por cima de um servidor no ar é o cenário perigoso — recusar
-  #    fechar ABORTA a rodada inteira, sem mover nada.
-  analisar_servidor_da_porta
-  if [ -n "$SERV_PID" ]; then
-    if [ "$SERV_PROVADO" = "1" ]; then
-      printf 'A porta %s tem um servidor PROVADO do Bruto (pid %s):\n  %s\n  provas: %s\n' "$PORTA" "$SERV_PID" "$SERV_CMD" "$SERV_MOTIVO" >&2
-      printf 'Fechar agora para restaurar? [s/N] ' >&2
-      local resp=""
-      read -r resp || true
-      case "$resp" in
-        s | S)
-          if ! kill "$SERV_PID" 2>/dev/null; then
-            printf '✗ não consegui encerrar o pid %s — nada foi movido (relate; nada é contornado).\n' "$SERV_PID" >&2
-            exit 1
-          fi
-          local i=0
-          while kill -0 "$SERV_PID" 2>/dev/null && [ "$i" -lt 50 ]; do
-            sleep 0.1
-            i=$((i + 1))
-          done
-          if kill -0 "$SERV_PID" 2>/dev/null; then
-            printf '✗ o pid %s não saiu em 5 s — nada foi movido (relate; nada é contornado).\n' "$SERV_PID" >&2
-            exit 1
-          fi
-          printf '  · servidor do Bruto encerrado (pid %s)\n' "$SERV_PID"
-          ;;
-        *)
-          printf '✗ restaurar ABORTADO sem mover nada: restaurar com o servidor do Bruto no ar pode corromper a biblioteca. Feche-o e rode de novo.\n' >&2
-          exit 1
-          ;;
-      esac
-    else
-      printf 'porta %s: pid %s NÃO provado ser do Bruto — deixado no ar. Motivo: %s\n' "$PORTA" "$SERV_PID" "$SERV_MOTIVO" >&2
-    fi
+  if [ -z "$pares" ]; then
+    printf '\nO registro %s não tem nenhum MOVE — nada para desfazer.\n' "$rodada"
+    return 0
   fi
 
-  # 3) executa: preserva o que o teste recriou e devolve os backups.
-  local restaurou=0
-  if [ -d "$DADOS_MOVIDO" ]; then
-    if [ -e "$DADOS" ]; then
-      mv "$DADOS" "$DADOS_DO_TESTE"
-      printf '  ✓ preservada a pasta recriada pelo teste: %s → %s\n' "$DADOS" "$DADOS_DO_TESTE"
+  # 3) executa: preserva o que o teste recriou e devolve o backup registrado.
+  local restaurou=0 problemas=0
+  while IFS=$'\t' read -r origem backup; do
+    [ -n "${origem:-}" ] || continue
+    if [ ! -e "$backup" ]; then
+      if [ -e "$origem" ]; then
+        printf '  · já restaurado antes (origem no lugar, backup consumido): %s\n' "$origem"
+      else
+        printf '  ✗ o registro aponta um backup que não existe (e a origem também não): %s → %s\n' "$origem" "$backup" >&2
+        problemas=1
+      fi
+      continue
     fi
-    mv "$DADOS_MOVIDO" "$DADOS"
-    printf '  ✓ biblioteca de volta: %s → %s\n' "$DADOS_MOVIDO" "$DADOS"
+    if [ -e "$origem" ]; then
+      mv "$origem" "${origem}-do-teste-$DATA"
+      printf '  ✓ preservado o que o teste recriou: %s → %s\n' "$origem" "${origem}-do-teste-$DATA"
+    fi
+    mv "$backup" "$origem"
+    printf '  ✓ de volta: %s → %s\n' "$backup" "$origem"
     restaurou=1
-  else
-    printf '  · sem backup de %s (nada para restaurar dele)\n' "$DADOS_MOVIDO"
-  fi
-  if [ -d "$CLONE_MOVIDO" ]; then
-    if [ -e "$CLONE" ]; then
-      mv "$CLONE" "$CLONE_DO_TESTE"
-      printf '  ✓ preservada a pasta recriada pelo teste: %s → %s\n' "$CLONE" "$CLONE_DO_TESTE"
-    fi
-    mv "$CLONE_MOVIDO" "$CLONE"
-    printf '  ✓ clone de volta: %s → %s\n' "$CLONE_MOVIDO" "$CLONE"
-    restaurou=1
-  else
-    printf '  · sem backup de %s (nada para restaurar dele)\n' "$CLONE_MOVIDO"
-  fi
+  done <<EOF
+$pares
+EOF
 
+  if [ "$problemas" -eq 1 ]; then
+    printf '✗ Restauração INCOMPLETA — algum item do registro não pôde ser tratado (mensagens acima). NADA foi apagado; relate.\n' >&2
+    exit 1
+  fi
   if [ "$restaurou" -eq 1 ]; then
     printf '\nPronto. As pastas *-do-teste-%s guardam o que o teste recriou — NADA foi apagado.\n' "$DATA"
+    printf 'Registro da rodada restaurada (mantido para conferência): %s\n' "$rodada"
   else
-    printf '\nNada para restaurar: não existe %s nem %s\n' "$DADOS_MOVIDO" "$CLONE_MOVIDO"
-    printf '(o limpar de hoje não moveu nada, ou já foi restaurado).\n'
+    printf '\nEsta rodada já estava restaurada (registro: %s) — nada foi movido.\n' "$rodada"
   fi
   return 0
 }
@@ -727,7 +784,7 @@ case "${1:-}" in
   listar) shift; [ $# -eq 0 ] || { printf '✗ listar não aceita opções\n' >&2; exit 1; }; listar ;;
   limpar) shift; limpar "$@" ;;
   testar) shift; [ $# -eq 0 ] || { printf '✗ testar não aceita opções\n' >&2; exit 1; }; testar ;;
-  restaurar) shift; [ $# -eq 0 ] || { printf '✗ restaurar não aceita opções\n' >&2; exit 1; }; restaurar ;;
+  restaurar) shift; restaurar "$@" ;;
   --ajuda | -h | ajuda) ajuda ;;
   "")
     printf '✗ Falta o subcomando.\n\n' >&2
