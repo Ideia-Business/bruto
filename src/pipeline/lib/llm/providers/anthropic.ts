@@ -13,6 +13,7 @@
  */
 
 import { PipelineError } from "@/pipeline/types";
+import { alvoEnvUsuario } from "@/lib/env-usuario";
 import { extrairTexto, postJson } from "./http";
 import type { LlmCapability, LlmProvider, LlmRequest, LlmResult } from "../types";
 
@@ -44,7 +45,7 @@ export const anthropicProvider: LlmProvider = {
     if (!process.env.ANTHROPIC_API_KEY) {
       return {
         ok: false as const,
-        reason: "defina ANTHROPIC_API_KEY no seu .env (a chave fica na sua máquina)",
+        reason: `defina ANTHROPIC_API_KEY em ${alvoEnvUsuario()} (a chave fica na sua máquina)`,
       };
     }
     return { ok: true as const };

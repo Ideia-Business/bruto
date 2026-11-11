@@ -8,6 +8,7 @@
  */
 
 import { PipelineError } from "@/pipeline/types";
+import { alvoEnvUsuario } from "@/lib/env-usuario";
 import { extrairTexto, postJson } from "./http";
 import type { LlmCapability, LlmProvider, LlmRequest, LlmResult, ProviderId } from "../types";
 
@@ -24,8 +25,13 @@ export interface DefinicaoCompativel {
   padrao: Record<string, string>;
   /** Cabeçalhos extras exigidos pelo fornecedor. */
   headersExtras?: Record<string, string>;
-  /** Frase que ajuda quem não configurou ainda. */
-  comoConfigurar: string;
+  /**
+   * Frase que ajuda quem não configurou ainda. É FUNÇÃO (não string pronta)
+   * porque o alvo do `.env` depende do modo — `.env` no clone,
+   * `~/.bruto/.env` no app empacotado — e o modo é lido em runtime, não na
+   * carga do módulo.
+   */
+  comoConfigurar: () => string;
 }
 
 function lerChave(def: DefinicaoCompativel): string | undefined {
@@ -57,7 +63,7 @@ export function criarProvedorCompativel(def: DefinicaoCompativel): LlmProvider {
 
     async availability() {
       if (!lerChave(def)) {
-        return { ok: false as const, reason: def.comoConfigurar };
+        return { ok: false as const, reason: def.comoConfigurar() };
       }
       return { ok: true as const };
     },
@@ -101,7 +107,7 @@ export const openaiProvider = criarProvedorCompativel({
   envVar: "OPENAI_API_KEY",
   url: "https://api.openai.com/v1/chat/completions",
   padrao: { fast: "gpt-4o-mini", balanced: "gpt-4o", deep: "gpt-4o" },
-  comoConfigurar: "defina OPENAI_API_KEY no seu .env (a chave fica na sua máquina)",
+  comoConfigurar: () => `defina OPENAI_API_KEY em ${alvoEnvUsuario()} (a chave fica na sua máquina)`,
 });
 
 export const openrouterProvider = criarProvedorCompativel({
@@ -121,8 +127,8 @@ export const openrouterProvider = criarProvedorCompativel({
     "HTTP-Referer": "https://github.com/Ideia-Business/bruto",
     "X-Title": "Bruto",
   },
-  comoConfigurar:
-    "defina OPENROUTER_API_KEY no seu .env — e escolha o modelo em BRUTO_MODEL_BALANCED (catálogo em openrouter.ai/models)",
+  comoConfigurar: () =>
+    `defina OPENROUTER_API_KEY em ${alvoEnvUsuario()} — e escolha o modelo em BRUTO_MODEL_BALANCED (catálogo em openrouter.ai/models)`,
 });
 
 export const ollamaCloudProvider = criarProvedorCompativel({
@@ -135,6 +141,6 @@ export const ollamaCloudProvider = criarProvedorCompativel({
     balanced: "gpt-oss:120b",
     deep: "gpt-oss:120b",
   },
-  comoConfigurar:
-    "defina OLLAMA_API_KEY no seu .env — e confira o modelo em BRUTO_MODEL_BALANCED (catálogo em ollama.com/library)",
+  comoConfigurar: () =>
+    `defina OLLAMA_API_KEY em ${alvoEnvUsuario()} — e confira o modelo em BRUTO_MODEL_BALANCED (catálogo em ollama.com/library)`,
 });

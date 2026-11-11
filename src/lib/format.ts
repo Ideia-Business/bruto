@@ -57,7 +57,16 @@ export function textoDoErro(codigo: string | null | undefined, mensagem: string 
   return ERROR_HINT[c] ?? mensagem ?? ERROR_HINT.UNKNOWN;
 }
 
-/** Rótulo PT-BR + orientação de cada código de erro. */
+/**
+ * Rótulo PT-BR + orientação de cada código de erro.
+ *
+ * Os textos são NEUTROS quanto ao modo: o componente que os mostra não
+ * sabe se roda no app instalado ou no clone, então nenhum hint pode mandar
+ * a pessoa a um arquivo/comando que só existe num dos modos (`.env`,
+ * `.env.example`, `npm run …`, o instalador do repositório). Quando a saída
+ * difere por modo, o texto nomeia os DOIS caminhos ("no app instalado …;
+ * no código-fonte …").
+ */
 export const ERROR_HINT: Record<string, string> = {
   BOT_CHECK:
     "O YouTube pediu verificação anti-robô. Aguarde alguns minutos e tente novamente.",
@@ -65,16 +74,16 @@ export const ERROR_HINT: Record<string, string> = {
   LOGIN_REQUIRED:
     "A plataforma recusou o acesso sem login — comum no Instagram depois de vários vídeos seguidos. O Bruto já tentou de novo sozinho; espere alguns minutos e reprocesse.",
   YTDLP_OUTDATED:
-    "O extrator de vídeo está desatualizado. Rode: uv tool upgrade yt-dlp",
+    "O extrator de vídeo está desatualizado. No app instalado ele se atualiza sozinho — reprocesse em alguns minutos; no código-fonte, rode: uv tool upgrade yt-dlp",
   NO_TRANSCRIPT:
-    "Vídeo sem legenda e sem transcritor instalado. Rode o instalador do Bruto de novo, sem --sem-whisper (Mac com Apple Silicon: uv tool install mlx-whisper; outros: uv tool install openai-whisper).",
+    "Vídeo sem legenda e sem transcritor instalado. No app instalado, ative a transcrição local (Whisper) nas Configurações; no código-fonte, rode o instalador do Bruto de novo sem --sem-whisper.",
   LLM_QUOTA: "O provedor de IA respondeu limite de uso. Tente novamente mais tarde.",
   LLM_AUTH:
-    "O provedor de IA recusou a credencial. Confira a chave no seu .env — veja .env.example.",
+    "O provedor de IA recusou a credencial. Confira a chave de API — no app instalado ela fica em ~/.bruto/.env; no código-fonte, no .env.",
   LLM_UPSTREAM: "O provedor de IA está fora do ar. Tente reprocessar em alguns minutos.",
   LLM_CAPABILITY:
     "O provedor configurado não tem um recurso que esta etapa pediu. O resto foi gerado normalmente.",
   LLM_NOT_CONFIGURED:
-    "Nenhum provedor de IA configurado. Copie .env.example para .env e preencha uma chave, ou instale o Claude Code.",
+    "Nenhum provedor de IA configurado. Entre no Claude Code (claude) ou no Codex (codex login) neste computador e reprocesse — usa o plano que você já paga. Para usar chave de API: no app instalado, crie o arquivo ~/.bruto/.env com a chave; no código-fonte, edite o .env.",
   UNKNOWN: "Ocorreu um erro inesperado. Tente reprocessar.",
 };

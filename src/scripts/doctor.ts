@@ -105,7 +105,11 @@ async function main(): Promise<void> {
           ? "    Rode o instalador de novo: powershell -ExecutionPolicy Bypass -File install\\instalar.ps1"
           : "    Rode o instalador de novo: bash install/instalar.sh",
     );
-    console.log("    Para a IA: faça login no claude ou no codex, ou copie .env.example para .env\n");
+    console.log(
+      modoPacote()
+        ? "    Para a IA: entre no claude ou no codex (codex login), ou crie ~/.bruto/.env com a sua chave (ex.: ANTHROPIC_API_KEY=...)\n"
+        : "    Para a IA: faça login no claude ou no codex, ou copie .env.example para .env\n",
+    );
     process.exit(1);
   }
   console.log(`\n✔ Ambiente pronto. Modelo via: ${provedorAtivo}\n`);

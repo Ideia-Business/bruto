@@ -97,11 +97,19 @@ function carimbarBaselineSeNecessario(
   // Nenhuma das duas é segura, então paramos e dizemos exatamente o que falta.
   if (presentes.length !== esperadas.length) {
     const faltando = esperadas.filter((t) => !presentes.includes(t));
+    // A saída é POR MODO: no app instalado não existe `npx`/`npm run` para a
+    // pessoa — o caminho real é apagar o banco descartável e reabrir o app
+    // (a migração do boot refaz do zero).
+    const saidas =
+      process.env.BRUTO_EMPACOTADO === "1"
+        ? `No app instalado não dá para completar o schema à mão: apague ${dbPath} ` +
+          `e reabra o Bruto — a migração refaz o banco do zero.`
+        : `Saídas: (a) rode uma vez \`npx drizzle-kit push\` para completar o schema ` +
+          `e depois \`npm run db:migrate\`; ou (b) se o banco for descartável, apague ` +
+          `${dbPath} e rode a migração do zero.`;
     throw new Error(
       `Banco em estado intermediário: tem ${presentes.join(", ")} mas falta ${faltando.join(", ")}.\n` +
-        `Não dá para carimbar o baseline com segurança. Saídas: (a) rode uma vez ` +
-        `\`npx drizzle-kit push\` para completar o schema e depois \`npm run db:migrate\`; ` +
-        `ou (b) se o banco for descartável, apague ${dbPath} e rode a migração do zero.`,
+        `Não dá para carimbar o baseline com segurança. ${saidas}`,
     );
   }
 

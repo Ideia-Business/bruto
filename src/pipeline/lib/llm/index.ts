@@ -16,6 +16,7 @@
  */
 
 import { PipelineError } from "@/pipeline/types";
+import { modoPacote } from "@/pipeline/lib/ferramentas";
 import { claudeCliProvider } from "./providers/claude-cli";
 import { codexCliProvider } from "./providers/codex-cli";
 import { anthropicProvider } from "./providers/anthropic";
@@ -74,6 +75,35 @@ export function provedoresDePlano(): LlmProvider[] {
 }
 
 /**
+ * O texto do `LLM_NOT_CONFIGURED` de "nenhum provedor", POR MODO.
+ *
+ * No app empacotado não existe `.env` editável nem `.env.example` — mandar
+ * a pessoa a eles é apontar para um lugar que não existe. O pacote tem dois
+ * caminhos REAIS: o plano já pago (entrar no `claude` ou `codex login`, que
+ * são ferramentas DA PESSOA, achadas pelo PATH do contrato) e o `.env` da
+ * pessoa (`~/.bruto/.env`, lido no boot — ver `lib/env-usuario.ts`). O plano
+ * vem PRIMEIRO porque é o caminho de zero configuração e zero custo novo.
+ *
+ * No clone, a mensagem histórica (com a lista de motivos por provedor) fica
+ * INALTERADA.
+ */
+export function mensagemNenhumProvedor(motivos: string[]): string {
+  if (modoPacote()) {
+    return (
+      "Nenhum provedor de IA configurado.\n" +
+      "Entre no Claude Code (`claude`) ou no Codex (`codex login`) neste computador " +
+      "e tente de novo — usa o plano que você já paga.\n" +
+      "Ou crie o arquivo ~/.bruto/.env com a sua chave, por exemplo " +
+      "ANTHROPIC_API_KEY=..., e reabra o Bruto."
+    );
+  }
+  return (
+    `Nenhum provedor de IA configurado. Escolha um:\n${motivos.join("\n")}\n` +
+    `Copie .env.example para .env e preencha uma chave, ou instale o Claude Code.`
+  );
+}
+
+/**
  * Resolve o provedor uma vez por processo.
  *
  * Ordem: variável explícita > chave de API presente > Claude CLI instalado.
@@ -126,11 +156,7 @@ export async function resolverProvedor(): Promise<LlmProvider> {
     motivos.push(`  · ${p.label}: ${disp.reason}`);
   }
 
-  throw new PipelineError(
-    "LLM_NOT_CONFIGURED",
-    `Nenhum provedor de IA configurado. Escolha um:\n${motivos.join("\n")}\n` +
-      `Copie .env.example para .env e preencha uma chave, ou instale o Claude Code.`,
-  );
+  throw new PipelineError("LLM_NOT_CONFIGURED", mensagemNenhumProvedor(motivos));
 }
 
 /** Só para teste: força o próximo resolve a recomeçar. */

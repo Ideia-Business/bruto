@@ -7,12 +7,19 @@
  * migrações e o seed ANTES de re-enfileirar órfãos — INVARIANTE F4: o boot
  * empacotado nunca sobe sem schema. Falha de migração derruba o boot com
  * mensagem clara no log (rethrow: o Next não sobe um servidor sem tabelas).
+ *
+ * Ainda no modo pacote, ANTES de tudo: carrega o `.env` da pessoa
+ * (`$BRUTO_DATA_ROOT/.env`, default `~/.bruto/.env`) — no pacote não existe
+ * `.env` editável, e sem esta carga o caminho "chave de API" simplesmente
+ * não existiria no app instalado. Nunca derruba o boot (ver env-usuario.ts).
  */
 export async function register(): Promise<void> {
   // Só no runtime Node (não no edge).
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
   if (process.env.BRUTO_EMPACOTADO === "1") {
+    const { carregarEnvDoUsuario } = await import("@/lib/env-usuario");
+    carregarEnvDoUsuario();
     try {
       const { aplicarMigracoes } = await import("@/db/migrate");
       aplicarMigracoes();
