@@ -37,6 +37,13 @@ export UV_TOOL_DIR="$BRUTO_FERRAMENTAS/uv/tools"
 export UV_TOOL_BIN_DIR="$BRUTO_FERRAMENTAS/bin"
 export UV_PYTHON_INSTALL_DIR="$BRUTO_FERRAMENTAS/uv/python"
 export UV_CACHE_DIR="$BRUTO_FERRAMENTAS/uv/cache"
+# CLASSE U: nenhuma ferramenta do pacote usa o que a máquina tem por acaso —
+# Python do sistema incluso. Sem isto o uv pode resolver o Python 3.9 de
+# /usr/bin/python3 (das Command Line Tools), instala um yt-dlp velho que o
+# YouTube recusa ("The page needs to be reloaded") e, em Mac sem CLT, ainda
+# abre o diálogo "instalar ferramentas de desenvolvedor". Só valem os
+# Pythons GERIDOS pelo próprio uv (instalados no UV_PYTHON_INSTALL_DIR).
+export UV_PYTHON_PREFERENCE=only-managed
 export PLAYWRIGHT_BROWSERS_PATH="$BRUTO_FERRAMENTAS/ms-playwright"
 export BRUTO_PLAYWRIGHT_CLI="$APP/node_modules/playwright/cli.js"
 

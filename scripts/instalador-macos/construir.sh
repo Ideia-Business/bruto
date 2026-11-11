@@ -23,6 +23,12 @@ DIST="$RAIZ/dist"
 WORK="$DIST/build"
 BINARIOS="$PASTA/binarios.json"
 
+# CLASSE T: as entitlements do node do pacote vêm deste ARQUIVO VERSIONADO —
+# são as do binário oficial pinado (lidas com codesign -d --entitlements).
+# Sem elas, assinar com hardened runtime (BRUTO_DEVELOPER_ID) deixa o V8 sem
+# memória executável e o node assinado não roda (achado P1 da 2ª rodada).
+ENTITLEMENTS_NODE="$PASTA/entitlements-node.plist"
+
 # Nomes dos arquivos no cache — precisam bater com o campo "arquivo" do
 # binarios.json (a consistência é conferida no loop de download).
 NODE_TGZ="node-v26.13.0-darwin-arm64.tar.gz"
@@ -152,6 +158,128 @@ finalizar_dmg() {
 }
 
 
+# LISTA PERMITIDA do app montado (contrato, "Layout"): o builder standalone
+# do Next pode trazer mais coisas do checkout — `.env`/`.env.production`
+# com as chaves de API do CONSTRUTOR (achado P1 da 2ª rodada) e, no artefato
+# real da lane integrada, a `dist/` INTEIRA da máquina (140 MB, com um
+# segundo binário node dentro), mais `src/`, `tests/` e `scripts/`. Fora
+# desta lista, nada entra no pacote.
+LISTA_PERMITIDA_APP="server.js package.json node_modules .next public drizzle .env.example"
+
+# sanitizar_app <appb> — CLASSE S: nada da máquina de build sai no pacote
+# (segredo, configuração local, ferramenta de build). Roda ANTES de assinar.
+# (1) remove todo `.env*` que não seja `.env.example`, em qualquer
+# profundidade do bundle; (2) remove da raiz do app tudo que não está na
+# lista permitida; (3) neutraliza o caminho absoluto do checkout que o Next
+# assa em server.js e *.json (outputFileTracingRoot, repoRoot): na máquina
+# da pessoa esse caminho não existe de qualquer jeito — sai `/bruto` no
+# lugar, sem a digital de onde o pacote foi construído.
+sanitizar_app() {
+  local appb="$1" app="$1/Contents/Resources/app" entrada arq
+  find "$appb" -name ".env*" ! -name ".env.example" -exec rm -rf {} + 2>/dev/null || true
+  find "$app" -mindepth 1 -maxdepth 1 | while IFS= read -r entrada; do
+    case " $LISTA_PERMITIDA_APP " in
+      *" $(basename "$entrada") "*) ;;
+      *) rm -rf "$entrada" ;;
+    esac
+  done
+  while IFS= read -r arq; do
+    python3 - "$arq" "$RAIZ" <<'PY'
+import sys
+arq, raiz = sys.argv[1], sys.argv[2]
+with open(arq, encoding="utf-8") as f:
+    conteudo = f.read()
+with open(arq, "w", encoding="utf-8") as f:
+    f.write(conteudo.replace(raiz, "/bruto"))
+PY
+  done < <(find "$app" -type f \( -name "*.json" -o -name "server.js" \) -exec grep -l -F "$RAIZ" {} + 2>/dev/null || true)
+}
+
+# provar_sanidade_do_pacote <appb> — CLASSE S, a PROVA (falha alta; roda
+# ANTES de assinar e empacotar): nenhum `.env*` (exceto `.env.example`),
+# nenhum `.git`, nenhum diretório `dist/` da máquina dentro de
+# Resources/app (os `dist/` DENTRO de node_modules — next/dist, d3/dist… —
+# são conteúdo legítimo de dependência), nenhum segundo binário `node`
+# além de Resources/node e nenhum caminho absoluto da máquina de build
+# (/Users/) nos arquivos de configuração do app (*.json, server.js).
+provar_sanidade_do_pacote() {
+  local appb="$1" app="$1/Contents/Resources/app" achado
+  achado="$(find "$appb" -name ".env*" ! -name ".env.example" -print -quit 2>/dev/null || true)"
+  [ -z "$achado" ] || falha "arquivo de ambiente no pacote: $achado" \
+    "o standalone do Next copiou um .env do checkout — segredo do construtor NÃO sai no pacote; NÃO publique este build"
+  achado="$(find "$appb" -name .git -print -quit 2>/dev/null || true)"
+  [ -z "$achado" ] || falha "repositório .git dentro do pacote: $achado" \
+    "nada da máquina de build sai no pacote; confira o montar do app neste build"
+  achado="$(find "$app" -type d -name dist -not -path "$app/node_modules/*" -print -quit 2>/dev/null || true)"
+  [ -z "$achado" ] || falha "diretório dist/ dentro de Resources/app: $achado" \
+    "sobra da máquina de build saiu no pacote (a lista permitida devia barrá-la); NÃO publique este build"
+  achado="$(find "$appb" -type f -name node ! -path "$appb/Contents/Resources/node" -print -quit 2>/dev/null || true)"
+  [ -z "$achado" ] || falha "segundo binário node no pacote: $achado" \
+    "só Resources/node (o Node pinado) pode existir; confira a lista permitida e rode o build de novo"
+  achado="$(find "$app" -type f \( -name "*.json" -o -name server.js \) -exec grep -l "/Users/" {} + 2>/dev/null | head -n 1 || true)"
+  [ -z "$achado" ] || falha "caminho absoluto da máquina de build em $achado" \
+    "o app cita /Users/… do construtor — nada da máquina de build sai no pacote; NÃO publique este build"
+}
+
+# assinar_app <appb> — assina cada Mach-O e o bundle. CLASSE T: com hardened
+# runtime (BRUTO_DEVELOPER_ID), o node do pacote é assinado com as
+# ENTITLEMENTS do binário oficial (arquivo versionado) — re-assiná-lo sem
+# elas DESCARTA as que o nodejs.org traz e o binário assinado não roda
+# (achado P1 da 2ª rodada). Os demais Mach-O (ffmpeg, ffprobe, uv, *.node)
+# vão SEM entitlements.
+assinar_app() {
+  local appb="$1" arq
+  local assinar
+  if [ -n "${BRUTO_DEVELOPER_ID:-}" ]; then
+    assinar=(codesign --force --options runtime --timestamp --sign "$BRUTO_DEVELOPER_ID")
+  else
+    assinar=(codesign --force --sign -)
+  fi
+  while IFS= read -r arq; do
+    file "$arq" | grep -q "Mach-O" || continue
+    if [ "$arq" = "$appb/Contents/Resources/node" ] && [ -n "${BRUTO_DEVELOPER_ID:-}" ]; then
+      "${assinar[@]}" --entitlements "$ENTITLEMENTS_NODE" "$arq" >/dev/null 2>&1 \
+        || falha "codesign falhou em $arq (com entitlements)" \
+          "veja o erro rodando: codesign --force --options runtime --timestamp --sign <id> --entitlements $ENTITLEMENTS_NODE $arq"
+    else
+      "${assinar[@]}" "$arq" >/dev/null 2>&1 \
+        || falha "codesign falhou em $arq" "veja o erro rodando: codesign --force --sign - $arq"
+    fi
+  done < <(find "$appb" -type f -print)
+  "${assinar[@]}" "$appb" >/dev/null 2>&1 || falha "codesign falhou no bundle" "rode manualmente: codesign --force --sign - \"$appb\""
+}
+
+# provar_assinatura_do_pacote <appb> — CLASSE T: DEPOIS de assinar, prova
+# que assinar não tirou capacidade do binário — as entitlements do node
+# continuam presentes (codesign -d --entitlements) e o node do pacote RODA
+# (V8 de pé: node -e 'console.log(1)'). Sem isso, a assinatura com
+# hardened runtime fabrica um pacote que não abre na máquina da pessoa.
+provar_assinatura_do_pacote() {
+  local appb="$1" recursos="$1/Contents/Resources" ents chave
+  if [ -n "${BRUTO_DEVELOPER_ID:-}" ]; then
+    ents="$(codesign -d --entitlements - "$recursos/node" 2>/dev/null || true)"
+    for chave in \
+      com.apple.security.cs.allow-dyld-environment-variables \
+      com.apple.security.cs.allow-jit \
+      com.apple.security.cs.allow-unsigned-executable-memory \
+      com.apple.security.cs.disable-executable-page-protection \
+      com.apple.security.cs.disable-library-validation \
+      com.apple.security.get-task-allow; do
+      case "$ents" in
+        *"$chave"*) ;;
+        *) falha "o node assinado PERDEU a entitlement $chave" \
+          "a assinatura do node tem de levar --entitlements $ENTITLEMENTS_NODE — sem elas o V8 não aloca memória executável e o pacote não abre; NÃO publique este build" ;;
+      esac
+    done
+    linha "entitlements do node conferidas (codesign -d --entitlements)"
+  fi
+  "$recursos/node" -e 'console.log(1)' >/dev/null 2>&1 \
+    || falha "o node do pacote não roda depois de assinado" \
+      "a assinatura tirou capacidade do binário (entitlements? hardened runtime?); NÃO publique este build"
+  linha "Resources/node executa (node -e)"
+}
+
+
 # baixar_pinado <url> <sha256> <arquivo-no-cache>
 # INVARIANTE P4: baixa para .tmp, confere o hash e SÓ então publica. Hash
 # errado → o arquivo baixado é apagado e nada é montado. Cache válido → nem
@@ -245,6 +373,7 @@ bruto_construir() {
     command -v "$ferramenta" >/dev/null 2>&1 || falha "$ferramenta não encontrado" "instale as Command Line Tools do Xcode (xcode-select --install) e rode de novo"
   done
   [ -f "$BINARIOS" ] || falha "binarios.json não encontrado" "confira scripts/instalador-macos/binarios.json"
+  [ -f "$ENTITLEMENTS_NODE" ] || falha "entitlements-node.plist não encontrado" "confira scripts/instalador-macos/entitlements-node.plist (as entitlements do Node oficial pinado)"
 
   etapa "Versão"
   versao="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$RAIZ/package.json" | head -n 1)"
@@ -372,6 +501,14 @@ bruto_construir() {
   printf 'yt-dlp (instalado pelo uv no primeiro uso do app, não acompanha o pacote)\nFonte: https://github.com/yt-dlp/yt-dlp\nLicença: Unlicense (https://github.com/yt-dlp/yt-dlp/blob/master/LICENSE)\n' >"$recursos/LICENSES/yt-dlp.txt"
   ok
 
+  etapa "Sanidade S — nada da máquina de build sai no pacote"
+  # CLASSE S: remove ANTES de assinar (o .env/.env.production que o
+  # standalone do Next copia do checkout, tudo que está fora da lista
+  # permitida e o caminho absoluto do construtor) e PROVA com falha alta.
+  sanitizar_app "$appb"
+  provar_sanidade_do_pacote "$appb"
+  ok
+
   etapa "Ícone (icon.icns a partir de launcher/icon.svg)"
   if gerar_icns "$recursos/icon.icns" "$WORK"; then
     linha "icon.icns gerado com qlmanage/sips + iconutil (nada de binário de ícone no repo)"
@@ -379,18 +516,14 @@ bruto_construir() {
     linha "ícone não gerado — o app sai com o ícone padrão (enfeite; rode de novo com o Chromium do Playwright instalado)"
   fi
 
-  etapa "Assinatura ad-hoc (cada Mach-O + bundle)"
-  local assinar
-  if [ -n "${BRUTO_DEVELOPER_ID:-}" ]; then
-    assinar=(codesign --force --options runtime --timestamp --sign "$BRUTO_DEVELOPER_ID")
-  else
-    assinar=(codesign --force --sign -)
-  fi
-  while IFS= read -r arq; do
-    file "$arq" | grep -q "Mach-O" || continue
-    "${assinar[@]}" "$arq" >/dev/null 2>&1 || falha "codesign falhou em $arq" "veja o erro rodando: codesign --force --sign - $arq"
-  done < <(find "$appb" -type f -print)
-  "${assinar[@]}" "$appb" >/dev/null 2>&1 || falha "codesign falhou no bundle" "rode manualmente: codesign --force --sign - \"$appb\""
+  etapa "Assinatura ad-hoc (cada Mach-O + bundle; node com entitlements)"
+  # CLASSE T: com BRUTO_DEVELOPER_ID (hardened runtime), o node leva as
+  # entitlements do arquivo versionado — ver assinar_app.
+  assinar_app "$appb"
+  ok
+
+  etapa "Prova T — assinar não tirou capacidade do binário"
+  provar_assinatura_do_pacote "$appb"
   ok
 
   etapa "Prova P1 — nada do pacote depende da máquina que o construiu"
