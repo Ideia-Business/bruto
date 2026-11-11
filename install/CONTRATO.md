@@ -75,3 +75,113 @@ Regras:
 - Cada etapa imprime `→ <o que está fazendo>` e termina em `✓` ou `✗ <motivo> — <o que fazer>`.
 - Falha de etapa obrigatória: sai com código 1 e diz como retomar (rodar de novo o mesmo comando).
 - No fim: onde ficou instalado, como abrir (atalho) e como atualizar (rodar de novo).
+
+---
+
+## Instalador executável (macOS) — o `.dmg`
+
+Tudo acima (o `curl | bash`) **continua valendo e não muda**: é o instalador de quem
+desenvolve e de Mac Intel. Esta seção é o segundo instalador do macOS: um `Bruto.app`
+**autocontido** para Apple Silicon (arm64), distribuído como `dist/Bruto-<versão>-arm64.dmg`
+e construído por `npm run instalador:macos` (`scripts/instalador-macos/construir.sh`).
+Decisão registrada no ADR `docs/decisions/0005-instalador-macos-autocontido.md`.
+Sem atualização silenciosa (o app avisa que há versão nova) e sem assinatura Apple na v1:
+assinatura **ad-hoc**; Developer ID + notarização só ligam se `BRUTO_DEVELOPER_ID` e
+`BRUTO_NOTARY_PROFILE` existirem por nome — sem elas, o build pula e **diz** que pulou.
+
+### O que vai dentro e o que desce depois
+
+| Peça | Dentro do `.app` | Como entra |
+|---|---|---|
+| Node (o mesmo do build, pinado) | sim | `binarios.json` (URL + SHA-256), cache em `~/.cache/bruto-instalador` |
+| app Next (modo standalone + static + public + drizzle) | sim | `BRUTO_BUILD_STANDALONE=1` |
+| `ffmpeg` / `ffprobe` / `uv` | sim (`Contents/Resources/bin`) | idem |
+| `yt-dlp` | não | `uv` no primeiro uso, com **Python gerenciado** pelo próprio `uv` |
+| Whisper (~2 GB) | não | só quando a pessoa pede, com aviso de tamanho |
+| Chromium dos exports | não | Playwright, no primeiro export |
+
+O que desce depois vai para `$BRUTO_FERRAMENTAS` (`~/.bruto/ferramentas`), nunca para o
+sistema. **Inváriante do pacote:** em modo pacote, `ffmpeg`, `ffprobe`, `uv`, `yt-dlp`,
+`whisper` e o Chromium são resolvidos por **caminho absoluto** pelas variáveis abaixo, nunca
+pelo PATH — o PATH serve só para achar `claude`/`codex`, que são da pessoa.
+
+### Layout do `Bruto.app`
+
+```
+Bruto.app/Contents/
+  Info.plist            CFBundleIdentifier=com.ideiabusiness.bruto · versão do package.json · LSMinimumSystemVersion=13.0 · LSArchitecturePriority=arm64
+  MacOS/Bruto           lançador (bash)
+  Resources/
+    icon.icns
+    node                binário oficial nodejs.org darwin-arm64 (pinado)
+    bin/ffmpeg bin/ffprobe bin/uv
+    app/                saída de .next/standalone + static + public/ + drizzle/ + package.json
+    host-nativo.sh      wrapper do host de native messaging (usa o node do pacote)
+    launcher/           host-nativo.sh + registrar-host.sh (o par que gera caminhos existentes)
+    registrar-host.sh   delegador do registrador acima
+    host-nativo.mjs
+    LICENSES/           licenças de Node, ffmpeg (e fonte), uv, yt-dlp
+```
+
+**Ponto corrigido em relação ao contrato original de empacotamento:** o manifesto do host
+nativo (`com.ideiabusiness.bruto.json`) aponta para
+`Contents/Resources/launcher/host-nativo.sh` — e não para `Resources/host-nativo.sh`.
+O `registrar-host.sh` calcula a raiz como o pai da própria pasta; com ele em `launcher/`,
+a raiz vira `Resources` e o caminho registrado existe de verdade. A cópia em
+`Resources/host-nativo.sh` também existe (o wrapper é o mesmo nas duas).
+
+### Variáveis que o lançador define para o servidor
+
+| Variável | Valor |
+|---|---|
+| `BRUTO_EMPACOTADO` | `1` (liga o modo pacote) |
+| `BRUTO_RECURSOS` | `…/Bruto.app/Contents/Resources` |
+| `BRUTO_NODE` | `$BRUTO_RECURSOS/node` |
+| `BRUTO_FFMPEG` / `BRUTO_FFPROBE` / `BRUTO_UV` | caminhos absolutos em `$BRUTO_RECURSOS/bin` |
+| `BRUTO_FERRAMENTAS` | `$BRUTO_DATA_ROOT/ferramentas` (default `~/.bruto/ferramentas`) |
+| `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` / `UV_PYTHON_INSTALL_DIR` / `UV_CACHE_DIR` | dentro de `$BRUTO_FERRAMENTAS` |
+| `UV_PYTHON_PREFERENCE` | `only-managed` (nunca o Python do sistema) |
+| `PLAYWRIGHT_BROWSERS_PATH` | `$BRUTO_FERRAMENTAS/ms-playwright` |
+| `BRUTO_PLAYWRIGHT_CLI` | `cli.js` do playwright dentro de `app/node_modules` |
+| `BRUTO_DATA_ROOT` | herdado, default `~/.bruto` (a MESMA biblioteca da instalação antiga) |
+| `PORT` / `HOSTNAME` | `${BRUTO_PORT:-3000}` / `127.0.0.1` |
+| `PATH` | bin do pacote, bin das ferramentas, PATH do shell de login do usuário, `/usr/bin:/bin:/usr/sbin:/sbin` — só para achar `claude`/`codex` |
+
+### O que o servidor expõe e o lançador consome
+
+- `GET /api/versao` → `200 {"app":"bruto","versao":"<package.json>","origem":"pacote"|"clone"}`
+  (leitura pública local, sem dado sensível).
+- Boot em modo pacote aplica migrações e seed antes de re-enfileirar órfãos
+  (pasta `drizzle/` relativa ao cwd = `$BRUTO_RECURSOS/app`).
+
+### O lançador (`Contents/MacOS/Bruto`), em resumo
+
+1. Monta o ambiente acima; log em `$BRUTO_DATA_ROOT/logs/servidor.log`; PID do servidor que
+   **ele** subiu em `$BRUTO_DATA_ROOT/servidor.pid`.
+2. Porta responde `origem=pacote` e mesma versão: só abre a janela.
+3. `origem=pacote` e outra versão: encerra **só** o PID do arquivo, se o comando dele for o
+   servidor node **deste** pacote; senão não mexe em nada.
+4. Porta ocupada por outra coisa (instalação antiga, que não tem `/api/versao`, ou
+   `origem=clone`): **não mata nada**; diálogo "feche o Bruto antigo" com a opção
+   "Abrir mesmo assim".
+5. Porta livre: sobe `"$BRUTO_NODE" app/server.js` (`nohup`), espera `/api/versao` com
+   `origem=pacote` por até 60 s e abre a janela (Chrome/Chromium/Edge em `--app=<url>`, senão
+   `open`).
+6. `BRUTO_SEM_JANELA=1`: só garante o servidor (é o que o host da extensão usa).
+7. Primeira execução: registra o host de native messaging (sem ID de extensão conhecido, não
+   registra nada — comportamento atual, ADR 0004).
+
+### Build e provas (`scripts/instalador-macos/construir.sh`)
+
+- Binários pinados (URL + SHA-256; hash diferente = para; cache em `~/.cache/bruto-instalador`).
+- `npm ci` + `next build` com o **Node pinado** (o `better-sqlite3` precisa do ABI dele) e
+  `BRUTO_BUILD_STANDALONE=1` — o modo clone não muda de comportamento.
+- Provas no fim do build, com falha alta: **S** (nada da máquina de build sai no pacote —
+  sem `.env`, sem `dist/`, sem caminho `/Users/`), **T** (assinar não tirou capacidade do
+  binário — entitlements do node e `node -e`), **P1** (nenhum Mach-O liga em `/opt/homebrew`
+  nem `/usr/local`; o lançador não cita; o `better-sqlite3` do pacote carrega com o node do
+  pacote), **H** (todo caminho do host nativo existe, é absoluto, canônico e executável —
+  inclusive o `path` do manifesto que o registrador gera).
+- Assinatura ad-hoc de cada Mach-O + bundle; `.dmg` com atalho para `/Applications` e
+  `.sha256` calculado **depois** de qualquer notarização. `dist/` no `.gitignore`.
+- Sem sudo, sem GitHub Actions; build na máquina; release/tag só por ordem do dono.

@@ -16,6 +16,10 @@ const eslintConfig = defineConfig([
     // Build da extensão: código gerado, não fonte.
     "extension/dist/**",
 
+    // Pacote macOS gerado por scripts/instalador-macos/construir.sh
+    // (dist/Bruto.app, .dmg): código gerado pelo next build standalone.
+    "dist/**",
+
     // Pacote do servidor do modo grátis: gerado por scripts/build-servidor.mjs.
     "servidor/.payload/**",
 

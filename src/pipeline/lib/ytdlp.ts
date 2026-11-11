@@ -12,6 +12,7 @@ import {
   registrarFilho,
   vincularAoSinalDoJob,
 } from "@/pipeline/lib/cancelamento";
+import { caminhoDe, garantirYtDlp, modoPacote } from "@/pipeline/lib/ferramentas";
 import { PipelineError, type ErrorCode, type VideoMetadata } from "@/pipeline/types";
 import { detectarPlataforma } from "@/lib/plataformas";
 
@@ -33,12 +34,15 @@ interface RunResult {
 /**
  * Uma execução do yt-dlp: captura stdout/stderr, mata o processo em timeout
  * e lança PipelineError tipado em exit != 0.
+ *
+ * `bin` vem resolvido por quem chama (ver `runYtdlp`): nome nu no modo clone,
+ * caminho absoluto do pacote no modo pacote (INVARIANTE F1).
  */
-function runYtdlpUmaVez(args: string[], timeoutMs: number): Promise<RunResult> {
+function runYtdlpUmaVez(bin: string, args: string[], timeoutMs: number): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     // Grupo próprio + registro: cancelar o job mata este processo E os netos
     // que ele lançar (ffmpeg).
-    const child = spawn("yt-dlp", args, {
+    const child = spawn(bin, args, {
       shell: false,
       detached: FILHO_EM_GRUPO_PROPRIO,
     });
@@ -115,9 +119,23 @@ export async function comRetentativaDeLogin<T>(
   }
 }
 
-/** Helper único de spawn do yt-dlp, com retentativa no muro de login. */
-function runYtdlp(args: string[], timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<RunResult> {
-  return comRetentativaDeLogin(() => runYtdlpUmaVez(args, timeoutMs));
+/**
+ * Helper único de spawn do yt-dlp, com retentativa no muro de login.
+ *
+ * Modo pacote (contrato-instalador): garante o binário antes de usar (instala
+ * via `uv` no primeiro uso, com teto e promessa compartilhada — F3), resolve
+ * pelo caminho ABSOLUTO de `$BRUTO_FERRAMENTAS/bin` (F1) e aponta
+ * `--ffmpeg-location $BRUTO_FFMPEG` — o yt-dlp chama ffmpeg por conta própria
+ * na extração de áudio, e o ffmpeg do pacote também não está no PATH.
+ * Modo clone: o nome nu no PATH, exatamente como sempre foi (F2).
+ */
+async function runYtdlp(args: string[], timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<RunResult> {
+  await garantirYtDlp();
+  const bin = caminhoDe("yt-dlp");
+  const argsFinais = modoPacote()
+    ? ["--ffmpeg-location", caminhoDe("ffmpeg"), ...args]
+    : args;
+  return comRetentativaDeLogin(() => runYtdlpUmaVez(bin, argsFinais, timeoutMs));
 }
 
 /** Classifica o stderr do yt-dlp em um ErrorCode acionável na UI. */
@@ -286,10 +304,16 @@ export async function downloadBestVtt(
     url,
   ]);
 
-  // Localiza o .vtt gerado (nome final inclui o código de idioma: <id>.<lang>.vtt).
-  const vttFile = fs.readdirSync(workdir).find((f) => f.endsWith(".vtt"));
-  if (!vttFile) {
-    console.warn(`downloadBestVtt: yt-dlp saiu com sucesso mas nenhum .vtt em ${workdir}`);
+  // O .vtt gerado tem nome DETERMINÍSTICO pelo template `-o` acima:
+  // `<id>.<lang>.vtt` (ids de vídeo e códigos de idioma são filename-safe).
+  // Nada de `readdirSync(workdir)`: leitura de pasta com caminho dinâmico é
+  // um dos padrões que o tracer do build standalone não consegue limitar
+  // (classe V — ver ferramentas.ts, que abandonou o readdirSync pelo mesmo
+  // motivo). O workdir é limpo e isolado por chamada, então o caminho montado
+  // É o arquivo baixado — quando ele existe.
+  const vttFile = `${meta.id}.${chosen.lang}.vtt`;
+  if (!fs.existsSync(path.join(workdir, vttFile))) {
+    console.warn(`downloadBestVtt: yt-dlp saiu com sucesso mas sem ${vttFile} em ${workdir}`);
     return null;
   }
 

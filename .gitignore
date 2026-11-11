@@ -82,6 +82,9 @@ STATE.md
 # pacote gerado para envio à Chrome Web Store
 /extension/pacote/
 
+# pacote macOS gerado por scripts/instalador-macos/construir.sh (.dmg, .app, staging)
+/dist/
+
 # payload isolado do servidor do modo grátis (gerado por node scripts/build-servidor.mjs)
 /servidor/.payload/
 .cursor/rules/agents/

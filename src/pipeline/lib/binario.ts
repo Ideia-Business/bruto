@@ -17,6 +17,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { juntarCaminho } from "@/lib/caminho-opaco";
 
 /** Default de PATHEXT quando a variável não está presente no ambiente. */
 const PATHEXT_PADRAO = ".EXE;.CMD;.BAT;.COM";
@@ -164,10 +165,13 @@ export function pythonDaFerramentaUv(nomeFerramenta: string, ambiente: AmbienteU
   const base = baseUvTools(plataforma, env);
   if (!base) return null;
 
+  // juntarCaminho (não path.join): o literal "bin" ao lado da base dinâmica
+  // fazia o tracer do standalone varrer `*bin*` no projeto (ver
+  // caminho-opaco.ts).
   const caminho =
     plataforma === "win32"
-      ? path.join(base, nomeFerramenta, "Scripts", "python.exe")
-      : path.join(base, nomeFerramenta, "bin", "python");
+      ? juntarCaminho(base, nomeFerramenta, "Scripts", "python.exe")
+      : juntarCaminho(base, nomeFerramenta, "bin", "python");
 
   return existe(caminho) ? caminho : null;
 }

@@ -8,6 +8,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { transcricaoDoctor, detectarBackend } from "@/pipeline/lib/transcribe";
+import { caminhoDe, modoPacote } from "@/pipeline/lib/ferramentas";
 import { listarProvedores, resolverProvedor } from "@/pipeline/lib/llm";
 
 interface Check {
@@ -17,10 +18,30 @@ interface Check {
   essential: boolean;
 }
 
+/**
+ * Checa um binário pelo MESMO módulo de ferramentas do pipeline: no modo
+ * clone é o nome nu no PATH; no modo pacote é o caminho absoluto do contrato
+ * (INVARIANTE F1) — o doctor não pode medir o PATH quando o app não o usa.
+ */
 function checkBin(bin: string, args: string[], essential: boolean): Check {
-  const r = spawnSync(bin, args, { encoding: "utf8" });
+  let cmd: string;
+  try {
+    cmd = caminhoDe(bin);
+  } catch (err) {
+    return {
+      name: bin,
+      ok: false,
+      detail: err instanceof Error ? err.message : "caminho não resolvido",
+      essential,
+    };
+  }
+  const r = spawnSync(cmd, args, { encoding: "utf8" });
   const ok = r.status === 0 && !r.error;
-  const detail = ok ? (r.stdout || r.stderr).trim().split("\n")[0] : "não encontrado no PATH";
+  const detail = ok
+    ? (r.stdout || r.stderr).trim().split("\n")[0]
+    : modoPacote()
+      ? "não encontrado no caminho do pacote"
+      : "não encontrado no PATH";
   return { name: bin, ok, detail, essential };
 }
 
@@ -78,11 +99,17 @@ async function main(): Promise<void> {
   if (essentialFail) {
     console.log("\n✖ Faltam dependências essenciais.");
     console.log(
-      process.platform === "win32"
-        ? "    Rode o instalador de novo: powershell -ExecutionPolicy Bypass -File install\\instalar.ps1"
-        : "    Rode o instalador de novo: bash install/instalar.sh",
+      modoPacote()
+        ? "    Reinstale o Bruto.app (o pacote deveria trazer essas ferramentas)."
+        : process.platform === "win32"
+          ? "    Rode o instalador de novo: powershell -ExecutionPolicy Bypass -File install\\instalar.ps1"
+          : "    Rode o instalador de novo: bash install/instalar.sh",
     );
-    console.log("    Para a IA: faça login no claude ou no codex, ou copie .env.example para .env\n");
+    console.log(
+      modoPacote()
+        ? "    Para a IA: entre no claude ou no codex (codex login), ou crie ~/.bruto/.env com a sua chave (ex.: ANTHROPIC_API_KEY=...)\n"
+        : "    Para a IA: faça login no claude ou no codex, ou copie .env.example para .env\n",
+    );
     process.exit(1);
   }
   console.log(`\n✔ Ambiente pronto. Modelo via: ${provedorAtivo}\n`);

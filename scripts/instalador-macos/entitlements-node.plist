@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Bruto — entitlements do node do pacote (CLASSE T do contrato de build).
+
+  São EXATAMENTE as entitlements do binário oficial pinado em
+  scripts/instalador-macos/binarios.json (node-v26.13.0-darwin-arm64),
+  lidas com:
+    codesign -d --entitlements - <node do pacote>
+
+  Por que este arquivo existe: com BRUTO_DEVELOPER_ID, o construir.sh liga o
+  hardened runtime e RE-ASSINA o node — re-assinar sem --entitlements
+  DESCARTA as que o binário oficial traz, o V8 fica sem memória executável
+  e o node assinado não roda (achado P1 da 2ª rodada do Codex). O build
+  assina o node com --entitlements <este arquivo> e PROVA, com
+  codesign -d --entitlements, que elas continuam presentes. Os demais
+  Mach-O do pacote (ffmpeg, ffprobe, uv, *.node) vão sem entitlements.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.cs.allow-dyld-environment-variables</key>
+	<true/>
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+	<key>com.apple.security.cs.disable-executable-page-protection</key>
+	<true/>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+	<key>com.apple.security.get-task-allow</key>
+	<true/>
+</dict>
+</plist>

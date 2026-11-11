@@ -8,7 +8,8 @@ O Bruto é um programa que roda **no seu computador** (o endereço é `http://lo
 
 | Sistema | Onde está o atalho |
 |---------|---|
-| macOS | **Launchpad** (ícone de foguete, ou `Fn + F4`) → **Bruto**. O arquivo é `~/Applications/Bruto.app` |
+| macOS (app baixado, `.dmg`) | **Launchpad** (ícone de foguete, ou `Fn + F4`) → **Bruto**. O app fica em **Aplicativos** (`/Applications/Bruto.app`) |
+| macOS (instalação pelo terminal) | **Launchpad** → **Bruto**. O arquivo é `~/Applications/Bruto.app` |
 | Windows | **Área de Trabalho** → `Bruto`, ou **Menu Iniciar** → procure `Bruto` |
 | Linux | Menu de aplicativos → `Bruto` (Ubuntu: grid de pontinhos; Fedora: Activities) |
 
@@ -27,11 +28,74 @@ O Bruto é um programa que roda **no seu computador** (o endereço é `http://lo
 
 ## macOS
 
-### 1. Abrir o terminal
+No macOS há dois caminhos. O novo — baixar o app pronto — não pede terminal, mas só serve para Mac com **chip da Apple** (M1 ou mais novo). O antigo — o terminal — serve para qualquer Mac.
+
+### Caminho novo: baixar o app (sem terminal)
+
+> Serve só para Mac com chip Apple (M1 ou mais novo). Não sabe qual é o seu? Veja [Qual é o chip do meu Mac?](#qual-é-o-chip-do-meu-mac) mais abaixo. Mac com chip Intel: use o [caminho com o terminal](#caminho-antigo-o-terminal-mac-intel-e-quem-prefere-assim).
+
+#### 1. Baixar o instalador
+
+Abra o navegador e acesse **https://github.com/Ideia-Business/bruto/releases/latest**. Baixe o arquivo chamado `Bruto-<versão>-arm64.dmg` (por exemplo, `Bruto-0.2.0-arm64.dmg`) — o que termina em `-arm64.dmg`. Ele fica na pasta **Downloads**.
+
+#### 2. Instalar
+
+1. Abra o arquivo `.dmg` (duplo clique). Uma janela abre com o ícone do **Bruto** e a pasta **Applications**.
+2. Arraste o **Bruto** para cima da pasta **Applications** (Aplicativos).
+3. Feche a janela. Pronto: o Bruto está em **Aplicativos**, como qualquer app do Mac.
+
+#### 3. Primeira abertura: o macOS bloqueia (é esperado)
+
+O app ainda não tem assinatura da Apple. Por isso, na primeira abertura o macOS mostra um aviso e **bloqueia**. Não é erro — é o jeito de liberar:
+
+1. Duplo-clique no **Bruto**, em **Aplicativos**. O macOS bloqueia e mostra um aviso ("não pode ser verificado" ou "de um desenvolvedor não identificado"). Clique em **Concluir** ou **OK**.
+2. Abra os **Ajustes do Sistema** (menu Apple → **Ajustes do Sistema…**) e entre em **Privacidade e Segurança**.
+3. Role para baixo até a seção **Segurança**. Vai aparecer um aviso sobre o "Bruto" ter sido bloqueado, com o botão **Abrir Mesmo Assim**. Clique nele.
+4. Confirme com **Abrir** (pode pedir sua senha).
+
+Em macOS recentes, o clique-direito no app → **Abrir** **não basta** para liberar — é preciso passar pelos **Ajustes do Sistema**, como acima. Isso só acontece na primeira abertura.
+
+#### 4. O primeiro vídeo (o app se completa sozinho)
+
+- Na primeira vez que você usar um vídeo, o app baixa sozinho o baixador de vídeos. São alguns minutos a mais — só na primeira vez.
+- O transcritor (**Whisper**, uns 2 GB) **não** baixa sozinho: ele só é instalado se você pedir, nas **Configurações** do app. Ele lê o áudio de vídeos de Instagram e TikTok (que não têm legenda).
+- O primeiro **export** (resumo em PDF/Word) baixa o navegador que gera os arquivos. Também é só na primeira vez.
+
+#### 5. Ligar a IA
+
+O Bruto precisa de um modelo de linguagem para gerar resumos. No app instalado pelo `.dmg`:
+
+1. **Já usa o Claude:** instale o Claude Code e rode `claude auth login` no terminal — o app do Bruto acha sozinho.
+2. **Já usa o ChatGPT:** instale o Codex CLI e rode `codex login`.
+3. **Prefere uma chave de API:** crie o arquivo `~/.bruto/.env` com a sua chave (o formato é o da seção "O modelo de linguagem" do [README](README.md)). Esse é o caminho da chave no app instalado.
+
+Se nenhum estiver ligado, o app avisa que a IA não está configurada. O passo a passo de cada opção está em [Próximos passos](#próximos-passos), abaixo.
+
+### Qual é o chip do meu Mac?
+
+Clique no menu **Apple** (a maçã, no canto superior esquerdo da tela) → **Sobre Este Mac**. Se aparecer a palavra **Chip** com um nome Apple (M1, M2, M3…), o caminho novo serve. Se aparecer **Processador** "Intel", use o caminho com o terminal abaixo.
+
+### Já tinha o Bruto (instalado pelo terminal)?
+
+- A sua biblioteca é a **mesma**: os vídeos ficam em `~/.bruto` e o app novo usa essa mesma pasta. Nada se perde.
+- Feche o Bruto antigo antes de abrir o novo. Se esquecer, o app novo avisa e pede para fechá-lo.
+- O app novo fica em **Aplicativos**. O antigo (`~/Applications/Bruto.app`) pode ser arrastado para o Lixo quando você quiser.
+
+### Atualizar o app baixado
+
+Quando houver versão nova, o app avisa, com o link. Para atualizar: baixe o `.dmg` novo e arraste o Bruto para **Aplicativos** de novo — substitui o anterior. Os seus vídeos não mudam de lugar.
+
+### Desinstalar o app baixado
+
+Arraste o **Bruto** (em **Aplicativos**) para o **Lixo**. Os vídeos e as ferramentas ficam na pasta `~/.bruto`: ela cresce com os vídeos e passa de 2 GB quando o Whisper é instalado. Quer apagar tudo mesmo? Apagar a pasta `~/.bruto` **apaga os seus vídeos** — não volta.
+
+### Caminho antigo: o terminal (Mac Intel e quem prefere assim)
+
+#### 1. Abrir o terminal
 
 Pressione **Command (⌘) + Espaço** para abrir o Spotlight. Digite `Terminal` e pressione Enter.
 
-### 2. Instalar o Homebrew
+#### 2. Instalar o Homebrew
 
 Se você já tem o Homebrew (digite `brew --version` e, se aparecer um número de versão, já tem), pule para o passo 3. O instalador do Bruto não instala o Homebrew sozinho: sem ele, para logo na primeira etapa.
 
@@ -45,7 +109,7 @@ Pressione Enter. Ele vai pedir a sua senha (a mesma que você usa para desbloque
 
 Se pedir para adicionar o Homebrew ao PATH, copie o comando que aparecer (vai ser parecido com `export PATH="..."`), cole no terminal e pressione Enter.
 
-### 3. Instalar o Bruto
+#### 3. Instalar o Bruto
 
 Cole este comando:
 
@@ -59,7 +123,7 @@ O transcritor (Whisper) é o que lê o áudio de vídeos de Instagram e TikTok. 
 
 Quando terminar, vai dizer onde ficou instalado. Pronto!
 
-### 4. Abrir o app
+#### 4. Abrir o app
 
 Vá para **Launchpad** (ícone de foguete, ou pressione **Fn + F4**) e procure por **Bruto**. Duplo-clique. Na primeira vez, o sistema vai avisar que é de desenvolvedor — clique **Abrir**. Pronto, o app abre numa janela.
 
@@ -178,7 +242,9 @@ irm https://raw.githubusercontent.com/Ideia-Business/bruto/main/install/instalar
 
 ### Desinstalar
 
-Apague a pasta do Bruto. Depois, o atalho e os dados (opcional):
+**Instalou pelo `.dmg` (macOS com chip Apple)?** Siga a seção [Desinstalar o app baixado](#desinstalar-o-app-baixado), lá em cima na parte do macOS.
+
+Instalou pelo terminal? Apague a pasta do Bruto. Depois, o atalho e os dados (opcional):
 
 | Sistema | Pasta | Atalho / Menu |
 |---------|-------|---|
@@ -198,7 +264,8 @@ Apagá-los é opcional — deletar a pasta `Bruto` já desinstala o programa.
 Rodar o instalador de novo é seguro — ele retoma de onde parou. Se travar ou der erro estranho:
 
 1. Abra o log do app. Ele fica em:
-   - macOS / Linux: `$TMPDIR/bruto-server.log` (normalmente `/var/folders/...` ou `/tmp/...`)
+   - macOS, app do `.dmg`: `~/.bruto/logs/servidor.log`
+   - macOS / Linux, instalação pelo terminal: `$TMPDIR/bruto-server.log` (normalmente `/var/folders/...` ou `/tmp/...`)
    - Windows: `%TEMP%\bruto-server.log`
    
    Para visualizar, abra o Finder/File Explorer e navegue para o caminho acima. Se a pasta estiver oculta, procure pelas instruções de "mostrar arquivos ocultos" do seu sistema.

@@ -13,8 +13,16 @@ const SEED: Array<{ name: string; slug: string; sortOrder: number }> = [
   { name: "Outros", slug: "outros", sortOrder: 9 },
 ];
 
-for (const cat of SEED) {
-  db.insert(categories).values(cat).onConflictDoNothing().run();
+/**
+ * Garante as categorias-base. Exportada para o boot do app empacotado
+ * (`instrumentation.ts`) chamar logo depois das migrações — o
+ * `npm run db:seed` chama a mesma função pelo entrypoint de CLI separado
+ * (`cli-seed.ts`; ver `cli-migrate.ts` para o porquê da separação).
+ * Idempotente (`onConflictDoNothing`).
+ */
+export function aplicarSeed(): void {
+  for (const cat of SEED) {
+    db.insert(categories).values(cat).onConflictDoNothing().run();
+  }
+  console.log(`✅ Seed concluído: ${SEED.length} categorias garantidas.`);
 }
-
-console.log(`✅ Seed concluído: ${SEED.length} categorias garantidas.`);

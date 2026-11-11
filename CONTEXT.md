@@ -64,3 +64,27 @@ App local quando a pessoa clica em "Ligar o app" na extensão. Aceita só dois c
 `ligar`, e nunca recebe caminho, argumento ou comando da mensagem. Sai logo depois de responder; o
 App local que ele liga continua de pé sozinho. Fica registrado por navegador pelo instalador.
 _Evite_: daemon, serviço, agente, helper
+
+**Pacote**:
+O `Bruto.app` autocontido que vem dentro do `.dmg`: carrega o próprio Node e o ffmpeg, e se
+instala arrastando para Aplicativos — sem terminal e sem Homebrew. Só para macOS com chip
+Apple (arm64).
+_Evite_: instalador executável, app baixado
+
+**Modo pacote** × **Modo clone**:
+De onde o App local sobe. Modo pacote: o servidor do `Bruto.app`, que se anuncia em
+`/api/versao` com `origem=pacote` e resolve as ferramentas por caminho absoluto dentro do
+pacote. Modo clone: instalação por `curl | bash` a partir de `~/Bruto`, `origem=clone`. A
+biblioteca (`~/.bruto`) é a mesma nos dois.
+_Evite_: instalado × desenvolvedor (a diferença é de onde o servidor sobe, não quem usa)
+
+**Ferramentas**:
+`~/.bruto/ferramentas`: onde vivem o yt-dlp, o Whisper e o Chromium que o próprio app instala
+sob demanda. Nunca vêm do sistema nem de gerenciador de pacotes da pessoa.
+_Evite_: dependências, cache
+
+**Primeiro uso**:
+A primeira vez que cada função roda, o app baixa o que ela precisa — o baixador de vídeos no
+primeiro vídeo, o Chromium no primeiro export; alguns minutos a mais, só dessa vez. O
+Whisper (~2 GB) só desce quando a pessoa pede em Configurações.
+_Evite_: instalação (as ferramentas vêm depois dela, sozinhas)

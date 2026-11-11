@@ -6,6 +6,7 @@
  */
 
 import { PipelineError } from "@/pipeline/types";
+import { alvoEnvUsuario } from "@/lib/env-usuario";
 import { extrairTexto, postJson } from "./http";
 import type { LlmCapability, LlmProvider, LlmRequest, LlmResult } from "../types";
 
@@ -43,7 +44,7 @@ export const googleProvider: LlmProvider = {
     if (!chaveDoAmbiente()) {
       return {
         ok: false as const,
-        reason: "defina GOOGLE_API_KEY (ou GEMINI_API_KEY) no seu .env",
+        reason: `defina GOOGLE_API_KEY (ou GEMINI_API_KEY) em ${alvoEnvUsuario()}`,
       };
     }
     return { ok: true as const };
