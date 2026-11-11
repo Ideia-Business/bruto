@@ -10,13 +10,16 @@
 #   testar  — depois de instalar o .dmg em /Applications: confere a
 #             quarentena e a assinatura (codesign), abre o app
 #             (open -a /Applications/Bruto.app) e COLETA o material da
-#             prova: o corpo BRUTO da resposta de /api/versao, a versão do
-#             Info.plist do app instalado e as últimas 20 linhas do log do
-#             servidor. NÃO decide resultado nenhum: não há análise nem
-#             veredito — o arquivo é para a orquestradora conferir. Grava o
-#             resumo em ~/Desktop/bruto-teste-<data>.txt. Exit 0 se
-#             conseguiu coletar; ≠ 0 só se não conseguiu nem coletar (o
-#             motivo fica no resumo).
+#             prova: o corpo BRUTO da resposta de /api/versao (SEM -f: uma
+#             resposta de erro do servidor, com status e corpo, também é
+#             evidência), o status HTTP, o código de saída do curl (erro de
+#             transporte), a versão do Info.plist do app instalado e as
+#             últimas 20 linhas do log do servidor. NÃO decide resultado
+#             nenhum: não há análise nem veredito — o arquivo é para a
+#             orquestradora conferir. Grava o resumo em
+#             ~/Desktop/bruto-teste-<data>.txt. Exit 0 se recebeu resposta
+#             (qualquer status); ≠ 0 só se não recebeu nenhuma (o motivo,
+#             com o código de saída do curl, fica no resumo).
 #
 # ESTE ROTEIRO É SOMENTE LEITURA (decisão do dono, 11/11/2026, depois de
 # três rodadas de revisão com achados de segurança):
@@ -83,12 +86,15 @@ Uso: bash roteiro-macbook-air.sh <subcomando>
       quarentena e informa o que a pessoa vai ver, verifica a assinatura
       (codesign), abre o app (open -a $APP_SISTEMA — a única ação além de
       ler) e COLETA o material da prova: o corpo BRUTO da resposta de
-      http://127.0.0.1:$PORTA/api/versao (sem análise nenhuma), a versão do
-      Info.plist do app instalado (PlistBuddy) e as últimas 20 linhas do log
+      http://127.0.0.1:$PORTA/api/versao (sem análise nenhuma e SEM -f:
+      resposta de erro do servidor também é evidência), o status HTTP, o
+      código de saída do curl (erro de transporte), a versão do Info.plist
+      do app instalado (PlistBuddy) e as últimas 20 linhas do log
       do servidor ($LOG_SERVIDOR). Este roteiro NÃO decide resultado: não há
       veredito — o resumo é para a orquestradora conferir. Sai com 0 se
-      conseguiu coletar; sai com ≠ 0 só se não conseguiu nem coletar (o
-      motivo fica no resumo).
+      recebeu resposta (qualquer status); sai com ≠ 0 só se não recebeu
+      nenhuma resposta (o motivo, com o código de saída do curl, fica no
+      resumo).
       Grava o resumo em $MESA/bruto-teste-$DATA.txt.
 
 Os subcomandos limpar e restaurar NÃO existem mais: o roteiro virou somente
@@ -194,6 +200,10 @@ EOF
   else
     nota "nada escutando na porta $PORTA"
   fi
+  nota "aviso: o servidor do Bruto continua rodando depois de ⌘Q (⌘Q fecha só a"
+  nota "janela); para movê-lo, a saída de lsof -nP -iTCP:$PORTA -sTCP:LISTEN"
+  nota "tem de estar vazia — passo \"Confirme que o Bruto parou\" do documento"
+  nota "docs/instalador/roteiro-macbook-air.md (passos 2 e 5)."
   nota ""
 
   nota "== No PATH (só informativo — NÃO são do Bruto e NÃO serão tocados) =="
@@ -276,20 +286,44 @@ testar() {
   fi
   rel "consultando http://127.0.0.1:$PORTA/api/versao…"
 
-  local corpo="" i=0
+  # Sem -f de propósito (achado da 7ª rodada): com -f, uma resposta HTTP 500
+  # com corpo explicando o erro virava falha do curl, o corpo era descartado
+  # e o relatório registrava "nenhuma resposta", perdendo a evidência. Cada
+  # tentativa coleta três coisas: o corpo, o status HTTP (-w '%{http_code}',
+  # sempre a última linha da saída) e o código de saída do curl (erro de
+  # transporte). O laço só insiste enquanto NINGUÉM atendeu (status 000):
+  # qualquer resposta — 200, 500, o que for — é material da prova.
+  local bruto="" corpo="" status="000" rc_curl=0 recebi=0 i=0
   while [ "$i" -lt "$ESPERA" ]; do
-    corpo="$(curl -fsS --max-time 3 "http://127.0.0.1:$PORTA/api/versao" 2>/dev/null || true)"
-    [ -n "$corpo" ] && break
+    bruto=""
+    rc_curl=0
+    bruto="$(curl -sS --max-time 3 -w '\n%{http_code}' "http://127.0.0.1:$PORTA/api/versao" 2>/dev/null)" || rc_curl=$?
+    status="$(printf '%s\n' "$bruto" | tail -n 1)"
+    if [ -n "$status" ] && [ "$status" != "000" ]; then
+      recebi=1
+      break
+    fi
     sleep 1
     i=$((i + 1))
   done
+  corpo="$(printf '%s\n' "$bruto" | sed -e '$d')"
 
   rel ""
-  rel "== Corpo bruto recebido de /api/versao (exatamente o que veio; sem análise) =="
-  if [ -n "$corpo" ]; then
-    rel "$corpo"
+  rel "== Resposta de /api/versao (corpo bruto, status HTTP e código do curl; sem análise) =="
+  if [ "$recebi" -eq 1 ]; then
+    rel "status HTTP: $status"
+    rel "código de saída do curl: $rc_curl (0 = resposta recebida; outro valor = erro de transporte)"
+    if [ -n "$corpo" ]; then
+      rel "corpo bruto (exatamente o que veio, sem análise nenhuma):"
+      rel "$corpo"
+    else
+      rel "corpo bruto: (vazio — o servidor respondeu sem corpo)"
+    fi
   else
-    rel "(nenhuma resposta de http://127.0.0.1:$PORTA/api/versao em $ESPERA s)"
+    rel "nenhuma resposta de http://127.0.0.1:$PORTA/api/versao em $ESPERA s"
+    rel "status HTTP: $status (000 = nenhuma resposta chegou)"
+    rel "código de saída do curl na última tentativa: $rc_curl (erro de transporte:"
+    rel "  7 = conexão recusada, 28 = tempo esgotado, 6 = não resolve o nome…)"
   fi
 
   rel ""
@@ -316,7 +350,7 @@ testar() {
   rel "Mande este arquivo para a orquestradora conferir — quem decide o resultado"
   rel "é ela, não este roteiro."
 
-  if [ -z "$corpo" ]; then
+  if [ "$recebi" -ne 1 ]; then
     rel ""
     rel "✗ não consegui coletar: nenhuma resposta de http://127.0.0.1:$PORTA/api/versao em $ESPERA s"
     rel "  (o fim do log acima pode explicar o motivo)."

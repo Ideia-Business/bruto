@@ -35,6 +35,20 @@
  *   existe, não dá erro nenhum: move a origem PARA DENTRO do destino, em
  *   silêncio (achado da 4ª rodada do Codex sobre o rollback). O aviso "se o
  *   mv disser que o destino existe, PARE" nunca dispararia.
+ *
+ * Cobertura (briefing da rodada 7):
+ * - (f) `testar` com `curl` falso que responde HTTP 500 + corpo → o resumo
+ *   contém o corpo E o status `500` (curl SEM -f: resposta de erro do
+ *   servidor também é evidência — com -f o corpo era descartado e o
+ *   relatório registrava "nenhuma resposta"); com falha de transporte
+ *   (exit 7) → o resumo contém o código de saída do curl.
+ * - (g) no DOCUMENTO, toda seção que contém `mv` é precedida (na mesma
+ *   seção) pelo `lsof -nP -iTCP:3000 -sTCP:LISTEN` e pela instrução de
+ *   reiniciar o Mac — porque ⌘Q fecha só a janela e o servidor iniciado
+ *   com nohup continua vivo, podendo escrever na biblioteca enquanto ela
+ *   é movida (achado da 7ª rodada).
+ * - (h) o DOCUMENTO não contém frase afirmando que ⌘Q encerra o servidor;
+ *   toda menção a ⌘Q vem acompanhada do aviso de que fecha só a janela.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -150,12 +164,22 @@ async function montar(): Promise<Cenario> {
   );
   // open falso: o testar JAMAIS abre nada de verdade na máquina do teste.
   escreverExecutavel(path.join(bin, "open"), "#!/bin/bash\nexit 0\n");
-  // curl falso: responde na hora o que o teste puser em FALSO_CORPO (vazio =
-  // "sem resposta" — o loop de espera do roteiro honra BRUTO_ROTEIRO_ESPERA,
+  // curl falso: responde na hora o que o teste puser em FALSO_CORPO +
+  // FALSO_STATUS (default 200), imitando `curl -w '\n%{http_code}'` — a
+  // última linha da saída é SEMPRE o status. FALSO_RC ≠ 0 emula falha de
+  // transporte (7 = conexão recusada): sem corpo e status 000, como o curl
+  // de verdade (o loop de espera do roteiro honra BRUTO_ROTEIRO_ESPERA,
   // então o caso "não coletou" é rápido e determinístico).
   escreverExecutavel(
     path.join(bin, "curl"),
-    '#!/bin/bash\nprintf \'%s\\n\' "${FALSO_CORPO:-}"\nexit 0\n',
+    [
+      "#!/bin/bash",
+      'rc="${FALSO_RC:-0}"',
+      'if [ "$rc" -ne 0 ]; then printf \'000\\n\'; exit "$rc"; fi',
+      'printf \'%s\\n%s\\n\' "${FALSO_CORPO:-}" "${FALSO_STATUS:-200}"',
+      "exit 0",
+      "",
+    ].join("\n"),
   );
 
   // Info.plist REAL no app falso: o testar imprime a versão lida com o
@@ -351,6 +375,14 @@ test("(b) listar não altera nada (estrutura e mtime dos arquivos) e gera o rela
       "deveria informar o comando do que escuta na porta",
     );
     assert.ok(conteudo.includes("yt-dlp"), "deveria trazer o informativo do PATH");
+    assert.ok(
+      conteudo.includes("o servidor do Bruto continua rodando depois de ⌘Q"),
+      "a seção da porta deveria avisar que o servidor do Bruto sobrevive a ⌘Q",
+    );
+    assert.ok(
+      conteudo.includes("tem de estar vazia"),
+      "a seção da porta deveria dizer que a saída do lsof tem de estar vazia para mover",
+    );
     assert.doesNotMatch(conteudo, /provad/iu, "o listar não fala de provado nem julgado");
 
     // Sem o arquivo de listagem (a única escrita permitida), o cenário é
@@ -393,7 +425,10 @@ test("(c) testar coleta e imprime o corpo bruto, a versão do Info.plist e o fim
 test("(c) testar sem resposta na espera → exit ≠ 0 com o motivo (o que deu coletar segue no resumo)", async () => {
   const c = await montar();
   try {
-    const r = await rodar(c, ["testar"], "", { FALSO_CORPO: "", BRUTO_ROTEIRO_ESPERA: "2" });
+    // FALSO_RC=7 emula "conexão recusada" em TODA tentativa — o servidor
+    // nunca atende na janela de espera (o curl de verdade também sai com 7
+    // e, com -w, imprime status 000).
+    const r = await rodar(c, ["testar"], "", { FALSO_RC: "7", BRUTO_ROTEIRO_ESPERA: "2" });
     assert.notEqual(r.rc, 0, "sem resposta não houve coleta — exit ≠ 0");
     assert.match(r.out, /não consegui coletar/iu);
 
@@ -482,6 +517,98 @@ test("(e) toda linha com `mv` no documento começa com a guarda `[ -e ` e conté
     assert.ok(
       linha.includes('echo "PARE:'),
       `linha ${numero}: mv sem o aviso "PARE: …" quando o destino já existe: ${linha}`,
+    );
+  }
+});
+
+// --- (f) a resposta de ERRO também é evidência (briefing da rodada 7) -------------
+
+test("(f) testar registra corpo E status de uma resposta 500, e o código do curl numa falha de transporte", async () => {
+  const c = await montar();
+  try {
+    // O defeito: com `curl -f`, uma resposta HTTP 500 com corpo explicando o
+    // erro virava falha do curl, o corpo era descartado e o relatório
+    // registrava "nenhuma resposta" — perdendo a evidência que a
+    // orquestradora precisa conferir.
+    const corpo = '{"erro":"biblioteca em migração","proximo":"1 min"}';
+    const r500 = await rodar(c, ["testar"], "", { FALSO_CORPO: corpo, FALSO_STATUS: "500" });
+    assert.equal(r500.rc, 0, "500 com corpo É resposta: houve coleta — exit 0");
+    const resumo500 = fs.readFileSync(caminhoDoResumo(r500.out), "utf8");
+    assert.ok(resumo500.includes(corpo), "o resumo deveria trazer o corpo do erro 500");
+    assert.match(resumo500, /status HTTP: 500/u, "o resumo deveria trazer o status HTTP 500");
+
+    // Falha de transporte em toda tentativa: sem coleta (exit ≠ 0), mas o
+    // código de saída do curl fica registrado no resumo, não engolido.
+    const rFalha = await rodar(c, ["testar"], "", { FALSO_RC: "7", BRUTO_ROTEIRO_ESPERA: "2" });
+    assert.notEqual(rFalha.rc, 0, "sem resposta nenhuma não houve coleta — exit ≠ 0");
+    const resumoFalha = fs.readFileSync(caminhoDoResumo(rFalha.out), "utf8");
+    assert.match(
+      resumoFalha,
+      /código de saída do curl[^\n]*7/u,
+      "o resumo deveria registrar o código de saída do curl (7) na falha de transporte",
+    );
+  } finally {
+    c.limpar();
+  }
+});
+
+// --- (g) seção com `mv` só depois do lsof vazio e da ordem de reiniciar ------------
+
+test("(g) toda seção do documento com `mv` traz ANTES dos comandos o lsof da porta 3000 e a instrução de reiniciar o Mac", () => {
+  const conteudo = fs.readFileSync(DOCUMENTO, "utf8");
+  const secoes = conteudo.split(/^## /mu).slice(1);
+  let comMv = 0;
+  for (const secao of secoes) {
+    const linhas = secao.split("\n");
+    const titulo = linhas[0];
+    const primeiroMv = linhas.findIndex((linha) => linha.includes("mv "));
+    if (primeiroMv === -1) continue;
+    comMv += 1;
+    const antes = linhas.slice(0, primeiroMv).join("\n");
+    // O defeito: o documento mandava mover a biblioteca com o servidor do
+    // Bruto possivelmente ainda vivo — ⌘Q fecha só a janela e o servidor
+    // iniciado com nohup continua escrevendo no que está sendo movido.
+    assert.ok(
+      antes.includes("lsof -nP -iTCP:3000 -sTCP:LISTEN"),
+      `seção "${titulo}": falta o lsof -nP -iTCP:3000 -sTCP:LISTEN ANTES do primeiro mv`,
+    );
+    assert.match(
+      antes,
+      /[Rr]einicie o Mac/,
+      `seção "${titulo}": falta a instrução de reiniciar o Mac ANTES do primeiro mv`,
+    );
+  }
+  assert.ok(comMv >= 2, `deveria haver ao menos 2 seções com mv (passos 2 e 5); há ${comMv}`);
+});
+
+// --- (h) o documento nunca afirma que ⌘Q encerra o servidor ------------------------
+
+test("(h) o documento não afirma que ⌘Q encerra o servidor; toda menção avisa que fecha só a janela", () => {
+  const conteudo = fs.readFileSync(DOCUMENTO, "utf8");
+  const linhas = conteudo.split("\n");
+  const mencoes = linhas
+    .map((linha, i) => ({ linha, i }))
+    .filter(({ linha }) => /⌘Q|Cmd\+Q/u.test(linha));
+  assert.ok(mencoes.length >= 3, `deveria haver menções a ⌘Q (passos 1, 2 e 5); há ${mencoes.length}`);
+
+  // Frases que dizem (ou implicam) que ⌘Q encerra o Bruto. A verificação
+  // olha a linha da menção E a seguinte, porque a frase pode quebrar de
+  // linha no meio (daí os \s+ nos padrões: indentação de continuação não
+  // pode mascarar nem forjar uma frase). "termina" e "mata" pedem fronteira
+  // de palavra: sem ela, "Terminal" e "formatar" disparariam falso positivo.
+  const encerra =
+    /encerra|encerrar|fecha\s+o\s+app|fecha\s+o\s+Bruto|desliga|desligar|\btermina(?:r)?\b|\bmata\b|saia\s+com|sair\s+com/iu;
+  for (const { linha, i } of mencoes) {
+    const janela = `${linha} ${linhas[i + 1] ?? ""}`;
+    assert.doesNotMatch(
+      janela,
+      encerra,
+      `linha ${i + 1}: frase afirmando que ⌘Q encerra o servidor do Bruto: ${linha}`,
+    );
+    assert.match(
+      janela,
+      /só\s+a\s+janela/iu,
+      `linha ${i + 1}: menção a ⌘Q sem o aviso de que fecha só a janela: ${linha}`,
     );
   }
 });

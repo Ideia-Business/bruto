@@ -14,7 +14,9 @@ usar. Duas máquinas entram na história:
 > Ele tem só dois subcomandos: `listar` (inventário do que existe) e `testar` (coleta o
 > material da prova e **não julga nada** — quem confere é a orquestradora). **Limpar a
 > máquina e desfazer o teste são passos seus, à mão, escritos neste documento** (passos
-> 2 e 5): um comando por linha, conferindo o resultado de cada um com `ls -ld`. Os
+> 2 e 5): primeiro o "Confirme que o Bruto parou" de cada seção (⌘Q fecha
+> só a janela — o servidor continua rodando), depois um comando por linha,
+> conferindo o resultado de cada um com `ls -ld`. Os
 > antigos subcomandos `limpar` e `restaurar` não existem mais no script.
 
 Para levar o roteiro ao Air: AirDrop do arquivo `scripts/instalador-macos/roteiro-macbook-air.sh`
@@ -24,12 +26,12 @@ sem instalar nada.
 ## 1. No MACBOOK AIR — fechar o Bruto, listar e mandar o arquivo
 
 1. Feche o Bruto e o que possa estar rodando dele:
-   - **Bruto aberto?** Clique nele e saia com **Cmd+Q** (fechar só a janela não fecha
-     o app).
+   - **Bruto aberto?** Feche a janela com **Cmd+Q** — atenção: isso fecha só a
+     janela; o servidor do Bruto continua rodando em segundo plano.
    - **Rodou o `serve.sh` do clone noutra janela do Terminal?** Feche **aquela** janela
      (**Cmd+W**) ou pare o comando com **Ctrl+C** nela.
    - **Não souber o que está aberto?** **Reinicie o Mac** — é a forma mais simples de
-     garantir.
+     garantir (e o servidor do Bruto não volta sozinho depois de reiniciar).
 2. Abra o **Terminal** (**Command + Espaço**, digite `Terminal`, Enter) e rode — o
    `uname -m` tem de dar `arm64` (o `.dmg` do Bruto é Apple Silicon; der outra
    coisa, mande para a orquestradora antes de seguir):
@@ -43,7 +45,9 @@ sem instalar nada.
    (`~/Applications` e `/Applications`), os dados (`~/.bruto` com tamanho e subpastas de
    1º nível — nunca o conteúdo), os manifestos do host nativo
    (`com.ideiabusiness.bruto.json` de Chrome/Chromium/Edge/Brave), o que escuta na
-   porta 3000 (**PID e comando, sem julgar se é do Bruto**) e se há
+   porta 3000 (**PID e comando, sem julgar se é do Bruto** — com o aviso de que o
+   servidor do Bruto continua rodando depois de fechar a janela, e de que a saída do
+   `lsof` tem de estar vazia antes de mover qualquer coisa) e se há
    `yt-dlp`/`ffmpeg`/`node`/`uv` no PATH (só informativo — **não** são do Bruto e
    **não** serão tocados).
 4. Mande o arquivo `~/Desktop/bruto-listagem-<data>.txt` para a orquestradora
@@ -58,6 +62,21 @@ uma linha; depois de cada um, confira o resultado com `ls -ld` no caminho de des
 Cada `mv` vem embrulhado numa guarda: se o destino já existe, o comando imprime uma
 linha `PARE` e não move nada — um `mv` simples, com destino pasta que já existe, não
 daria erro nenhum: moveria a origem PARA DENTRO do destino, em silêncio.
+
+### Confirme que o Bruto parou (obrigatório antes do primeiro comando)
+
+`⌘Q` fecha só a janela: o servidor do Bruto continua rodando em segundo plano
+e pode estar escrevendo na biblioteca que você vai mover agora. Feche a janela
+do Bruto com `⌘Q` (isso fecha só a janela) e a janela do Terminal se o
+`serve.sh` estiver rodando; depois confirme de verdade, com a saída **vazia**:
+
+```bash
+lsof -nP -iTCP:3000 -sTCP:LISTEN
+```
+
+A saída tem de ser **vazia**. Se não for, **reinicie o Mac** — o servidor do
+Bruto não volta sozinho depois de reiniciar — e rode o `lsof` de novo; só
+avançe para os comandos de mover com a saída vazia.
 
 ```bash
 [ -e ~/Bruto-antes-do-teste ] && echo "PARE: ~/Bruto-antes-do-teste já existe" || mv ~/Bruto ~/Bruto-antes-do-teste
@@ -113,18 +132,32 @@ quarentena e pularia justamente a parte mais assustadora para quem nunca usou te
    O `testar` confere o atributo de quarentena e diz o que a pessoa vai ver, verifica a
    assinatura (`codesign`), abre o app (`open -a /Applications/Bruto.app` — a única
    ação dele além de ler) e **coleta**: o **corpo bruto** da resposta de `/api/versao`
-   (exatamente o que veio, sem análise nenhuma), a versão do `Info.plist` do app
-   instalado (`PlistBuddy`) e as últimas 20 linhas de `~/.bruto/logs/servidor.log`.
+   (exatamente o que veio, sem análise nenhuma — e **sem `-f`**: uma resposta de erro
+   do servidor, com status e corpo, também é evidência), o **status HTTP**, o **código
+   de saída do curl** (erro de transporte), a versão do `Info.plist` do app instalado
+   (`PlistBuddy`) e as últimas 20 linhas de `~/.bruto/logs/servidor.log`.
    **Ele não decide resultado** — não existe "aprovado" nem "reprovado" no roteiro; ele
    termina mandando o arquivo para a orquestradora conferir. Sai com exit 0 quando
-   consegue coletar; sai com exit ≠ 0 só quando não consegue coletar nem o corpo (o
-   motivo fica no próprio resumo).
+   recebe resposta (qualquer status); sai com exit ≠ 0 só quando não recebe nenhuma
+   resposta (o motivo, com o código de saída do curl, fica no próprio resumo).
 7. Mande `~/Desktop/bruto-teste-<data>.txt` para a orquestradora.
 
-## 5. No MACBOOK AIR — desfazer o teste (à mão, com o Bruto fechado)
+## 5. No MACBOOK AIR — desfazer o teste (à mão, com o servidor parado)
 
-Primeiro feche o Bruto como no passo 1 (Cmd+Q; feche a janela do Terminal se o
-`serve.sh` estiver rodando; na dúvida, reinicie o Mac). Depois, um comando por linha,
+### Confirme que o Bruto parou (obrigatório antes do primeiro comando)
+
+Feche a janela do Bruto com `⌘Q` — mas atenção: `⌘Q` fecha só a janela e o
+servidor do Bruto continua rodando em segundo plano (feche também a janela do
+Terminal se o `serve.sh` estiver rodando). Confirme de verdade, com a saída
+**vazia**:
+
+```bash
+lsof -nP -iTCP:3000 -sTCP:LISTEN
+```
+
+A saída tem de ser **vazia**. Se não for, **reinicie o Mac** — o servidor do
+Bruto não volta sozinho depois de reiniciar — e rode o `lsof` de novo; só
+avançe para os comandos abaixo com a saída vazia. Depois, um comando por linha,
 conferindo o resultado de cada um com `ls -ld`:
 
 1. Arraste `/Applications/Bruto.app` para o **Lixo** (pelo Finder).
