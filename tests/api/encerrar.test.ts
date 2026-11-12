@@ -5,6 +5,7 @@
  * com exit/agendar FALSOS — o process.exit real nunca roda no teste.
  *
  *   403 {ok:false, code:"origem-recusada"}   outro site (CSRF de localhost)
+ *   403 Host que não é de loopback           IP da rede local / DNS rebinding
  *   415 Content-Type que não application/json (corpo JSON é obrigatório)
  *   409 {ok:false, code:"processamento-em-andamento", ativos:n}
  *                                           job running/queued sem {"confirmar":true}
@@ -21,7 +22,8 @@ const RAIZ = process.cwd();
 
 let dataRoot: string;
 let caminhoPid: string;
-let POST: typeof import("@/app/api/encerrar/route").POST;
+let criarPostEncerrar: typeof import("@/app/api/encerrar/factory").criarPostEncerrar;
+let POST: ReturnType<typeof import("@/app/api/encerrar/factory").criarPostEncerrar>;
 let db: typeof import("@/db/client").db;
 let jobsTable: typeof import("@/db/schema").jobs;
 
@@ -34,7 +36,11 @@ before(async () => {
     stdio: "pipe",
   });
 
+  // A rota real (deps de produção) e a fábrica para os testes que injetam as
+  // deps perigosas — `criarPostEncerrar(t.deps)`. Imports dinâmicos como os
+  // demais: os módicos leem BRUTO_DATA_ROOT no import.
   ({ POST } = await import("@/app/api/encerrar/route"));
+  ({ criarPostEncerrar } = await import("@/app/api/encerrar/factory"));
   ({ db } = await import("@/db/client"));
   ({ jobs: jobsTable } = await import("@/db/schema"));
 });
@@ -47,6 +53,8 @@ interface OpcoesRequisicao {
   /** undefined = sem o cabeçalho. */
   origin?: string;
   secFetchSite?: string;
+  /** Header Host — default `127.0.0.1:3000`, o da janela real do app. */
+  host?: string;
   contentType?: string;
   corpo?: string;
 }
@@ -55,6 +63,7 @@ function requisicao(opts: OpcoesRequisicao = {}): Request {
   const headers: Record<string, string> = {};
   if (opts.origin !== undefined) headers.origin = opts.origin;
   if (opts.secFetchSite !== undefined) headers["sec-fetch-site"] = opts.secFetchSite;
+  headers.host = opts.host ?? "127.0.0.1:3000";
   headers["content-type"] = opts.contentType ?? "application/json";
   return new Request("http://127.0.0.1:3000/api/encerrar", {
     method: "POST",
@@ -123,6 +132,40 @@ describe("guarda de origem (CSRF de localhost) — 403 {ok:false, code:'origem-r
   });
 });
 
+describe("DNS rebinding — same-origin com Host que não é de loopback → 403", () => {
+  // A cena do ataque: um domínio do atacante reaponta para 127.0.0.1. A página
+  // dele fala com este servidor como "same-origin" (é o IP dele, afinal) e o
+  // pedido chega com `Host: evil.example:3000`. O atalho same-origin sozinho
+  // aceitaria; o JSON de corpo não salvaria (same-origin não tem preflight).
+  // A resposta é 403 — não importa qual trava responda (Host ou origem).
+  test("Sec-Fetch-Site: same-origin + Host: evil.example:3000 → 403, nada agendado", async () => {
+    const t = depsSegurasParaTeste();
+    const res = await criarPostEncerrar(t.deps)(
+      requisicao({ secFetchSite: "same-origin", host: "evil.example:3000" }),
+    );
+    assert.equal(res.status, 403);
+    assert.equal(t.agendadas.length, 0);
+  });
+
+  test("o contrafato: same-origin + Host: 127.0.0.1:3000 → segue (202)", async () => {
+    const t = depsSegurasParaTeste();
+    const res = await criarPostEncerrar(t.deps)(
+      requisicao({ secFetchSite: "same-origin", host: "127.0.0.1:3000" }),
+    );
+    assert.equal(res.status, 202);
+    assert.equal(t.agendadas.length, 1);
+  });
+
+  test("same-origin + Host do IP da rede local → 403 (o vizinho de wifi não encerra)", async () => {
+    const t = depsSegurasParaTeste();
+    const res = await criarPostEncerrar(t.deps)(
+      requisicao({ secFetchSite: "same-origin", host: "192.168.0.10:3000" }),
+    );
+    assert.equal(res.status, 403);
+    assert.equal(t.agendadas.length, 0);
+  });
+});
+
 describe("corpo JSON obrigatório", () => {
   test("Content-Type text/plain → 415 (nem chega a contar jobs)", async () => {
     const res = await POST(
@@ -144,9 +187,9 @@ describe("jobs em andamento — 409 × 202", () => {
     semearJob("job-rodando", "running");
     semearJob("job-nativo", "queued");
     const t = depsSegurasParaTeste();
-    const res = await POST(requisicao({ secFetchSite: "same-origin", corpo: "{}" }), {
-      deps: t.deps,
-    });
+    const res = await criarPostEncerrar(t.deps)(
+      requisicao({ secFetchSite: "same-origin", corpo: "{}" }),
+    );
     assert.equal(res.status, 409);
     assert.deepEqual(await res.json(), {
       ok: false,
@@ -159,9 +202,9 @@ describe("jobs em andamento — 409 × 202", () => {
 
   test("mesmos jobs com {\"confirmar\":true} → 202 e agenda o desligamento", async () => {
     const t = depsSegurasParaTeste();
-    const res = await POST(requisicao({ secFetchSite: "same-origin", corpo: '{"confirmar":true}' }), {
-      deps: t.deps,
-    });
+    const res = await criarPostEncerrar(t.deps)(
+      requisicao({ secFetchSite: "same-origin", corpo: '{"confirmar":true}' }),
+    );
     assert.equal(res.status, 202);
     assert.deepEqual(await res.json(), { ok: true });
     assert.equal(t.agendadas.length, 1);
@@ -179,7 +222,7 @@ describe("202 e o desligamento agendado (deps falsas; exit real NUNCA roda)", ()
   test("sem job ativo: 202 {ok:true}; o disparo apaga servidor.pid quando ele é DESTE processo", async () => {
     fs.writeFileSync(caminhoPid, String(process.pid));
     const t = depsSegurasParaTeste();
-    const res = await POST(requisicao({ secFetchSite: "same-origin" }), { deps: t.deps });
+    const res = await criarPostEncerrar(t.deps)(requisicao({ secFetchSite: "same-origin" }));
     assert.equal(res.status, 202);
     assert.deepEqual(await res.json(), { ok: true });
     assert.equal(t.agendadas.length, 1);
@@ -191,7 +234,7 @@ describe("202 e o desligamento agendado (deps falsas; exit real NUNCA roda)", ()
   test("servidor.pid de OUTRO processo: o disparo encerra (exit 0) mas NÃO apaga o arquivo", async () => {
     fs.writeFileSync(caminhoPid, "999999");
     const t = depsSegurasParaTeste();
-    const res = await POST(requisicao({ origin: "http://127.0.0.1:3000" }), { deps: t.deps });
+    const res = await criarPostEncerrar(t.deps)(requisicao({ origin: "http://127.0.0.1:3000" }));
     assert.equal(res.status, 202);
     t.disparar();
     assert.deepEqual(t.exitados, [0]);
@@ -201,7 +244,7 @@ describe("202 e o desligamento agendado (deps falsas; exit real NUNCA roda)", ()
   test("sem servidor.pid nenhum: 202 e o disparo segue (exit 0) sem erro", async () => {
     fs.rmSync(caminhoPid, { force: true });
     const t = depsSegurasParaTeste();
-    const res = await POST(requisicao({ origin: "http://localhost:3000" }), { deps: t.deps });
+    const res = await criarPostEncerrar(t.deps)(requisicao({ origin: "http://localhost:3000" }));
     assert.equal(res.status, 202);
     t.disparar();
     assert.deepEqual(t.exitados, [0]);
@@ -218,9 +261,9 @@ describe("a porta do servidor decide a origem aceita", () => {
     process.env.PORT = "3999";
     try {
       const t = depsSegurasParaTeste();
-      const resOk = await POST(requisicao({ origin: "http://127.0.0.1:3999" }), { deps: t.deps });
+      const resOk = await criarPostEncerrar(t.deps)(requisicao({ origin: "http://127.0.0.1:3999" }));
       assert.equal(resOk.status, 202);
-      const resNok = await POST(requisicao({ origin: "http://127.0.0.1:3000" }), { deps: t.deps });
+      const resNok = await criarPostEncerrar(t.deps)(requisicao({ origin: "http://127.0.0.1:3000" }));
       assert.equal(resNok.status, 403);
     } finally {
       if (portaOriginal === undefined) delete process.env.PORT;

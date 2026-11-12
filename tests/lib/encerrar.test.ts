@@ -45,13 +45,21 @@ function cenario(overrides: { pidNoArquivo?: string | null; jobsAtivos?: number 
 }
 
 describe("origemRecusada — a trava de outro site (CSRF de localhost)", () => {
-  const casosRecusados: Array<[string, { origin: string | null; secFetchSite: string | null }]> = [
-    ["Origin de outro site", { origin: "https://site-mau.exemplo", secFetchSite: "cross-site" }],
-    ["Origin: null (sandbox/redirect)", { origin: "null", secFetchSite: "same-site" }],
-    ["sem Origin e Sec-Fetch-Site: cross-site", { origin: null, secFetchSite: "cross-site" }],
-    ["sem Origin e sem Sec-Fetch-Site (cliente genérico)", { origin: null, secFetchSite: null }],
-    ["Origin certo, porta errada", { origin: "http://127.0.0.1:9999", secFetchSite: null }],
-    ["Origin com https na própria porta", { origin: "https://127.0.0.1:3000", secFetchSite: null }],
+  const casosRecusados: Array<
+    [string, { origin: string | null; secFetchSite: string | null; host: string | null }]
+  > = [
+    ["Origin de outro site", { origin: "https://site-mau.exemplo", secFetchSite: "cross-site", host: "127.0.0.1:3000" }],
+    ["Origin: null (sandbox/redirect)", { origin: "null", secFetchSite: "same-site", host: "127.0.0.1:3000" }],
+    ["sem Origin e Sec-Fetch-Site: cross-site", { origin: null, secFetchSite: "cross-site", host: "127.0.0.1:3000" }],
+    ["sem Origin e sem Sec-Fetch-Site (cliente genérico)", { origin: null, secFetchSite: null, host: "127.0.0.1:3000" }],
+    ["Origin certo, porta errada", { origin: "http://127.0.0.1:9999", secFetchSite: null, host: "127.0.0.1:3000" }],
+    ["Origin com https na própria porta", { origin: "https://127.0.0.1:3000", secFetchSite: null, host: "127.0.0.1:3000" }],
+    [
+      "DNS rebinding: same-origin com Host de domínio de fora",
+      { origin: null, secFetchSite: "same-origin", host: "evil.example:3000" },
+    ],
+    ["same-origin sem Host nenhum", { origin: null, secFetchSite: "same-origin", host: null }],
+    ["same-origin com Host do IP da rede local", { origin: null, secFetchSite: "same-origin", host: "192.168.0.10:3000" }],
   ];
   for (const [nome, headers] of casosRecusados) {
     test(`recusa: ${nome}`, () => {
@@ -59,11 +67,14 @@ describe("origemRecusada — a trava de outro site (CSRF de localhost)", () => {
     });
   }
 
-  const casosAceitos: Array<[string, { origin: string | null; secFetchSite: string | null }, number | string]> = [
-    ["Sec-Fetch-Site: same-origin (a janela do próprio app)", { origin: null, secFetchSite: "same-origin" }, 3000],
-    ["Origin exato 127.0.0.1", { origin: "http://127.0.0.1:3000", secFetchSite: null }, 3000],
-    ["Origin exato localhost", { origin: "http://localhost:3000", secFetchSite: null }, 3000],
-    ["porta custom do servidor (BRUTO_PORT)", { origin: "http://127.0.0.1:3999", secFetchSite: null }, 3999],
+  const casosAceitos: Array<
+    [string, { origin: string | null; secFetchSite: string | null; host: string | null }, number | string]
+  > = [
+    ["Sec-Fetch-Site: same-origin + Host 127.0.0.1 (a janela do próprio app)", { origin: null, secFetchSite: "same-origin", host: "127.0.0.1:3000" }, 3000],
+    ["Sec-Fetch-Site: same-origin + Host localhost", { origin: null, secFetchSite: "same-origin", host: "localhost:3000" }, 3000],
+    ["Origin exato 127.0.0.1", { origin: "http://127.0.0.1:3000", secFetchSite: null, host: "127.0.0.1:3000" }, 3000],
+    ["Origin exato localhost", { origin: "http://localhost:3000", secFetchSite: null, host: "localhost:3000" }, 3000],
+    ["porta custom do servidor (BRUTO_PORT)", { origin: "http://127.0.0.1:3999", secFetchSite: null, host: "127.0.0.1:3999" }, 3999],
   ];
   for (const [nome, headers, porta] of casosAceitos) {
     test(`aceita: ${nome}`, () => {
@@ -72,7 +83,10 @@ describe("origemRecusada — a trava de outro site (CSRF de localhost)", () => {
   }
 
   test("mesma porta certa não vale para porta diferente da do servidor", () => {
-    assert.equal(origemRecusada({ origin: "http://127.0.0.1:3000", secFetchSite: null }, 3999), true);
+    assert.equal(
+      origemRecusada({ origin: "http://127.0.0.1:3000", secFetchSite: null, host: "127.0.0.1:3000" }, 3999),
+      true,
+    );
   });
 });
 

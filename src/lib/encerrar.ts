@@ -25,6 +25,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { hostEhLoopback } from "@/lib/endpoint-local";
 import { garantirLimpezaDeFilhosNoFim } from "@/pipeline/lib/cancelamento";
 import { DATA_ROOT } from "@/pipeline/lib/paths";
 
@@ -46,13 +47,23 @@ export function origensDoServidor(porta: number | string): string[] {
  * `Origin` de outro site, `Origin: null`, `Origin` ausente com
  * `Sec-Fetch-Site: cross-site`, ou os dois ausentes — é recusado. A lista é
  * FIXA (loopback + a porta do servidor), nunca derivada do `Host` do pedido:
- * comparar com o `Host` abriria exactly a porta do DNS rebinding.
+ * comparar com o `Host` abriria exatamente a porta do DNS rebinding.
+ *
+ * O atalho `same-origin` EXIGE Host de loopback (`127.0.0.1:<porta>`,
+ * `localhost:<porta>`): num rebinding, o domínio do atacante resolve para
+ * 127.0.0.1 e a página dele fala com este servidor como same-origin — com
+ * `Host: <domínio-do-atacante>`. `Sec-Fetch-Site` sozinho não distingue a
+ * janela do app da página do atacante; o `Host` distingue. E o corpo JSON
+ * obrigatório não salvaria: same-origin não tem preflight. A rota ainda chama
+ * `recusarSeNaoForLocal` ANTES de tudo (segunda camada, a mesma trava das
+ * rotas `/api/llm*`); esta checagem aqui é a camada da própria decisão de
+ * origem — se uma das duas faltar, a outra barra.
  */
 export function origemRecusada(
-  headers: { origin: string | null; secFetchSite: string | null },
+  headers: { origin: string | null; secFetchSite: string | null; host: string | null },
   porta: number | string,
 ): boolean {
-  if (headers.secFetchSite === "same-origin") return false;
+  if (headers.secFetchSite === "same-origin" && hostEhLoopback(headers.host)) return false;
   if (headers.origin !== null && origensDoServidor(porta).includes(headers.origin)) return false;
   return true;
 }
