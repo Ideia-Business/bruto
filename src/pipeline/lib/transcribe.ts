@@ -599,7 +599,7 @@ export const SEM_BACKEND =
 /**
  * A mensagem certa para o modo em que o app roda: no pacote não existe
  * "rodar o instalador de novo" — o Whisper se instala sob pedido na tela de
- * Configurações (com aviso de ~2 GB), e é isso que a mensagem diz.
+ * Configurações (com aviso de ~3 GB), e é isso que a mensagem diz.
  *
  * `whisperPedido` (a opção "Forçar transcrição por IA" estava marcada): as
  * legendas NEM foram consultadas — a mensagem não pode afirmar que faltou
@@ -613,14 +613,14 @@ export function mensagemSemBackend(whisperPedido = false): string {
       return (
         "A transcrição por IA (Whisper) foi pedida e não está instalada. " +
         "Abra as Configurações e toque em “Instalar transcrição local” " +
-        "(cerca de 2 GB, só na primeira vez) — ou desmarque a opção " +
+        "(cerca de 3 GB, só na primeira vez) — ou desmarque a opção " +
         "“Forçar transcrição por IA (Whisper)” para usar a legenda do vídeo."
       );
     }
     return (
       "Vídeo sem legenda e a transcrição local (Whisper) não está instalada. " +
       "Abra as Configurações e toque em “Instalar transcrição local” " +
-      "(cerca de 2 GB, só na primeira vez)."
+      "(cerca de 3 GB, só na primeira vez)."
     );
   }
   if (whisperPedido) {

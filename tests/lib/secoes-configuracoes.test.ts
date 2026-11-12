@@ -54,8 +54,8 @@ describe("secoesDasConfiguracoes", () => {
     const combinacoes: Array<Parameters<typeof secoesDasConfiguracoes>[0]> = [
       { suportaPasta: true, whisper: null },
       { suportaPasta: false, whisper: null },
-      { suportaPasta: true, whisper: { suportado: true, instalado: false } },
-      { suportaPasta: false, whisper: { suportado: false, instalado: false } },
+      { suportaPasta: true, whisper: { suportado: true, instalado: false, venvInstalado: false } },
+      { suportaPasta: false, whisper: { suportado: false, instalado: false, venvInstalado: false } },
     ];
     for (const entrada of combinacoes) {
       assert.equal(secoesDasConfiguracoes(entrada).encerrar, true);

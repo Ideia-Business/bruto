@@ -7,7 +7,7 @@
  * pula as legendas e, sem backend instalado, mostrava "Vídeo sem legenda…" —
  * FALSO, a legenda nem foi consultada. A mensagem nova diz que a transcrição
  * local foi PEDIDA e não está instalada, e oferece os DOIS caminhos: instalar
- * (no pacote: Configurações → "Instalar transcrição local", ~2 GB; no clone: o
+ * (no pacote: Configurações → "Instalar transcrição local", ~3 GB; no clone: o
  * texto de instalação atual) OU desmarcar a opção para usar a legenda do vídeo.
  *
  * Sem forçar (legenda consultada e não veio), a mensagem atual continua.
@@ -40,10 +40,10 @@ describe("mensagemSemBackend — Whisper pedido (forçado)", () => {
     assert.match(msg, /transcri/i);
     assert.match(msg, /pedida|pedido|marcad/i);
     assert.ok(msg.includes("não está instalada"));
-    // Caminho 1 — instalar (o do pacote): Configurações → Instalar transcrição local (~2 GB).
+    // Caminho 1 — instalar (o do pacote): Configurações → Instalar transcrição local (~3 GB).
     assert.ok(msg.includes("Configurações"));
     assert.ok(msg.includes("Instalar transcrição local"));
-    assert.ok(msg.includes("2 GB"));
+    assert.ok(msg.includes("3 GB"));
     // Caminho 2 — desmarcar a opção para usar a legenda do vídeo.
     assert.ok(msg.toLowerCase().includes("desmarque"));
     assert.ok(msg.includes("legenda do vídeo"));
@@ -72,7 +72,7 @@ describe("mensagemSemBackend — sem forçar (mensagem atual intacta)", () => {
       `mensagem atual do pacote mudou: ${msg}`,
     );
     assert.ok(msg.includes("Instalar transcrição local"));
-    assert.ok(msg.includes("2 GB"));
+    assert.ok(msg.includes("3 GB"));
   });
 
   test("clone: SEM_BACKEND exato, começando por 'Vídeo sem legenda'", () => {
