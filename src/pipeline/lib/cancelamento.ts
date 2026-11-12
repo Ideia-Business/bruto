@@ -283,6 +283,29 @@ function esperarSairem(vivos: Set<ChildProcess>, prazoMs: number): Promise<void>
   });
 }
 
+/** Sonda `kill(-pgid, 0)`: true se o grupo ainda tem algum membro (EPERM conta). */
+function grupoExiste(pgid: number): boolean {
+  if (!(pgid > 0)) return false;
+  try {
+    process.kill(-pgid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** Espera TODOS os grupos sumirem de verdade (ESRCH na sonda) ou o prazo. */
+async function esperarGruposSumirem(pgids: number[], prazoMs: number): Promise<void> {
+  if (pgids.length === 0) return;
+  const inicio = Date.now();
+  while (pgids.some((pgid) => grupoExiste(pgid))) {
+    if (Date.now() - inicio > prazoMs) {
+      return; // teto: seguir o desligamento vale mais que esperar o impossível
+    }
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
+
 /**
  * Encerra TODO filho registrado com o event loop VIVO — o caminho do botão
  * "Encerrar o Bruto" (`encerrarAgora`), não o do `exit`.
@@ -294,6 +317,16 @@ function esperarSairem(vivos: Set<ChildProcess>, prazoMs: number): Promise<void>
  * sair: SIGTERM no GRUPO de cada filho, espera até o grace (ou todos
  * saírem), SIGKILL no grupo de quem sobrou, e resolve quando todos saíram —
  * ou no teto (`graceMs + TETO_APOS_SIGKILL_MS`), sem pendurar.
+ *
+ * A escalada mira o GRUPO, não o líder [59a9cf6e]: os PGIDs alvo (o pid de
+ * cada filho, líder do próprio grupo por `FILHO_EM_GRUPO_PROPRIO`) são
+ * guardados NO COMEÇO da operação — depois do grace o SIGKILL vai a CADA
+ * grupo guardado, sem depender do evento `close` de líder nenhum. Medir
+ * "sobrou" pelo `close` do filho deixava passar o neto que ignora SIGTERM:
+ * o filho saía, o `close` esvaziava `vivos`, o SIGKILL nunca era mandado, o
+ * registro global já estava limpo — e o neto sobrevivia ao "Encerrar o
+ * Bruto". Depois do SIGKILL, uma sonda barata (`kill(-pgid, 0)` até ESRCH,
+ * com o teto de `TETO_APOS_SIGKILL_MS`) espera o grupo sumir DE VERDADE.
  *
  * O lote é tirado do registro na hora (chamadas a mais são no-op); filho que
  * nascer durante a espera morre NO PRÓPRIO registro — a marca de
@@ -308,17 +341,44 @@ export async function encerrarFilhosRegistrados(graceMs: number = GRACE_SIGKILL_
   filhosConhecidos.clear();
   if (filhos.length === 0) return;
 
-  // `close` = processo saiu E foi reaped: o PID sumiu de verdade.
+  // `close` = processo saiu E foi reaped: o PID do líder sumiu de verdade.
   const vivos = new Set<ChildProcess>(filhos);
   for (const filho of filhos) {
     filho.once("close", () => vivos.delete(filho));
   }
 
+  // PGID de cada filho, guardado ANTES de qualquer sinal: no POSIX quem
+  // spawnou usou `detached`, então o pid do filho É o pgid do grupo dele
+  // (filho + netos). No Windows não existe grupo — lá o alvo segue sendo o
+  // líder, como `sinalNoGrupoDoFilho` já faz.
+  // PGID de cada filho, guardado ANTES de qualquer sinal: no POSIX quem
+  // spawnou usou `detached`, então o pid do filho É o pgid do grupo dele
+  // (filho + netos). No Windows não existe grupo — lá o alvo segue sendo o
+  // líder, como `sinalNoGrupoDoFilho` já faz.
+  const pgids =
+    process.platform === "win32"
+      ? []
+      : filhos
+          .map((filho) => filho.pid)
+          .filter((pid): pid is number => pid !== undefined && pid > 0);
+
   for (const filho of vivos) sinalNoGrupoDoFilho(filho, "SIGTERM");
   await esperarSairem(vivos, graceMs);
 
+  // SIGKILL a CADA grupo guardado — sem depender do `close` de líder nenhum
+  // (grupo já sumido é ESRCH: "nada a fazer" não é erro).
+  for (const pgid of pgids) {
+    try {
+      process.kill(-pgid, "SIGKILL");
+    } catch {
+      /* grupo já não existe — nada a fazer */
+    }
+  }
   for (const filho of vivos) sinalNoGrupoDoFilho(filho, "SIGKILL");
-  await esperarSairem(vivos, TETO_APOS_SIGKILL_MS);
+  await Promise.all([
+    esperarGruposSumirem(pgids, TETO_APOS_SIGKILL_MS),
+    esperarSairem(vivos, TETO_APOS_SIGKILL_MS),
+  ]);
 }
 
 garantirLimpezaDeFilhosNoFim();
