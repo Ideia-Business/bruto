@@ -15,6 +15,7 @@ import { runExport } from "./steps/06-export";
 import fs from "node:fs";
 import { artifactPaths, parseMediaUrl } from "./lib/paths";
 import { recusarSeCancelado, rodarComCancelamento } from "./lib/cancelamento";
+import { encerramentoEmAndamento } from "./lib/marca-de-encerramento";
 import {
   PipelineError,
   type ErrorCode,
@@ -123,7 +124,12 @@ export async function drain(deps?: DepsProcessJob): Promise<void> {
   if (state.active) return;
   state.active = true;
   try {
-    while (state.queue.length > 0) {
+    // A marca de encerramento (passo (a) do ciclo em src/lib/encerrar.ts)
+    // PARA a fila aqui: o job que já está rodando termina — ou é interrompido
+    // pela morte dos filhos e fica RECUPERÁVEL — e nenhum job NOVO começa.
+    // Começar agora seria só fabricar mais um job interrompido no meio para
+    // o próximo boot recolher.
+    while (state.queue.length > 0 && !encerramentoEmAndamento()) {
       const jobId = state.queue.shift();
       if (jobId) await processJob(jobId, deps);
     }
@@ -404,6 +410,19 @@ async function executarJob(
       });
       return;
     }
+    if (encerramentoEmAndamento()) {
+      // INVARIANTE 3 do ciclo de encerramento (src/lib/encerrar.ts): a falha
+      // nasceu do passo (b) — o encerramento do app matou o filho desta
+      // etapa com o event loop vivo e a promessa rejeitou. Não é `error` (o
+      // vídeo não falhou) e não é `canceled` (ninguém cancelou nada): o job
+      // fica EXATAMENTE como está (`running`), que é o que o
+      // `recoverOrphans()` do próximo boot re-enfileira — a promessa do
+      // botão é "vídeos que estiverem processando retomam". Nenhuma escrita
+      // de terminal aqui: qualquer status seria mentira sobre a causa.
+      // Cancelamento do usuário já saiu acima (`signal.aborted` vence), e
+      // job que terminou `done` antes da marca nem chega a cair neste catch.
+      return;
+    }
     const code: ErrorCode = err instanceof PipelineError ? err.code : "UNKNOWN";
     // A ÚLTIMA fronteira antes do banco. As camadas de cima já redigem, mas é
     // esta linha que PERSISTE — e o que é persistido não se corrige depois. Uma
@@ -499,9 +518,10 @@ export async function cancelarJob(jobId: string): Promise<ResultadoCancelamento>
 }
 
 /**
- * No boot do servidor, jobs que ficaram `running` (crash/restart) voltam para
- * `queued` e são re-enfileirados — nenhum job fica preso. `canceled` é
- * terminal: o boot NÃO ressuscita.
+ * No boot do servidor, jobs que ficaram `running` (crash/restart, ou o
+ * encerramento do app interrompendo o pipeline no meio — INVARIANTE 3 do
+ * ciclo em src/lib/encerrar.ts) voltam para `queued` e são re-enfileirados —
+ * nenhum job fica preso. `canceled` é terminal: o boot NÃO ressuscita.
  */
 export function recoverOrphans(): number {
   const orphans = db

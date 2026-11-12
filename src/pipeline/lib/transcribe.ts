@@ -562,13 +562,36 @@ export const SEM_BACKEND =
  * A mensagem certa para o modo em que o app roda: no pacote não existe
  * "rodar o instalador de novo" — o Whisper se instala sob pedido na tela de
  * Configurações (com aviso de ~2 GB), e é isso que a mensagem diz.
+ *
+ * `whisperPedido` (a opção "Forçar transcrição por IA" estava marcada): as
+ * legendas NEM foram consultadas — a mensagem não pode afirmar que faltou
+ * legenda (demanda b311ebf9). Diz a causa verdadeira — a transcrição local foi
+ * pedida e não está instalada — e oferece os DOIS caminhos: instalar, ou
+ * desmarcar a opção para usar a legenda do vídeo.
  */
-export function mensagemSemBackend(): string {
+export function mensagemSemBackend(whisperPedido = false): string {
   if (modoPacote()) {
+    if (whisperPedido) {
+      return (
+        "A transcrição por IA (Whisper) foi pedida e não está instalada. " +
+        "Abra as Configurações e toque em “Instalar transcrição local” " +
+        "(cerca de 2 GB, só na primeira vez) — ou desmarque a opção " +
+        "“Forçar transcrição por IA (Whisper)” para usar a legenda do vídeo."
+      );
+    }
     return (
       "Vídeo sem legenda e a transcrição local (Whisper) não está instalada. " +
       "Abra as Configurações e toque em “Instalar transcrição local” " +
       "(cerca de 2 GB, só na primeira vez)."
+    );
+  }
+  if (whisperPedido) {
+    return (
+      "A transcrição por IA (Whisper) foi pedida e nenhum transcritor está instalado. " +
+      "Rode o instalador do Bruto de novo, sem --sem-whisper. " +
+      "Ou instale à mão: uv tool install mlx-whisper (Mac com Apple Silicon) " +
+      "ou uv tool install openai-whisper (demais sistemas). " +
+      "Ou desmarque a opção “Forçar transcrição por IA (Whisper)” para usar a legenda do vídeo."
     );
   }
   return SEM_BACKEND;

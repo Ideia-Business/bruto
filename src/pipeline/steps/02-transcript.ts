@@ -69,7 +69,10 @@ export async function runTranscript(
   // ── Tier D: áudio → whisper (transcrição local) ────────────────────────────
   if (!result) {
     if (!(await transcricaoDisponivel())) {
-      throw new PipelineError("NO_TRANSCRIPT", mensagemSemBackend());
+      // A mensagem precisa saber a causa verdadeira: com forceWhisper as
+      // legendas nem foram consultadas — "vídeo sem legenda" seria falso
+      // (demanda b311ebf9). O passo repassa a opção; a mensagem decide.
+      throw new PipelineError("NO_TRANSCRIPT", mensagemSemBackend(opts.forceWhisper === true));
     }
     onTick(30, "Baixando áudio");
     const audioPath = await downloadAudio(url, paths.dir);

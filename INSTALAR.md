@@ -14,7 +14,8 @@ O Bruto é um programa que roda **no seu computador** (o endereço é `http://lo
 | Linux | Menu de aplicativos → `Bruto` (Ubuntu: grid de pontinhos; Fedora: Activities) |
 
 - **Fechei a janela sem querer.** Clique no atalho de novo. O servidor do Bruto continua rodando em segundo plano; o atalho só abre a janela outra vez.
-- **A janela abre, mas a página fica em branco.** Espere alguns segundos e atualize com `⌘ + R` (macOS) ou `Ctrl + R`. Depois de uma atualização do Bruto, a primeira abertura leva mais tempo porque o app é reconstruído.
+- **Como desligo o Bruto de verdade?** Dentro do app: **Configurações → Encerrar o Bruto** (no Mac, o **⌘Q** fecha só a janela — o servidor continua rodando). Depois de encerrar, abrir de novo é pelo atalho da tabela acima (Launchpad/Aplicativos, no Mac). Se o botão não resolver, reiniciar o computador também desliga o servidor.
+- **A janela abre, mas a página fica em branco.** Espere alguns segundos e atualize com `⌘ + R` (macOS) ou `Ctrl + R` (Windows/Linux). Depois de uma atualização do Bruto, a primeira abertura leva mais tempo porque o app é reconstruído.
 - **O atalho não aparece.** Recrie com o comando do seu sistema (seção "Atalho no computador" do [README](README.md#atalho-no-computador)).
 - **No macOS e no Linux, pelo terminal** (serve quando o atalho não funciona):
 
