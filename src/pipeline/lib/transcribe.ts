@@ -30,13 +30,10 @@ import { FILHO_EM_GRUPO_PROPRIO, registrarFilho } from "@/pipeline/lib/cancelame
 import { caminhoDe, modoPacote } from "@/pipeline/lib/ferramentas";
 import { DATA_ROOT } from "@/pipeline/lib/paths";
 import { redact } from "@/pipeline/lib/llm/redact";
-import { repositorioMlx } from "@/pipeline/lib/modelo-whisper";
+import { modeloWhisper, repositorioMlx } from "@/pipeline/lib/modelo-whisper";
 import { PipelineError } from "@/pipeline/types";
 
 export type Backend = "mlx" | "whisper" | "whisper-cpp";
-
-/** Modelo Whisper. `base` equilibra qualidade e tempo; troque por env. */
-const MODELO = process.env.BRUTO_WHISPER_MODEL || "base";
 
 /** Idioma opcional passado ao backend (código ISO, ex.: "pt"). */
 const TIMEOUT_TRANSCRICAO_MS = 45 * 60 * 1000;
@@ -278,16 +275,50 @@ function binWhisperCpp(): string | null {
 }
 
 /**
+ * Ordem de preferência do ggml quando o do padrão não está no disco (troca
+ * de modelo, 12/11/2026): o melhor primeiro. O turbo lidera; `tiny` fecha.
+ */
+const ORDEM_GGML = ["large-v3-turbo", "large-v3", "medium", "small", "base", "tiny"];
+
+/** Os três lugares onde o whisper.cpp guarda (ou o brew instala) o ggml. */
+function caminhosGgml(nome: string): string[] {
+  return [
+    path.join(os.homedir(), ".cache", "whisper", `ggml-${nome}.bin`),
+    `/opt/homebrew/share/whisper-cpp/ggml-${nome}.bin`,
+    `/usr/local/share/whisper-cpp/ggml-${nome}.bin`,
+  ];
+}
+
+/**
+ * Nome curto do modelo de um arquivo ggml (`ggml-base.bin` → `base`) — é o
+ * que o doctor e o log mostram. Caminho fora do padrão devolve o basename.
+ */
+export function nomeModeloGgml(caminho: string): string {
+  const base = path.basename(caminho);
+  if (base.startsWith("ggml-") && base.endsWith(".bin")) return base.slice(5, -4);
+  return base;
+}
+
+/**
  * whisper.cpp não baixa modelo sozinho: sem o arquivo ggml no disco, o binário
- * existe e não serve para nada. Por isso a presença do MODELO faz parte da
+ * existe e não serve para nada. Por isso a presença do modelo faz parte da
  * detecção — um backend que falha em tempo de execução não é um backend.
+ *
+ * QUAL modelo procurar (troca do padrão para large-v3-turbo, 12/11/2026):
+ *  - `BRUTO_WHISPER_MODEL` DEFINIDO: o modelo pedido, e só ele — sem fallback
+ *    silencioso; quem pediu `small` e não o tem recebe o erro claro.
+ *  - Sem a variável (o padrão): o ggml do `large-v3-turbo`; se não estiver no
+ *    disco, o MELHOR ggml presente na ordem de `ORDEM_GGML`. É o que impede
+ *    a troca de padrão de quebrar quem só tinha `ggml-base.bin` (que era o
+ *    padrão antigo) — a transcrição continua saindo, com o que há de melhor.
  */
 export function modeloWhisperCpp(): string | null {
+  const nomes = process.env.BRUTO_WHISPER_MODEL
+    ? [modeloWhisper()]
+    : ORDEM_GGML;
   const candidatos = [
     ...(process.env.BRUTO_WHISPER_CPP_MODEL ? [process.env.BRUTO_WHISPER_CPP_MODEL] : []),
-    path.join(os.homedir(), ".cache", "whisper", `ggml-${MODELO}.bin`),
-    `/opt/homebrew/share/whisper-cpp/ggml-${MODELO}.bin`,
-    `/usr/local/share/whisper-cpp/ggml-${MODELO}.bin`,
+    ...nomes.flatMap((n) => caminhosGgml(n)),
   ];
   for (const c of candidatos) {
     try {
@@ -388,7 +419,7 @@ async function rodarMlx(wav: string, lang: string): Promise<Execucao> {
   // é só defensivo: na prática `detectarBackend()` já garantiu `temMlx()`
   // true antes de qualquer chamada a esta função.
   const python = pythonParaMlx() ?? "python3";
-  return rodar(python, ["-", wav, repositorioMlx(MODELO), lang], {
+  return rodar(python, ["-", wav, repositorioMlx(modeloWhisper()), lang], {
     timeoutMs: TIMEOUT_TRANSCRICAO_MS,
     stdin: SCRIPT_MLX,
   });
@@ -398,7 +429,7 @@ async function rodarMlx(wav: string, lang: string): Promise<Execucao> {
 async function rodarWhisperCli(wav: string, lang: string): Promise<string> {
   const outdir = fs.mkdtempSync(path.join(os.tmpdir(), "bruto-whisper-"));
   try {
-    const args = [wav, "--model", MODELO, "--output_format", "txt", "--output_dir", outdir, "--verbose", "False"];
+    const args = [wav, "--model", modeloWhisper(), "--output_format", "txt", "--output_dir", outdir, "--verbose", "False"];
     if (lang) args.push("--language", lang);
     const r = await rodar(caminhoDe("whisper"), args, { timeoutMs: TIMEOUT_TRANSCRICAO_MS });
     if (r.timedOut) throw new PipelineError("NO_TRANSCRIPT", tempoEsgotado(wav));
@@ -418,6 +449,9 @@ async function rodarWhisperCli(wav: string, lang: string): Promise<string> {
   }
 }
 
+/** Já avisou (uma vez por processo) que o ggml usado não é o do padrão. */
+let avisouGgmlAlternativo = false;
+
 /** `-nt` = sem marcação de tempo; o texto sai no stdout, uma linha por trecho. */
 async function rodarWhisperCpp(wav: string, lang: string): Promise<string> {
   const bin = binWhisperCpp();
@@ -425,7 +459,15 @@ async function rodarWhisperCpp(wav: string, lang: string): Promise<string> {
   if (!bin || !modelo) {
     throw new PipelineError(
       "NO_TRANSCRIPT",
-      `whisper.cpp sem o modelo ggml-${MODELO}.bin no disco — baixe-o ou aponte BRUTO_WHISPER_CPP_MODEL`,
+      `whisper.cpp sem o modelo ggml-${modeloWhisper()}.bin no disco — baixe-o ou aponte BRUTO_WHISPER_CPP_MODEL`,
+    );
+  }
+  // Fallback do padrão novo: dizer no log QUAL ggml rodou — a transcrição sai
+  // com outro modelo que não o anunciado, e isso não pode ser invisível.
+  if (!avisouGgmlAlternativo && nomeModeloGgml(modelo) !== modeloWhisper()) {
+    avisouGgmlAlternativo = true;
+    console.warn(
+      `[bruto] whisper.cpp sem ggml-${modeloWhisper()}.bin — usando ${nomeModeloGgml(modelo)} (${modelo})`,
     );
   }
   const args = ["-m", modelo, "-f", wav, "-nt"];
@@ -452,6 +494,18 @@ function tempoEsgotado(arquivo: string): string {
 // ── API pública ──────────────────────────────────────────────────────────────
 
 /**
+ * O modelo que ESTE backend de fato usaria agora — é a chave do cache e nada
+ * mais. Diferente do nome pedido (`modeloWhisper()`) quando o backend é o
+ * whisper.cpp e o ggml do padrão não está no disco: aí o fallback escolhe
+ * outro, e é ELE que sai da transcrição.
+ */
+function modeloEfetivo(backend: Backend): string | null {
+  if (backend === "mlx") return repositorioMlx(modeloWhisper());
+  if (backend === "whisper") return modeloWhisper();
+  return modeloWhisperCpp();
+}
+
+/**
  * Transcreve um arquivo de áudio e devolve o texto puro.
  *
  * O resultado é guardado em cache pelo sha256 do ÁUDIO, não pelo id do vídeo:
@@ -461,12 +515,25 @@ function tempoEsgotado(arquivo: string): string {
 export async function transcreverAudio(audioPath: string, idioma?: string): Promise<string> {
   const lang = (idioma ?? "").split("-")[0];
 
-  // A chave inclui MODELO e IDIOMA, não só o conteúdo do áudio. O vt.sh
-  // chaveava só pelo arquivo, e isso devolve a transcrição errada quando o
-  // mesmo áudio é pedido noutro idioma (ou com outro modelo) — medido ao portar:
-  // um vídeo em inglês transcrito com `--lang pt` ficava preso no cache, e o
-  // pedido seguinte, sem idioma, recebia de volta a salada em português.
-  const hash = sha256Arquivo(audioPath, `${MODELO}:${lang}`);
+  // O backend é detectado ANTES do cache porque a chave precisa do modelo
+  // EFETIVAMENTE usado — e no whisper.cpp ele só existe depois da detecção
+  // (fallback para o melhor ggml presente). A sonda é memoizada; o custo é
+  // um spawn por processo, pago na primeira transcrição.
+  const backend = await detectarBackend();
+  if (!backend) {
+    throw new PipelineError("NO_TRANSCRIPT", mensagemSemBackend());
+  }
+
+  // A chave inclui o MODELO EFETIVO e o IDIOMA, não só o conteúdo do áudio.
+  // O vt.sh chaveava só pelo arquivo, e isso devolve a transcrição errada
+  // quando o mesmo áudio é pedido noutro idioma (ou com outro modelo) — medido
+  // ao portar: um vídeo em inglês transcrito com `--lang pt` ficava preso no
+  // cache, e o pedido seguinte, sem idioma, recebia de volta a salada em
+  // português. Chavear pelo modelo EFETIVO (não pelo pedido) é o que impede
+  // uma transcrição feita com o ggml do fallback de ser servida como se
+  // tivesse saído do large-v3-turbo depois que a pessoa o baixar.
+  const modelo = modeloEfetivo(backend);
+  const hash = modelo ? sha256Arquivo(audioPath, `${modelo}:${lang}`) : null;
   const cacheFile = hash ? path.join(CACHE_DIR, `${hash}.txt`) : null;
   if (cacheFile) {
     try {
@@ -475,11 +542,6 @@ export async function transcreverAudio(audioPath: string, idioma?: string): Prom
     } catch {
       // sem cache — segue para transcrever
     }
-  }
-
-  const backend = await detectarBackend();
-  if (!backend) {
-    throw new PipelineError("NO_TRANSCRIPT", mensagemSemBackend());
   }
 
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "bruto-audio-"));
@@ -583,13 +645,17 @@ export async function transcricaoDoctor(): Promise<{ ok: boolean; linhas: string
   const temFfmpeg = existeFerramenta("ffmpeg");
   const backend = await detectarBackend();
 
-  // Nomes curtos: esta lista é impressa numa linha só. A única exceção é o
-  // whisper.cpp sem modelo, porque aí o aviso É a informação útil — o binário
-  // está lá e mesmo assim não transcreve.
+  // Nomes curtos: esta lista é impressa numa linha só. O whisper.cpp é a
+  // exceção: COM modelo, diz QUAL ggml está em uso (com a troca do padrão,
+  // pode ser o do fallback — a pessoa precisa saber); SEM modelo, o aviso É
+  // a informação útil — o binário está lá e mesmo assim não transcreve.
   if (await temMlx()) linhas.push("mlx-whisper");
   if (existeFerramenta("whisper")) linhas.push("whisper CLI");
   const bin = binWhisperCpp();
-  if (bin) linhas.push(modeloWhisperCpp() ? bin : `${bin} (sem o modelo ggml)`);
+  if (bin) {
+    const ggml = modeloWhisperCpp();
+    linhas.push(ggml ? `${bin} (ggml ${nomeModeloGgml(ggml)})` : `${bin} (sem o modelo ggml)`);
+  }
 
   return { ok: temFfmpeg && backend !== null, linhas };
 }

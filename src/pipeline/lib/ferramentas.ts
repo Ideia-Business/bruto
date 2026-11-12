@@ -34,6 +34,7 @@ import path from "node:path";
 import { juntarCaminho } from "@/lib/caminho-opaco";
 import { FILHO_EM_GRUPO_PROPRIO, registrarFilho } from "@/pipeline/lib/cancelamento";
 import { pythonDaFerramentaUv } from "@/pipeline/lib/binario";
+import { modeloWhisper, repositorioMlx } from "@/pipeline/lib/modelo-whisper";
 import { PipelineError } from "@/pipeline/types";
 
 /** Verdade quando o servidor roda dentro do Bruto.app (o lançador define "1"). */
@@ -494,9 +495,11 @@ export async function garantirChromium(opcoes: { timeoutMs?: number } = {}): Pro
   return instalacaoChromium;
 }
 
-// ── Whisper: só instala quando a pessoa pede (~2 GB) ─────────────────────────
+// ── Whisper: só instala quando a pessoa pede (~3,5 GB, modelo incluído) ─────
 
-const TIMEOUT_WHISPER_MS = 30 * 60 * 1000;
+// Venv (~1 GB) + modelo large-v3-turbo (~1,5 GB) na MESMA promessa: o teto
+// cobre os dois downloads. 45 min porque 30 min só davam conta do venv.
+const TIMEOUT_WHISPER_MS = 45 * 60 * 1000;
 
 let instalacaoWhisper: Promise<void> | null = null;
 
@@ -513,11 +516,38 @@ export function whisperInstalado(): boolean {
 }
 
 /**
+ * Baixa o modelo padrão com o Python do PRÓPRIO venv do mlx-whisper — o
+ * mesmo interpretador que vai transcrever, o mesmo cache do Hugging Face
+ * que `mlx_whisper.transcribe` leria. Sem isto, a instalação terminava
+ * "pronta" e o 1º vídeo parava ~1,6 GB de download depois, sem aviso.
+ * `load_model` (e não um download cru) porque é a chamada que a transcrição
+ * faz: o que baixa aqui é exatamente o que seria baixado lá.
+ */
+function baixarModeloWhisper(timeoutMs: number): Promise<void> {
+  const python = pythonDaFerramentaUv("mlx-whisper");
+  if (!python) {
+    // Inalcançável na prática (o uv acabou de criar o venv); defensivo.
+    return Promise.reject(new Error("o venv do mlx-whisper não apareceu após a instalação"));
+  }
+  const repo = repositorioMlx(modeloWhisper());
+  return rodarInstalacao(
+    python,
+    // Sem shell: argv puro, o repo vai como um argumento único seguro.
+    ["-c", `import mlx_whisper; mlx_whisper.load_model(${JSON.stringify(repo)})`],
+    timeoutMs,
+  );
+}
+
+/**
  * Instala o backend de transcrição sob pedido (endpoint das Configurações):
- * `"$BRUTO_UV" tool install --python-preference only-managed mlx-whisper`
- * (~2 GB de modelo e dependências — o aviso é da UI). Modo clone: rejeita —
- * lá quem instala é o instalador do repositório, não o app. UMA instalação
- * por vez, com teto e cancelamento.
+ * `"$BRUTO_UV" tool install --python-preference only-managed mlx-whisper` e,
+ * com o Python do venv, o download ANTECIPADO do modelo padrão
+ * (large-v3-turbo; `BRUTO_WHISPER_MODEL`, se definido, manda no download
+ * também) — ~3,5 GB no total de ferramenta e modelo, o aviso é da UI.
+ * Modo clone: rejeita — lá quem instala é o instalador do repositório.
+ * UMA instalação por vez, com teto e cancelamento; cada etapa pula o que
+ * já está pronto (venv existente → só o modelo; download idempotente), então
+ * repetir o pedido depois de uma falha de rede não refaz o que deu certo.
  */
 export function instalarWhisper(opcoes: { timeoutMs?: number } = {}): Promise<void> {
   if (!modoPacote()) {
@@ -525,16 +555,18 @@ export function instalarWhisper(opcoes: { timeoutMs?: number } = {}): Promise<vo
       new Error("A instalação sob pedido só existe no app instalado (.app)."),
     );
   }
-  if (whisperInstalado()) return Promise.resolve();
   if (!instalacaoWhisper) {
-    const timeoutMs = opcoes.timeoutMs ?? TIMEOUT_WHISPER_MS;
     const p = (async () => {
+      const timeoutMs = opcoes.timeoutMs ?? TIMEOUT_WHISPER_MS;
       try {
-        await rodarInstalacao(
-          caminhoDe("uv"),
-          ["tool", "install", ...ARGS_PYTHON_GERENCIADO, "mlx-whisper"],
-          timeoutMs,
-        );
+        if (!pythonDaFerramentaUv("mlx-whisper")) {
+          await rodarInstalacao(
+            caminhoDe("uv"),
+            ["tool", "install", ...ARGS_PYTHON_GERENCIADO, "mlx-whisper"],
+            timeoutMs,
+          );
+        }
+        await baixarModeloWhisper(timeoutMs);
       } catch {
         throw new Error(
           "Não foi possível instalar a transcrição local (Whisper). " +

@@ -258,7 +258,8 @@ export function ConfiguracoesClient() {
             <h2 className="font-semibold">Transcrição local (Whisper)</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               É o que permite destrinchar vídeo sem legenda (Instagram, TikTok). A instalação
-              baixa cerca de 2 GB de modelo e dependências, uma única vez, e roda toda no seu
+              baixa cerca de 3,5 GB de ferramenta e modelo de transcrição, uma única vez (o
+              modelo já vem junto — o primeiro vídeo não espera nada), e roda toda no seu
               computador.
             </p>
           </div>
@@ -275,7 +276,7 @@ export function ConfiguracoesClient() {
               className="shrink-0 gap-1.5"
             >
               <Download className="size-4" />
-              {instalandoWhisper ? "Instalando… (pode levar alguns minutos)" : "Instalar (~2 GB)"}
+              {instalandoWhisper ? "Instalando… (pode levar vários minutos)" : "Instalar (~3,5 GB)"}
             </Button>
           )}
         </section>

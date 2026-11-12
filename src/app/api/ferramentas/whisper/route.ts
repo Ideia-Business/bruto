@@ -1,14 +1,17 @@
 /**
  * O pedido de Whisper do modo pacote (contrato: "o Whisper só é instalado
- * quando a pessoa pede, com aviso de tamanho ~2 GB").
+ * quando a pessoa pede, com aviso de tamanho ~3,5 GB, modelo incluído").
  *
  *   GET  /api/ferramentas/whisper → { suportado, instalado }
  *        Leitura pública local (só filesystem, sem custo nem efeito).
  *   POST /api/ferramentas/whisper → instala o backend de transcrição com
- *        `"$BRUTO_UV" tool install mlx-whisper`. Mutação com efeito e custo
- *        (baixa ~2 GB): passa pela guarda padrão das mutações
- *        (`recusarSeNaoForChamadaDeCliente`). Falha vira 500 com mensagem
- *        legível; duas chamadas concorrentes dividem UMA instalação (F3).
+ *        `"$BRUTO_UV" tool install mlx-whisper` e, com o Python do próprio
+ *        venv, já baixa o modelo padrão (large-v3-turbo) — sem isso, o 1º
+ *        vídeo parava ~1,6 GB de download depois, sem aviso. Mutação com
+ *        efeito e custo (baixa ~3,5 GB no total): passa pela guarda padrão
+ *        das mutações (`recusarSeNaoForChamadaDeCliente`). Falha vira 500
+ *        com mensagem legível; duas chamadas concorrentes dividem UMA
+ *        instalação (F3).
  *
  * Depois de instalar, rearma a detecção memoizada do transcribe — senão o
  * processo continuaria vendo "não instalado" até reiniciar.

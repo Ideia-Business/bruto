@@ -20,9 +20,13 @@
 #   <saida_dir>/<modelo>.txt   — a transcrição (vazio se o modelo falhou);
 #   uma linha em <saida_dir>/medicao.tsv:
 #     modelo <TAB> segundos <TAB> rc <TAB> tamanho_modelo_MB
-#   (tamanho = `du -sm` da pasta do modelo no cache do Hugging Face DEPOIS
-#   de rodar; 0 quando a pasta não existe — ex.: o modelo falhou antes de
-#   baixar).
+#   (tamanho = `du -smL` da pasta `snapshots/` do modelo no cache do Hugging
+#   Face DEPOIS de rodar; 0 quando a pasta não existe — ex.: o modelo falhou
+#   antes de baixar). O porquê do -L: no cache do HF (formato xet, conferido
+#   em máquina real) `snapshots/<rev>/<pesos>` é SYMLINK para `blobs/<etag>`,
+#   que por sua vez é SYMLINK para o cache compartilhado no nível do hub —
+#   FORA da pasta do modelo. `du` sem seguir links conta só os ponteiros
+#   (~1 MB) e reporta small/medium/turbo como se fossem vazios.
 #
 # Não apaga nada e não baixa nada além do que o próprio mlx baixa. A falha
 # de um modelo NÃO para os outros — o rc de cada um fica na tabela. O
@@ -76,6 +80,10 @@ achar_python() {
 
 # Tamanho (MB) da pasta do modelo no cache do Hugging Face, depois da
 # transcrição. `models--<org>--<nome>` é o formato do cache do hub.
+# Mede a pasta `snapshots/` COM symlinks seguidos (-L): no cache xet os
+# pesos vivem fora da pasta do modelo (cadeia snapshots → blobs → hub/blobs),
+# e um `du` sem -L conta só os ponteiros. Sem `snapshots/` (estrutura fora
+# do padrão do hub), cai para o `du -smL` da pasta toda.
 tamanho_modelo_mb() {
   local repo=$1 cache dir
   if [ -n "${HF_HUB_CACHE:-}" ]; then
@@ -86,8 +94,10 @@ tamanho_modelo_mb() {
     cache=$HOME/.cache/huggingface/hub
   fi
   dir="$cache/models--${repo//\//--}"
-  if [ -d "$dir" ]; then
-    du -sm "$dir" | awk '{print $1}'
+  if [ -d "$dir/snapshots" ]; then
+    du -smL "$dir/snapshots" | awk '{print $1}'
+  elif [ -d "$dir" ]; then
+    du -smL "$dir" | awk '{print $1}'
   else
     printf '0\n'
   fi

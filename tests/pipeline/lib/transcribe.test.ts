@@ -16,7 +16,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ambienteMinimo, detectarBackend, modeloWhisperCpp } from "@/pipeline/lib/transcribe";
+import {
+  ambienteMinimo,
+  detectarBackend,
+  modeloWhisperCpp,
+  nomeModeloGgml,
+  transcricaoDoctor,
+} from "@/pipeline/lib/transcribe";
 
 /**
  * Troca `process.platform` temporariamente — a única forma de exercitar o
@@ -125,6 +131,137 @@ describe("modeloWhisperCpp — respeita BRUTO_WHISPER_CPP_MODEL", () => {
       if (!candidatosFixosExistem) assert.equal(resultado, null);
     } finally {
       if (original !== undefined) process.env.BRUTO_WHISPER_CPP_MODEL = original;
+    }
+  });
+});
+
+describe("modeloWhisperCpp — fallback do padrão large-v3-turbo (troca de modelo, 12/11/2026)", () => {
+  /**
+   * Roda `fn` com um HOME temporário contendo `~/.cache/whisper/<arquivo>`
+   * para cada nome passado (arquivos com conteúdo, como um ggml real).
+   *
+   * O HOME é o que decide: os caminhos fixos do whisper.cpp procuram o
+   * modelo em `~/.cache/whisper` (o Homebrew/local das máquinas de CI nunca
+   * existe, então o teste não depende do que a estação tem instalado).
+   */
+  async function comHomeGgml<T>(arquivos: string[], fn: () => Promise<T>): Promise<T> {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "bruto-teste-home-ggml-"));
+    const dir = path.join(home, ".cache", "whisper");
+    fs.mkdirSync(dir, { recursive: true });
+    for (const nome of arquivos) {
+      fs.writeFileSync(path.join(dir, nome), `ggml-ficticio-${nome}`);
+    }
+    const homeOriginal = process.env.HOME;
+    const uvToolDirOriginal = process.env.UV_TOOL_DIR;
+    process.env.HOME = home;
+    process.env.UV_TOOL_DIR = path.join(home, "uv-tools-inexistente");
+    try {
+      return await fn();
+    } finally {
+      if (homeOriginal === undefined) delete process.env.HOME;
+      else process.env.HOME = homeOriginal;
+      if (uvToolDirOriginal === undefined) delete process.env.UV_TOOL_DIR;
+      else process.env.UV_TOOL_DIR = uvToolDirOriginal;
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }
+
+  const salvaModelo = process.env.BRUTO_WHISPER_MODEL;
+
+  test("sem BRUTO_WHISPER_MODEL e sem ggml-large-v3-turbo.bin, usa o melhor ggml presente (base)", async () => {
+    delete process.env.BRUTO_WHISPER_MODEL;
+    try {
+      await comHomeGgml(["ggml-base.bin"], async () => {
+        // Quem hoje só tem ggml-base.bin NÃO pode passar a falhar com a troca
+        // do padrão para large-v3-turbo — o app cai para o base e segue.
+        assert.equal(
+          modeloWhisperCpp(),
+          path.join(os.homedir(), ".cache", "whisper", "ggml-base.bin"),
+        );
+      });
+    } finally {
+      if (salvaModelo !== undefined) process.env.BRUTO_WHISPER_MODEL = salvaModelo;
+    }
+  });
+
+  test("a ordem de preferência é large-v3-turbo > large-v3 > medium > small > base > tiny", async () => {
+    delete process.env.BRUTO_WHISPER_MODEL;
+    try {
+      await comHomeGgml(["ggml-tiny.bin", "ggml-small.bin", "ggml-medium.bin"], async () => {
+        assert.ok(modeloWhisperCpp()?.endsWith("ggml-medium.bin"));
+      });
+      await comHomeGgml(["ggml-base.bin", "ggml-large-v3-turbo.bin"], async () => {
+        assert.ok(modeloWhisperCpp()?.endsWith("ggml-large-v3-turbo.bin"));
+      });
+    } finally {
+      if (salvaModelo !== undefined) process.env.BRUTO_WHISPER_MODEL = salvaModelo;
+    }
+  });
+
+  test("com BRUTO_WHISPER_MODEL definido, NÃO cai para outro ggml (o env manda)", async () => {
+    process.env.BRUTO_WHISPER_MODEL = "small";
+    try {
+      await comHomeGgml(["ggml-base.bin"], async () => {
+        // Sem fallback quando a pessoa pediu um modelo específico: o erro
+        // claro atual é o comportamento contratado.
+        assert.equal(modeloWhisperCpp(), null);
+      });
+      await comHomeGgml(["ggml-base.bin", "ggml-small.bin"], async () => {
+        assert.ok(modeloWhisperCpp()?.endsWith("ggml-small.bin"));
+      });
+    } finally {
+      if (salvaModelo === undefined) delete process.env.BRUTO_WHISPER_MODEL;
+      else process.env.BRUTO_WHISPER_MODEL = salvaModelo;
+    }
+  });
+});
+
+describe("nomeModeloGgml — extrai o nome curto do caminho do ggml", () => {
+  test("ggml-<nome>.bin vira <nome>; caminho arbitrário vira o basename", () => {
+    assert.equal(nomeModeloGgml("/home/x/.cache/whisper/ggml-base.bin"), "base");
+    assert.equal(nomeModeloGgml("/opt/homebrew/share/whisper-cpp/ggml-large-v3-turbo.bin"), "large-v3-turbo");
+    assert.equal(nomeModeloGgml("/home/x/meu-modelo.bin"), "meu-modelo.bin");
+  });
+});
+
+describe("doctor — o whisper.cpp diz QUAL modelo ggml está em uso", () => {
+  test("com fallback para o base, a linha do whisper-cpp nomeia o ggml", async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "bruto-teste-doctor-"));
+    const dirWhisper = path.join(home, ".cache", "whisper");
+    fs.mkdirSync(dirWhisper, { recursive: true });
+    fs.writeFileSync(path.join(dirWhisper, "ggml-base.bin"), "ggml-ficticio");
+
+    // PATH com ffmpeg + whisper-cli (e NADA de python3/whisper): o backend
+    // detectado só pode ser o whisper.cpp, com o ggml do HOME falso.
+    const binDir = path.join(home, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    for (const nome of ["ffmpeg", "whisper-cli"]) {
+      fs.writeFileSync(path.join(binDir, nome), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    }
+
+    const salvas: Record<string, string | undefined> = {
+      HOME: process.env.HOME,
+      PATH: process.env.PATH,
+      UV_TOOL_DIR: process.env.UV_TOOL_DIR,
+      BRUTO_WHISPER_MODEL: process.env.BRUTO_WHISPER_MODEL,
+    };
+    process.env.HOME = home;
+    process.env.PATH = binDir;
+    process.env.UV_TOOL_DIR = path.join(home, "uv-tools-inexistente");
+    delete process.env.BRUTO_WHISPER_MODEL;
+    try {
+      assert.equal(await detectarBackend(), "whisper-cpp");
+      const { ok, linhas } = await transcricaoDoctor();
+      assert.equal(ok, true);
+      const linhaCpp = linhas.find((l) => l.includes("whisper-cli"));
+      assert.ok(linhaCpp, `linha do whisper-cli sumiu do doctor: ${linhas.join(" | ")}`);
+      assert.match(linhaCpp, /ggml base/);
+    } finally {
+      for (const [chave, valor] of Object.entries(salvas)) {
+        if (valor === undefined) delete process.env[chave];
+        else process.env[chave] = valor;
+      }
+      fs.rmSync(home, { recursive: true, force: true });
     }
   });
 });

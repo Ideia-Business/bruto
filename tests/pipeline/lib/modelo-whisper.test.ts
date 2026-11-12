@@ -14,7 +14,39 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { repositorioMlx } from "@/pipeline/lib/modelo-whisper";
+import { modeloWhisper, repositorioMlx } from "@/pipeline/lib/modelo-whisper";
+
+describe("modeloWhisper — o modelo padrão é large-v3-turbo (decisão 12/11/2026)", () => {
+  const salva = process.env.BRUTO_WHISPER_MODEL;
+
+  test("sem BRUTO_WHISPER_MODEL, devolve large-v3-turbo (não mais base)", () => {
+    delete process.env.BRUTO_WHISPER_MODEL;
+    try {
+      assert.equal(modeloWhisper(), "large-v3-turbo");
+    } finally {
+      if (salva !== undefined) process.env.BRUTO_WHISPER_MODEL = salva;
+    }
+  });
+
+  test("BRUTO_WHISPER_MODEL continua mandando", () => {
+    process.env.BRUTO_WHISPER_MODEL = "small";
+    try {
+      assert.equal(modeloWhisper(), "small");
+    } finally {
+      if (salva === undefined) delete process.env.BRUTO_WHISPER_MODEL;
+      else process.env.BRUTO_WHISPER_MODEL = salva;
+    }
+  });
+
+  test("o padrão resolve para o repositório mlx correto (o turbo NÃO tem sufixo -mlx)", () => {
+    delete process.env.BRUTO_WHISPER_MODEL;
+    try {
+      assert.equal(repositorioMlx(modeloWhisper()), "mlx-community/whisper-large-v3-turbo");
+    } finally {
+      if (salva !== undefined) process.env.BRUTO_WHISPER_MODEL = salva;
+    }
+  });
+});
 
 describe("repositorioMlx — nome curto vira o repositório real do mlx", () => {
   const casos: Array<[string, string]> = [

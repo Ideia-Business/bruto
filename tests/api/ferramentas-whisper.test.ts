@@ -1,16 +1,21 @@
 /**
  * O pedido de Whisper (modo pacote): o Whisper NÃO vem no pacote — só é
  * instalado quando a pessoa pede (Configurações → Instalar, com aviso de
- * ~2 GB). Este endpoint é a ação:
+ * ~3,5 GB entre ferramenta e modelo). Este endpoint é a ação:
  *
  *   GET  /api/ferramentas/whisper → { suportado, instalado }
  *   POST /api/ferramentas/whisper → instala via `uv tool install
- *          --python-preference only-managed mlx-whisper` (guarda de cliente;
- *          erro legível se falhar; nunca instala duas vezes ao mesmo tempo
- *          — F3; a preferência de Python gerenciado é a classe W)
+ *          --python-preference only-managed mlx-whisper` e, com o Python do
+ *          próprio venv, JÁ BAIXA o modelo padrão (large-v3-turbo) — sem
+ *          isso, o 1º vídeo parava num download de ~1,6 GB sem aviso
+ *          (guarda de cliente; erro legível se falhar; nunca instala duas
+ *          vezes ao mesmo tempo — F3; a preferência de Python gerenciado é
+ *          a classe W)
  *
  * O dublê do uv "instala" criando o venv da ferramenta em $UV_TOOL_DIR
- * (com `bin/python`), que é como o app detecta o Whisper no modo pacote.
+ * (com `bin/python`), que é como o app detecta o Whisper no modo pacote —
+ * e o `bin/python` dublê REGISTRA o que recebeu, que é como o teste prova
+ * o download antecipado do modelo.
  */
 import { test, describe, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
@@ -22,6 +27,7 @@ let raiz: string;
 let ferramentas: string;
 let uvToolDir: string;
 let registroUv: string;
+let registroPython: string;
 
 let salvas: Record<string, string | undefined>;
 const VARS = [
@@ -44,8 +50,13 @@ if [ -n "$BRUTO_UV_FALHA" ]; then echo "network unreachable" >&2; exit 1; fi
 case "$*" in
   *"tool install"*mlx-whisper*)
     mkdir -p "$UV_TOOL_DIR/mlx-whisper/bin"
-    cat > "$UV_TOOL_DIR/mlx-whisper/bin/python" <<'EOF'
+    # Heredoc SEM aspas para injetar ${registroPython}; por isso os "$" do
+    # dublê vão escapados para o ARQUIVO ("\\$*" aqui = "$*" lá) — sem o
+    # escape, o shell expandiria "$*" com os args do uv ao criar o python.
+    cat > "$UV_TOOL_DIR/mlx-whisper/bin/python" <<EOF
 #!/bin/sh
+printf '%s\\n' "\\$*" >> "${registroPython}"
+if [ -n "\\$BRUTO_PYTHON_FALHA" ]; then echo "download do modelo falhou" >&2; exit 1; fi
 exit 0
 EOF
     chmod +x "$UV_TOOL_DIR/mlx-whisper/bin/python"
@@ -65,12 +76,22 @@ function chamadasUv(): string[] {
   }
 }
 
+/** O que o Python do venv recebeu (o download antecipado do modelo). */
+function chamadasPython(): string[] {
+  try {
+    return fs.readFileSync(registroPython, "utf8").split("\n").filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 before(async () => {
   raiz = fs.mkdtempSync(path.join(os.tmpdir(), "bruto-whisper-endpoint-"));
   ferramentas = path.join(raiz, "ferramentas");
   uvToolDir = path.join(ferramentas, "uv", "tools");
   fs.mkdirSync(path.join(ferramentas, "bin"), { recursive: true });
   registroUv = path.join(raiz, "uv-chamadas.txt");
+  registroPython = path.join(raiz, "python-chamadas.txt");
 
   const uvDuble = path.join(raiz, "uv-duble");
   escreverUvDuble(uvDuble);
@@ -112,8 +133,10 @@ function req(metodo: string, cliente: string | null = "app"): Request {
 
 beforeEach(() => {
   fs.rmSync(registroUv, { force: true });
+  fs.rmSync(registroPython, { force: true });
   fs.rmSync(uvToolDir, { recursive: true, force: true });
   delete process.env.BRUTO_UV_FALHA;
+  delete process.env.BRUTO_PYTHON_FALHA;
 });
 
 describe("GET /api/ferramentas/whisper — estado", () => {
@@ -142,20 +165,60 @@ describe("POST /api/ferramentas/whisper — instalação sob pedido", () => {
     assert.deepEqual(chamadasUv(), []);
   });
 
-  test("instala com o uv do pacote e passa a constar instalado", async () => {
+  test("instala o venv com o uv do pacote E baixa o modelo padrão com o Python do venv", async () => {
     const res = await POST(req("POST"));
-    assert.equal(res.status, 200);
+    assert.equal(res.status, 200, JSON.stringify(await res.json().catch(() => null)));
     assert.deepEqual(chamadasUv(), ["tool install --python-preference only-managed mlx-whisper"]);
+
+    // O download antecipado: o Python do próprio venv recebe o repositório
+    // RESOLVIDO do padrão novo — sem isto, o 1º vídeo parava ~1,6 GB de
+    // download depois, sem aviso.
+    const python = chamadasPython();
+    assert.equal(python.length, 1, `esperava 1 chamada ao Python do venv, veio: ${python.join(" | ")}`);
+    assert.match(python[0], /mlx-community\/whisper-large-v3-turbo/);
 
     const estado = await GET();
     assert.deepEqual(await estado.json(), { suportado: true, instalado: true });
   });
 
-  test("duas instalações concorrentes: o uv roda UMA vez (F3)", async () => {
+  test("segunda chamada com o venv já pronto: pula o uv e só confere o modelo", async () => {
+    await POST(req("POST"));
+    const uvDepoisDaPrimeira = chamadasUv().length;
+
+    const res = await POST(req("POST"));
+    assert.equal(res.status, 200);
+    assert.equal(chamadasUv().length, uvDepoisDaPrimeira, "o uv não deve rodar de novo (venv já existe)");
+    // O modelo é baixado/conferido em CADA pedido (idempotente: com o modelo
+    // já em cache, o load_model só confere; é o preço aceito de não manter
+    // mais uma marca de presença além das que o contrato já tem).
+    assert.equal(chamadasPython().length, 2, "o Python do venv roda uma vez por pedido");
+  });
+
+  test("download do modelo quebra (rede caiu no meio): erro legível, e o venv instalado segue de pé", async () => {
+    // 1ª tentativa instala o venv mas o Python falha no download do modelo.
+    process.env.BRUTO_PYTHON_FALHA = "1";
+    const falha = await POST(req("POST"));
+    assert.equal(falha.status, 500);
+    const corpo = await falha.json();
+    assert.match(corpo.error, /transcrição|Whisper|internet/i);
+    delete process.env.BRUTO_PYTHON_FALHA;
+
+    // O venv sobrevive (o Whisper funciona; só o modelo antecipado faltou) —
+    // e a pessoa pode tentar o download de novo sem reinstalar nada.
+    const estado = await GET();
+    assert.deepEqual(await estado.json(), { suportado: true, instalado: true });
+
+    const retry = await POST(req("POST"));
+    assert.equal(retry.status, 200);
+    assert.equal(chamadasUv().length, 1, "o retry não repete o uv tool install");
+  });
+
+  test("duas instalações concorrentes: o uv e o download rodam UMA vez (F3)", async () => {
     const [a, b] = await Promise.all([POST(req("POST")), POST(req("POST"))]);
     assert.equal(a.status, 200);
     assert.equal(b.status, 200);
     assert.deepEqual(chamadasUv(), ["tool install --python-preference only-managed mlx-whisper"]);
+    assert.equal(chamadasPython().length, 1);
   });
 
   test("falha de rede do uv: erro legível, e não fica 'instalado'", async () => {

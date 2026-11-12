@@ -36,8 +36,15 @@ case "$repo" in
 esac
 cache="\${HF_HUB_CACHE:-$HOME/.cache/huggingface/hub}"
 dir="$cache/models--\${repo//\\//--}"
-mkdir -p "$dir"
-head -c 2097152 /dev/zero > "$dir/pesos.bin"
+# Estrutura REAL do cache do Hugging Face (confirmada em máquina real):
+# snapshots/<rev>/<arquivo> é SYMLINK para ../../blobs/<etag>, e o blob é
+# SYMLINK para o cache Xet COMPARTILHADO no nível do hub (fora do dir do
+# modelo). É por isso que "du -sm <dir do modelo>" sem seguir links mede
+# ~1 MB: os pesos de verdade moram em outro lugar.
+mkdir -p "$dir/blobs" "$dir/snapshots/rev1" "$cache/blobs/8e"
+head -c 2097152 /dev/zero > "$cache/blobs/8e/pesos"
+ln -sfn "../../blobs/8e/pesos" "$dir/blobs/etag1"
+ln -sfn "../../blobs/etag1" "$dir/snapshots/rev1/weights.npz"
 printf 'transcricao de %s em %s\\n' "$repo" "$lang"
 exit 0
 `;
@@ -108,7 +115,10 @@ describe("medir-whisper.sh — com mlx_whisper falso no PATH", () => {
     assert.equal(base[0], "base");
     assert.match(base[1], /^\d+$/);
     assert.equal(base[2], "0");
-    assert.ok(Number(base[3]) >= 1, `tamanho do cache falso medido (du -sm), veio ${base[3]}`);
+    // Os pesos são SYMLINKS (cadeia snapshots → blobs → xet, como no cache
+    // real do HF): só contam se o `du` seguir os links. O bug original
+    // media 1 MB aqui — o teste reprova a regressão.
+    assert.ok(Number(base[3]) >= 2, `tamanho real do modelo via symlinks, veio ${base[3]}`);
 
     assert.equal(falha[0], "falha");
     assert.match(falha[1], /^\d+$/);
