@@ -98,12 +98,14 @@ ordem, e usa o primeiro que encontrar:
 |---|---|---|
 | **mlx-whisper** | `uv tool install mlx-whisper` | o mais rápido em Apple Silicon |
 | **whisper** (CLI da OpenAI) | `pip install -U openai-whisper` | roda em qualquer plataforma |
-| **whisper.cpp** | `brew install whisper-cpp` | precisa também de um modelo `ggml-base.bin` no disco |
+| **whisper.cpp** | `brew install whisper-cpp` | precisa também de um modelo `ggml-<nome>.bin` no disco (ex.: `ggml-large-v3-turbo.bin`); sem o do padrão, o Bruto usa o melhor ggml presente e diz qual no doctor |
 
 Nenhum deles instalado? O app segue funcionando para vídeo **com** legenda publicada; o que sem
 legenda faz é falhar dizendo exatamente isto, em vez de devolver resumo vazio.
 
-`npm run doctor` mostra qual foi detectado. Para trocar o modelo: `BRUTO_WHISPER_MODEL=small`.
+`npm run doctor` mostra qual foi detectado. O modelo padrão é `large-v3-turbo` (escolhido por
+medição em português: o mais fiel da família que cabe num MacBook Air); para trocar:
+`BRUTO_WHISPER_MODEL=small`.
 
 ### O modelo de linguagem — o seu plano, ou a sua chave
 

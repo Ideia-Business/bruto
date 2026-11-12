@@ -11,7 +11,8 @@ build (pinado com SHA-256 em `scripts/instalador-macos/binarios.json`), o app Ne
 standalone, `ffmpeg`, `ffprobe` e o `uv`. O que é grande e só é usado por algumas pessoas fica
 de fora e desce por conta própria, tudo em `~/.bruto/ferramentas`: o `yt-dlp` é instalado pelo
 `uv` no primeiro uso (com Python gerenciado pelo próprio `uv`, nunca o do sistema), o Whisper
-(~2 GB) só quando a pessoa pede em Configurações, e o Chromium dos exports no primeiro export.
+(~3 GB entre ferramenta e modelo, baixados juntos sob pedido) só quando a pessoa pede em
+Configurações, e o Chromium dos exports no primeiro export.
 O servidor sobe em `127.0.0.1:3000` e se identifica em `GET /api/versao`
 (`{"app":"bruto","versão":…,"origem":"pacote"|"clone"}`) — é assim que o lançador distingue o
 seu servidor do de outra instalação antes de encerrar algo. Sem atualização silenciosa: o app
@@ -24,8 +25,9 @@ de Developer ID + notarização já está pronto no script, esperando as variáv
 
 Alternativas rejeitadas: embrulhar o script `curl | bash` num app só para evitar o terminal (o
 Homebrew continuaria sendo exigência indireta e o instalador continuaria mexendo na máquina da
-pessoa); colocar tudo dentro, inclusive o `yt-dlp` e o Whisper (o PyTorch ~2 GB entraria no
-pacote de todo mundo, mesmo de quem nunca transcreve); e um binário universal arm64 + Intel (o
+pessoa); colocar tudo dentro, inclusive o `yt-dlp` e o Whisper (as dependências e o modelo
+dele, ~3 GB, entrariam no pacote de todo mundo, mesmo de quem nunca transcreve); e um
+binário universal arm64 + Intel (o
 dobro do tamanho para todas as pessoas e um segundo caminho de build para provar — Mac Intel
 fica no `curl | bash`).
 

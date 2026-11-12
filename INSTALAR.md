@@ -59,7 +59,7 @@ Em macOS recentes, o clique-direito no app → **Abrir** **não basta** para lib
 #### 4. O primeiro vídeo (o app se completa sozinho)
 
 - Na primeira vez que você usar um vídeo, o app baixa sozinho o baixador de vídeos. São alguns minutos a mais — só na primeira vez.
-- O transcritor (**Whisper**, uns 2 GB) **não** baixa sozinho: ele só é instalado se você pedir, nas **Configurações** do app. Ele lê o áudio de vídeos de Instagram e TikTok (que não têm legenda).
+- O transcritor (**Whisper**, uns 3 GB entre ferramenta e modelo) **não** baixa sozinho: ele só é instalado se você pedir, nas **Configurações** do app — e já vem com o modelo que transcreve (o primeiro vídeo não espera nada). Ele lê o áudio de vídeos de Instagram e TikTok (que não têm legenda).
 - O primeiro **export** (resumo em PDF/Word) baixa o navegador que gera os arquivos. Também é só na primeira vez.
 
 #### 5. Ligar a IA
@@ -88,7 +88,7 @@ Quando houver versão nova, o app avisa, com o link. Para atualizar: baixe o `.d
 
 ### Desinstalar o app baixado
 
-Arraste o **Bruto** (em **Aplicativos**) para o **Lixo**. Os vídeos e as ferramentas ficam na pasta `~/.bruto`: ela cresce com os vídeos e passa de 2 GB quando o Whisper é instalado. Quer apagar tudo mesmo? Apagar a pasta `~/.bruto` **apaga os seus vídeos** — não volta.
+Arraste o **Bruto** (em **Aplicativos**) para o **Lixo**. Os vídeos e as ferramentas ficam na pasta `~/.bruto`: ela cresce com os vídeos e passa de 2 GB quando o Whisper é instalado (o modelo dele, de ~1,5 GB, fica em `~/.cache`, fora desta pasta). Quer apagar tudo mesmo? Apagar a pasta `~/.bruto` **apaga os seus vídeos** — não volta.
 
 ### Caminho antigo: o terminal (Mac Intel e quem prefere assim)
 

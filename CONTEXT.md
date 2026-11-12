@@ -94,5 +94,6 @@ _Evite_: dependências, cache
 **Primeiro uso**:
 A primeira vez que cada função roda, o app baixa o que ela precisa — o baixador de vídeos no
 primeiro vídeo, o Chromium no primeiro export; alguns minutos a mais, só dessa vez. O
-Whisper (~2 GB) só desce quando a pessoa pede em Configurações.
+Whisper (~3 GB entre ferramenta e modelo, já com o large-v3-turbo) só desce quando a pessoa
+pede em Configurações.
 _Evite_: instalação (as ferramentas vêm depois dela, sozinhas)

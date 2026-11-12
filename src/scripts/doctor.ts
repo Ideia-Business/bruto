@@ -7,7 +7,7 @@
  * seis. O que o doctor exige é que exista pelo menos um caminho para o modelo.
  */
 import { spawnSync } from "node:child_process";
-import { transcricaoDoctor, detectarBackend } from "@/pipeline/lib/transcribe";
+import { transcricaoDoctor, detectarBackend, modeloWhisperCpp, nomeModeloGgml } from "@/pipeline/lib/transcribe";
 import { caminhoDe, modoPacote } from "@/pipeline/lib/ferramentas";
 import { listarProvedores, resolverProvedor } from "@/pipeline/lib/llm";
 
@@ -56,11 +56,18 @@ async function main(): Promise<void> {
   // faz Instagram e TikTok funcionarem, então o doctor a nomeia por extenso.
   const t = await transcricaoDoctor();
   const backend = await detectarBackend();
+  // whisper.cpp + fallback do padrão (12/11/2026): dizer QUAL ggml rodou é
+  // parte do contrato da troca — o modelo em uso pode não ser o anunciado.
+  let detailBackend = backend ?? "";
+  if (backend === "whisper-cpp") {
+    const ggml = modeloWhisperCpp();
+    if (ggml) detailBackend += ` (modelo ggml ${nomeModeloGgml(ggml)})`;
+  }
   checks.push({
     name: "whisper",
     ok: t.ok,
     detail: t.ok
-      ? `backend: ${backend}${t.linhas.length > 1 ? ` (também: ${t.linhas.slice(1).join(", ")})` : ""}`
+      ? `backend: ${detailBackend}${t.linhas.length > 1 ? ` (também: ${t.linhas.slice(1).join(", ")})` : ""}`
       : "nenhum transcritor — vídeo sem legenda vai falhar",
     essential: false,
   });
