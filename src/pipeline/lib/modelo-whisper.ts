@@ -71,25 +71,36 @@ export function repositorioMlx(nome: string): string {
 
 /**
  * As variáveis que decidem ONDE o Python do Whisper põe (e lê) o cache do
- * Hugging Face — na precedência que o huggingface_hub honra: `HF_HUB_CACHE`
- * (o lugar exato) > `HF_HOME` (a casa do `hub`) > `XDG_CACHE_HOME` (a casa
- * do `.cache`). É a mesma resolução do `scripts/medir-whisper.sh` — ao
- * mexer aqui, mexa lá.
+ * Hugging Face — TODAS as que o `huggingface_hub` honra, na precedência que
+ * ele resolve (constants.py da 2.0.0, conferido no venv do mlx-whisper em
+ * 12/11/2026): `HF_HUB_CACHE` (o lugar exato) > `HUGGINGFACE_HUB_CACHE` (a
+ * ANTIGA, ainda honrada — era a que a r4 não conhecia) > `HF_HOME`/hub (a
+ * casa do `hub`) > `XDG_CACHE_HOME`/huggingface/hub (a casa do `.cache`) >
+ * `~/.cache/huggingface/hub`. A PRECEDÊNCIA é decisão do Python — aqui só
+ * repassamos as variáveis, para os dois lados resolverem o MESMO cache. É a
+ * mesma ordem do `scripts/medir-whisper.sh` (`hub_dir`) — ao mexer aqui,
+ * mexa lá.
  *
  * `HF_TOKEN` NÃO está aqui de propósito: estas são CAMINHOS de cache, não
  * credenciais. Repassar credencial a processo externo é o que
- * `ambienteMinimo()` (transcribe.ts) existe para impedir — o stderr da
+ * `ambienteMinimo()` (ambiente-processo.ts) existe para impedir — o stderr da
  * transcrição vira `jobs.error_message`, gravado no banco.
  */
-export const VARS_CACHE_MODELO = ["HF_HOME", "HF_HUB_CACHE", "XDG_CACHE_HOME"] as const;
+export const VARS_CACHE_MODELO = [
+  "HF_HOME",
+  "HF_HUB_CACHE",
+  "HUGGINGFACE_HUB_CACHE",
+  "XDG_CACHE_HOME",
+] as const;
 
 /**
  * O ambiente de cache do modelo, lido do processo na hora. FUNÇÃO ÚNICA
- * (r4/P2): o download antecipado (`baixarModeloWhisper`, ferramentas.ts) e
- * a transcrição (`ambienteMinimo`, transcribe.ts) chamam ESTA função — os
- * dois processos Python resolvem o MESMO cache. Antes, o download herda o
- * servidor inteiro (com `HF_HOME` etc.) e a transcrição via allowlist os
- * tirava: a instalação baixava num cache, gravava "pronto", e o 1º vídeo
+ * (r4/P2, fechada pela CLASSE na r5): o download antecipado
+ * (`baixarModeloWhisper`, ferramentas.ts), a transcrição (`ambienteMinimo`,
+ * ambiente-processo.ts) e o retrato de cache da marca de prontidão chamam
+ * ESTA função — os processos Python resolvem o MESMO cache. Antes, o download
+ * herda o servidor inteiro (com `HF_HOME` etc.) e a transcrição via allowlist
+ * os tirava: a instalação baixava num cache, gravava "pronto", e o 1º vídeo
  * baixava ~1,6 GB de novo noutro (ou falhava sem rede). A marca de
  * prontidão também grava o resultado daqui, para a prontidão cair se a
  * decisão de cache mudar depois.

@@ -25,12 +25,13 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { ambienteMinimo } from "@/pipeline/lib/ambiente-processo";
 import { dividirPath, localizarBinario, pythonDaFerramentaUv } from "@/pipeline/lib/binario";
 import { FILHO_EM_GRUPO_PROPRIO, registrarFilho } from "@/pipeline/lib/cancelamento";
 import { caminhoDe, modoPacote } from "@/pipeline/lib/ferramentas";
 import { DATA_ROOT } from "@/pipeline/lib/paths";
 import { redact } from "@/pipeline/lib/llm/redact";
-import { ambienteCacheModelo, modeloWhisper, repositorioMlx } from "@/pipeline/lib/modelo-whisper";
+import { modeloWhisper, repositorioMlx } from "@/pipeline/lib/modelo-whisper";
 import { PipelineError } from "@/pipeline/types";
 
 export type Backend = "mlx" | "whisper" | "whisper-cpp";
@@ -44,52 +45,15 @@ const CACHE_DIR = path.join(DATA_ROOT, "transcripts");
 
 // ── ambiente e execução ──────────────────────────────────────────────────────
 
-/**
- * O que um processo externo de transcrição legitimamente precisa: achar
- * binários, saber onde é a casa, escrever temporário e formatar texto. Nenhuma
- * credencial atravessa — as variáveis de CACHE do modelo (`HF_HOME` etc.) sim,
- * porque são caminhos, não segredos, e porque a transcrição tem de resolver o
- * MESMO cache onde a instalação baixou o modelo (r4/P2; ver abaixo).
- *
- * Isto não é zelo decorativo: o que estes processos imprimem no stderr entra na
- * mensagem de erro, e a mensagem de erro é PERSISTIDA em `jobs.error_message`.
- * Com o ambiente inteiro, uma falha que ecoasse o env gravaria a chave de quem
- * usa, no banco, para sempre.
- */
-export function ambienteMinimo(): NodeJS.ProcessEnv {
-  // NODE_ENV entra porque o tipo do Node o exige e porque não é segredo —
-  // ferramentas de linha de comando costumam consultá-lo.
-  const permitidas = ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "SHELL", "USER", "NODE_ENV"];
-  // No Windows não existem HOME/TMPDIR/USER/SHELL — quem os substitui são
-  // estas outras, e um Python instalado no Windows falha sem SYSTEMROOT (ele
-  // usa a variável para localizar DLLs do sistema). PATHEXT é o que permite
-  // ao subprocesso resolver um nome nu (`python3`) para o `.exe`/`.cmd` certo.
-  if (process.platform === "win32") {
-    permitidas.push(
-      "USERPROFILE",
-      "TEMP",
-      "TMP",
-      "USERNAME",
-      "APPDATA",
-      "LOCALAPPDATA",
-      "SYSTEMROOT",
-      "PATHEXT",
-    );
-  }
-  const env: Record<string, string> = {};
-  for (const nome of permitidas) {
-    const v = process.env[nome];
-    if (v !== undefined) env[nome] = v;
-  }
-  // r4/P2: as variáveis de cache do Hugging Face entram pela FUNÇÃO ÚNICA
-  // compartilhada com o download do modelo (modelo-whisper.ts) — sem isto, a
-  // instalação (que herda o servidor) baixava o modelo num cache e a
-  // transcrição lia noutro: com HF_HOME/XDG_CACHE_HOME definidos, o 1º vídeo
-  // baixava ~1,6 GB de novo ou falhava sem rede. São CAMINHOS, não
-  // credenciais — HF_TOKEN segue fora desta lista para sempre.
-  Object.assign(env, ambienteCacheModelo());
-  return env as NodeJS.ProcessEnv;
-}
+// r5: `ambienteMinimo` (e a allowlist de cache do HF que ela embute) passou a
+// viver no módulo próprio ambiente-processo.ts — desde a r5 o download do
+// modelo (baixarModeloWhisper, ferramentas.ts) monta o ambiente do filho pela
+// MESMA função que a transcrição, fechando por CONSTRUÇÃO a família do cache
+// divergente: download e transcrição recebem exatamente o mesmo env, e
+// nenhuma variável do servidor entra num processo sem entrar no outro. Segue
+// reexportada daqui porque este era o endereço histórico (r4) de quem importa
+// o ambiente da transcrição.
+export { ambienteMinimo };
 
 interface Execucao {
   code: number | null;

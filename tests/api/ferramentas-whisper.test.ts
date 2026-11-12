@@ -57,10 +57,15 @@ case "$*" in
     # Heredoc SEM aspas para injetar ${registroPython}; por isso os "$" do
     # dublê vão escapados para o ARQUIVO ("\\$*" aqui = "$*" lá) — sem o
     # escape, o shell expandiria "$*" com os args do uv ao criar o python.
+    # O gatilho de falha é um ARQUIVO (não variável de ambiente): desde a r5
+    # o Python do download roda com EXATAMENTE o ambiente da transcrição
+    # (ambienteMinimo) — uma variável qualquer do servidor, como a antiga
+    # BRUTO_PYTHON_FALHA, NÃO chega mais ao processo do download. É o mesmo
+    # isolamento que a r5 prova; o dublê obedece a ele.
     cat > "$UV_TOOL_DIR/mlx-whisper/bin/python" <<EOF
 #!/bin/sh
 printf '%s\\n' "\\$*" >> "${registroPython}"
-if [ -n "\\$BRUTO_PYTHON_FALHA" ]; then echo "download do modelo falhou" >&2; exit 1; fi
+if [ -f "${raiz}/python-falha" ]; then echo "download do modelo falhou" >&2; exit 1; fi
 exit 0
 EOF
     chmod +x "$UV_TOOL_DIR/mlx-whisper/bin/python"
@@ -148,9 +153,9 @@ beforeEach(() => {
   fs.rmSync(registroUv, { force: true });
   fs.rmSync(registroPython, { force: true });
   fs.rmSync(uvToolDir, { recursive: true, force: true });
+  fs.rmSync(path.join(raiz, "python-falha"), { force: true });
   limparMarcasDeModelo();
   delete process.env.BRUTO_UV_FALHA;
-  delete process.env.BRUTO_PYTHON_FALHA;
   delete process.env.BRUTO_WHISPER_MODEL;
 });
 
@@ -228,12 +233,14 @@ describe("POST /api/ferramentas/whisper — instalação sob pedido", () => {
 
   test("download do modelo quebra (rede caiu no meio): erro legível, venv de pé — e o botão CONTINUA (P2)", async () => {
     // 1ª tentativa instala o venv mas o Python falha no download do modelo.
-    process.env.BRUTO_PYTHON_FALHA = "1";
+    // O gatilho é um arquivo porque o download r5 roda com EXATAMENTE o
+    // ambiente da transcrição — variável do servidor não chega ao processo.
+    fs.writeFileSync(path.join(raiz, "python-falha"), "1");
     const falha = await POST(req("POST"));
     assert.equal(falha.status, 500);
     const corpo = await falha.json();
     assert.match(corpo.error, /transcrição|Whisper|internet/i);
-    delete process.env.BRUTO_PYTHON_FALHA;
+    fs.rmSync(path.join(raiz, "python-falha"), { force: true });
 
     // O venv sobrevive, mas prontidão AGORA exige o modelo (r3/P2): sem ele,
     // `instalado` é false e `venvInstalado` é true — é esse par que faz a

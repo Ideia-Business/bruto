@@ -274,27 +274,31 @@ describe("ambienteMinimo — allowlist por plataforma", () => {
     assert.equal(env.PATHEXT, undefined);
   });
 
-  test("r4: as variáveis de CACHE do HF entram (download e transcrição precisam resolver o mesmo cache) — HF_TOKEN NÃO", () => {
-    // A invariante r4/P2: quem instala (`rodarInstalacao`, que herda o
-    // servidor) e quem transcreve (`ambienteMinimo`) têm de ver as MESMAS
+  test("r4+r5: as variáveis de CACHE do HF entram, INCLUSIVE a antiga HUGGINGFACE_HUB_CACHE — HF_TOKEN NÃO", () => {
+    // A invariante r4/P2: quem instala e quem transcreve têm de ver as MESMAS
     // variáveis de cache do Hugging Face — senão o download grava a marca de
-    // "pronto" num cache e o 1º vídeo baixa ~1,6 GB de novo noutro. São
-    // CAMINHOS, não credenciais: `HF_TOKEN` segue fora (o propósito da
-    // allowlist — nenhuma credencial chega ao stderr persistido — não muda).
+    // "pronto" num cache e o 1º vídeo baixa ~1,6 GB de novo noutro. A r5
+    // acrescentou a `HUGGINGFACE_HUB_CACHE` (a variável ANTIGA que o
+    // huggingface_hub ainda honra) à mesma lista. São CAMINHOS, não
+    // credenciais: `HF_TOKEN` segue fora (o propósito da allowlist — nenhuma
+    // credencial chega ao stderr persistido — não muda).
     const original = {
       HF_HOME: process.env.HF_HOME,
       HF_HUB_CACHE: process.env.HF_HUB_CACHE,
+      HUGGINGFACE_HUB_CACHE: process.env.HUGGINGFACE_HUB_CACHE,
       XDG_CACHE_HOME: process.env.XDG_CACHE_HOME,
       HF_TOKEN: process.env.HF_TOKEN,
     };
     process.env.HF_HOME = "/bruto-teste/hf";
     process.env.HF_HUB_CACHE = "/bruto-teste/hf/hub";
+    process.env.HUGGINGFACE_HUB_CACHE = "/bruto-teste/hhcache";
     process.env.XDG_CACHE_HOME = "/bruto-teste/xdg";
     process.env.HF_TOKEN = "hf-segredo-do-teste";
     try {
       const env = ambienteMinimo();
       assert.equal(env.HF_HOME, "/bruto-teste/hf");
       assert.equal(env.HF_HUB_CACHE, "/bruto-teste/hf/hub");
+      assert.equal(env.HUGGINGFACE_HUB_CACHE, "/bruto-teste/hhcache");
       assert.equal(env.XDG_CACHE_HOME, "/bruto-teste/xdg");
       assert.equal(env.HF_TOKEN, undefined, "credencial do HF jamais entra no ambiente mínimo");
     } finally {

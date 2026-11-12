@@ -14,7 +14,49 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { modeloWhisper, repositorioMlx } from "@/pipeline/lib/modelo-whisper";
+import {
+  ambienteCacheModelo,
+  modeloWhisper,
+  repositorioMlx,
+  VARS_CACHE_MODELO,
+} from "@/pipeline/lib/modelo-whisper";
+
+describe("ambienteCacheModelo — a allowlist de cache da função única (r5)", () => {
+  test("as QUATRO variáveis que o huggingface_hub honra passam — inclusive a antiga HUGGINGFACE_HUB_CACHE", () => {
+    // Ground truth (constants.py do huggingface_hub 2.0.0, no venv do
+    // mlx-whisper, 12/11/2026): HF_HUB_CACHE > HUGGINGFACE_HUB_CACHE >
+    // HF_HOME/hub > XDG_CACHE_HOME/huggingface/hub > ~/.cache/huggingface/hub.
+    // A r4 esquecia a HUGGINGFACE_HUB_CACHE — ela chegava ao download por
+    // HERANÇA e não chegava à transcrição: cache divergente de novo.
+    const original: Record<string, string | undefined> = {};
+    for (const v of VARS_CACHE_MODELO) original[v] = process.env[v];
+    process.env.HF_HOME = "/bruto-teste/hf";
+    process.env.HF_HUB_CACHE = "/bruto-teste/hf/hub";
+    process.env.HUGGINGFACE_HUB_CACHE = "/bruto-teste/hhcache";
+    process.env.XDG_CACHE_HOME = "/bruto-teste/xdg";
+    try {
+      assert.deepEqual(ambienteCacheModelo(), {
+        HF_HOME: "/bruto-teste/hf",
+        HF_HUB_CACHE: "/bruto-teste/hf/hub",
+        HUGGINGFACE_HUB_CACHE: "/bruto-teste/hhcache",
+        XDG_CACHE_HOME: "/bruto-teste/xdg",
+      });
+    } finally {
+      for (const [chave, valor] of Object.entries(original)) {
+        if (valor === undefined) delete process.env[chave];
+        else process.env[chave] = valor;
+      }
+    }
+  });
+
+  test("HF_TOKEN NÃO está na lista — caminho de cache passa, credencial nunca", () => {
+    assert.deepEqual(
+      [...VARS_CACHE_MODELO].filter((v) => v.includes("TOKEN")),
+      [],
+      "credencial não é variável de cache",
+    );
+  });
+});
 
 describe("modeloWhisper — o modelo padrão é large-v3-turbo (decisão 12/11/2026)", () => {
   const salva = process.env.BRUTO_WHISPER_MODEL;

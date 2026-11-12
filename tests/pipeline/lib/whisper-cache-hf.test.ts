@@ -1,21 +1,32 @@
 /**
- * r4/P2 — download e transcrição do modelo Whisper usam o MESMO cache do
- * Hugging Face.
+ * r4+r5/P2 — o download do modelo Whisper roda com EXATAMENTE o ambiente da
+ * transcrição.
  *
- * O bug: `baixarModeloWhisper` (ferramentas.ts) roda via `rodarInstalacao`,
- * que herda o ambiente INTEIRO do servidor — inclusive `HF_HOME`/
- * `HF_HUB_CACHE`/`XDG_CACHE_HOME`, se definidas. A transcrição (transcribe.ts)
- * roda com `ambienteMinimo()`, que TIRA essas três. Com qualquer delas
- * definida, a instalação baixa o modelo num cache, grava a marca de "pronto",
- * e a transcrição procura noutro: o 1º vídeo baixa ~1,6 GB de novo (ou falha
- * sem rede).
+ * O bug r4: `baixarModeloWhisper` (ferramentas.ts) rodava via
+ * `rodarInstalacao`, que herda o ambiente INTEIRO do servidor — inclusive
+ * `HF_HOME`/`HF_HUB_CACHE`/`XDG_CACHE_HOME`, se definidas. A transcrição
+ * (transcribe.ts) roda com `ambienteMinimo()`, que TIRA essas variáveis. Com
+ * qualquer delas definida, a instalação baixava o modelo num cache, gravava a
+ * marca de "pronto", e a transcrição procurava noutro: o 1º vídeo baixava
+ * ~1,6 GB de novo (ou falhava sem rede).
  *
- * A prova: o MESMO dublê de Python do venv (`$UV_TOOL_DIR/mlx-whisper/bin/
- * python`) atende os DOIS momentos — o download antecipado (`instalarWhisper`)
- * e a transcrição mlx (`transcreverAudio`) — e registra, de cada execução, as
- * variáveis de cache do HF que recebeu. A invariante: TODAS as execuções
- * refletem exatamente a decisão de cache do ambiente do teste — nenhuma
- * diferença entre os dois processos, e `HF_TOKEN` (credencial) nunca chega.
+ * O bug r5 (mesma família): `HUGGINGFACE_HUB_CACHE` — a variável ANTIGA que
+ * o `huggingface_hub` ainda honra (constants.py da 2.0.0: `HF_HUB_CACHE` >
+ * `HUGGINGFACE_HUB_CACHE` > `HF_HOME/hub` > `XDG_CACHE_HOME/huggingface/hub`
+ * > `~/.cache/huggingface/hub`) — chegava ao download POR HERANÇA e não
+ * chegava à transcrição: o mesmo defeito, pela variável esquecida. A lista
+ * fechada da r4 só fechava o que conhecia; a herança aberta garantia que
+ * qualquer variável de cache desconhecida voltasse a trair.
+ *
+ * O fechamento pela CLASSE (r5): o download roda com EXATAMENTE o ambiente
+ * da transcrição — montado pela MESMA função (`ambienteMinimo()`, que já
+ * embute a allowlist de cache pela função única `ambienteCacheModelo`).
+ * Nada herdado do servidor além do que a transcrição também recebe. A prova:
+ * o cenário completo (instalação + transcrição) roda com CADA variável de
+ * cache e com uma variável qualquer do servidor (`QUALQUER_COISA=1`) no ar —
+ * e exige que o `env` de TODAS as execuções do Python (download antecipado,
+ * sonda do backend e transcrição) seja IGUAL chave por chave, com o cache
+ * esperado, e que `QUALQUER_COISA` (e `HF_TOKEN`) não cheguem a nenhuma.
  */
 import { test, describe, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
@@ -23,14 +34,17 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-/** As três variáveis que decidem onde o Python põe/lê o cache do HF. */
-const VARS_CACHE = ["HF_HOME", "HF_HUB_CACHE", "XDG_CACHE_HOME"] as const;
+/**
+ * As variáveis que decidem onde o Python põe/lê o cache do HF — incluindo a
+ * `HUGGINGFACE_HUB_CACHE`, a antiga que o huggingface_hub ainda honra (r5).
+ */
+const VARS_CACHE = ["HF_HOME", "HF_HUB_CACHE", "HUGGINGFACE_HUB_CACHE", "XDG_CACHE_HOME"] as const;
 
 // ── Ambiente ANTES do import: `transcribe.ts` calcula o diretório de cache
 // de transcrição a partir de DATA_ROOT na CARGA do módulo (padrão dos testes
 // vizinhos — se isto ficasse no before(), o módulo nasceria apontando para o
 // ~/.bruto real). ────────────────────────────────────────────────────────────
-const raiz = fs.mkdtempSync(path.join(os.tmpdir(), "bruto-r4-cache-hf-"));
+const raiz = fs.mkdtempSync(path.join(os.tmpdir(), "bruto-r5-cache-hf-"));
 const ferramentas = path.join(raiz, "ferramentas");
 const binDir = path.join(ferramentas, "bin");
 const dataRoot = path.join(raiz, "dados");
@@ -52,6 +66,9 @@ const VARS = [
   "UV_PYTHON_INSTALL_DIR",
   ...VARS_CACHE,
   "HF_TOKEN",
+  // A "variável qualquer do servidor" da r5: um poluente que não é cache nem
+  // credencial — o download não pode recebê-la só porque o servidor a tem.
+  "QUALQUER_COISA",
 ] as const;
 const salvas: Record<string, string | undefined> = {};
 for (const v of VARS) salvas[v] = process.env[v];
@@ -66,18 +83,20 @@ process.env.UV_PYTHON_INSTALL_DIR = path.join(ferramentas, "uv", "python");
 delete process.env.BRUTO_WHISPER_MODEL; // o padrão (large-v3-turbo) é o testado
 // O teste manda nas variáveis de cache — o que a MÁQUINA que o roda tiver
 // definido (um HF_HOME de dev, por exemplo) não pode vazar para a asserção.
-for (const v of [...VARS_CACHE, "HF_TOKEN"]) delete process.env[v];
+for (const v of [...VARS_CACHE, "HF_TOKEN", "QUALQUER_COISA"]) delete process.env[v];
 
 /**
- * O Python dublê do venv: registra as variáveis de cache do HF que recebeu
- * (um bloco `---chamada` por execução) e "transcreve" uma linha. Atende as
+ * O Python dublê do venv: registra o ambiente COMPLETO que recebeu (um bloco
+ * `---chamada` por execução, `env | sort`) e "transcreve" uma linha. Atende as
  * três formas de chamada — download (`-c <código>`), sonda (`-` + stdin) e
  * transcrição (`- <wav> <repo> <lang>` + stdin) — porque ignora argv/stdin.
+ * O env inteiro (não só o cache) é o que prova a r5: download e transcrição
+ * IGUAIS chave por chave, não só nas chaves que a lista conhece.
  */
 const PYTHON_DUBLE = `#!/bin/sh
 {
   printf '%s\\n' '---chamada'
-  env | grep -E '^(HF_HOME|HF_HUB_CACHE|XDG_CACHE_HOME|HF_TOKEN)=' | sort
+  env | sort
 } >> "${registroPython}"
 echo texto-transcrito-pelo-duble
 exit 0
@@ -91,7 +110,7 @@ let rearmarDeteccao: typeof import("@/pipeline/lib/transcribe").rearmarDeteccao;
 
 before(async () => {
   fs.mkdirSync(binDir, { recursive: true });
-  fs.writeFileSync(audioFake, "audio-fake-r4");
+  fs.writeFileSync(audioFake, "audio-fake-r5");
 
   // O uv dublê "instala" criando o venv com o Python dublê dentro — é assim
   // que o app resolve o interpretador do mlx-whisper no modo pacote.
@@ -159,13 +178,19 @@ beforeEach(() => {
 
 /**
  * Roda o cenário completo — instalação (download antecipado do modelo) E
- * transcrição — com as variáveis de cache dadas no ambiente, e devolve os
- * blocos de variáveis registrados por CADA execução do Python do venv.
+ * transcrição — com as variáveis de cache dadas no ambiente, SEMPRE com a
+ * `QUALQUER_COISA=1` do servidor no ar, e devolve os blocos de ambiente
+ * registrados por CADA execução do Python do venv.
  */
-async function rodarCenario(vars: Record<string, string>): Promise<string[][]> {
+async function rodarCenario(
+  vars: Record<string, string>,
+  opts: { hfToken?: boolean } = {},
+): Promise<string[][]> {
   for (const v of VARS_CACHE) delete process.env[v];
   delete process.env.HF_TOKEN;
+  process.env.QUALQUER_COISA = "1";
   for (const [nome, valor] of Object.entries(vars)) process.env[nome] = valor;
+  if (opts.hfToken) process.env.HF_TOKEN = "hf-segredo-do-teste";
   try {
     __rearmarParaTestes();
     await instalarWhisper();
@@ -177,6 +202,8 @@ async function rodarCenario(vars: Record<string, string>): Promise<string[][]> {
     return blocosDoRegistro();
   } finally {
     for (const nome of Object.keys(vars)) delete process.env[nome];
+    delete process.env.QUALQUER_COISA;
+    delete process.env.HF_TOKEN;
   }
 }
 
@@ -196,72 +223,127 @@ function blocosDoRegistro(): string[][] {
   return blocos;
 }
 
-describe("r4 — download e transcrição: MESMO ambiente de cache do HF", () => {
-  test("com HF_HOME definido, TODOS os processos Python recebem HF_HOME", async () => {
-    const hfHome = path.join(raiz, "cache-a");
-    const blocos = await rodarCenario({ HF_HOME: hfHome });
-    // Download do modelo + sonda do backend + transcrição = 3 execuções.
-    assert.equal(
-      blocos.length,
-      3,
-      `esperava download+sonda+transcrição (3 execuções do Python), veio ${blocos.length}: ${JSON.stringify(blocos)}`,
+/** As linhas de variável de CACHE do HF de um bloco de ambiente registrado. */
+const LINHA_CACHE = /^(HF_HOME|HF_HUB_CACHE|HUGGINGFACE_HUB_CACHE|XDG_CACHE_HOME)=/;
+
+function soCache(bloco: string[]): string[] {
+  return bloco.filter((linha) => LINHA_CACHE.test(linha));
+}
+
+function temVar(bloco: string[], chave: string): boolean {
+  return bloco.some((linha) => linha.startsWith(`${chave}=`));
+}
+
+/**
+ * A invariante da r5/CLASS: download (i=0), sonda (i=1) e transcrição (i=2)
+ * rodam com o MESMO ambiente, chave por chave — e nenhum deles recebe a
+ * variável qualquer do servidor nem a credencial do HF.
+ */
+function exigirMesmoAmbiente(blocos: string[][], cenario: string): void {
+  assert.equal(
+    blocos.length,
+    3,
+    `${cenario}: esperava download+sonda+transcrição (3 execuções do Python), veio ${blocos.length}: ${JSON.stringify(blocos)}`,
+  );
+  const [download, sonda, transcricao] = blocos;
+  assert.deepEqual(
+    download,
+    transcricao,
+    `${cenario}: o env do download DIFERE do env da transcrição — chaves só no download: ${JSON.stringify(
+      download.filter((l) => !transcricao.includes(l)),
+    )}`,
+  );
+  assert.deepEqual(
+    sonda,
+    transcricao,
+    `${cenario}: o env da sonda difere do env da transcrição`,
+  );
+  blocos.forEach((bloco, i) => {
+    const papel = i === 0 ? "download" : i === 1 ? "sonda" : "transcrição";
+    assert.ok(
+      !temVar(bloco, "QUALQUER_COISA"),
+      `${cenario}: QUALQUER_COISA (variável qualquer do servidor) chegou à execução de ${papel}`,
     );
-    for (const [i, bloco] of blocos.entries()) {
-      assert.deepEqual(
-        bloco,
-        [`HF_HOME=${hfHome}`],
-        `a execução #${i} do Python (i=0 download, i=1 sonda, i=2 transcrição) recebeu o cache errado`,
-      );
-    }
+    assert.ok(!temVar(bloco, "HF_TOKEN"), `${cenario}: HF_TOKEN chegou à execução de ${papel}`);
   });
+}
 
-  test("com XDG_CACHE_HOME definido, idem — cada variável conta", async () => {
-    const xdg = path.join(raiz, "cache-xdg");
-    const blocos = await rodarCenario({ XDG_CACHE_HOME: xdg });
-    assert.equal(blocos.length, 3);
-    for (const bloco of blocos) assert.deepEqual(bloco, [`XDG_CACHE_HOME=${xdg}`]);
-  });
+describe("r5 — download e transcrição: EXATAMENTE o mesmo ambiente", () => {
+  // Cada variável de cache, SOZINHA no ar: as três execuções têm de vê-la —
+  // inclusive a `HUGGINGFACE_HUB_CACHE`, a antiga que a r4 não conhecia.
+  for (const variavel of VARS_CACHE) {
+    test(`com ${variavel} definida, TODAS as execuções do Python a recebem (e o env é o mesmo)`, async () => {
+      const valor = path.join(raiz, `cache-${variavel.toLowerCase()}`);
+      const blocos = await rodarCenario({ [variavel]: valor });
+      exigirMesmoAmbiente(blocos, variavel);
+      for (const [i, bloco] of blocos.entries()) {
+        assert.deepEqual(
+          soCache(bloco),
+          [`${variavel}=${valor}`],
+          `a execução #${i} do Python (i=0 download, i=1 sonda, i=2 transcrição) recebeu o cache errado`,
+        );
+      }
+    });
+  }
 
-  test("com HF_HOME e HF_HUB_CACHE juntas, as duas chegam a todos", async () => {
+  test("com HF_HOME e HF_HUB_CACHE juntas, as duas chegam a todos (na ordem do HF, quem manda é o Python)", async () => {
     const hfHome = path.join(raiz, "cache-b");
     const hub = path.join(hfHome, "hub");
     const blocos = await rodarCenario({ HF_HOME: hfHome, HF_HUB_CACHE: hub });
-    assert.equal(blocos.length, 3);
+    exigirMesmoAmbiente(blocos, "HF_HOME+HF_HUB_CACHE");
     for (const bloco of blocos) {
-      assert.deepEqual(bloco, [`HF_HOME=${hfHome}`, `HF_HUB_CACHE=${hub}`]);
+      assert.deepEqual(soCache(bloco), [`HF_HOME=${hfHome}`, `HF_HUB_CACHE=${hub}`]);
     }
   });
 
   test("sem nenhuma definida, nenhum processo as recebe (default nos dois lados)", async () => {
     const blocos = await rodarCenario({});
-    assert.equal(blocos.length, 3);
-    for (const bloco of blocos) assert.deepEqual(bloco, []);
+    exigirMesmoAmbiente(blocos, "sem cache definido");
+    for (const bloco of blocos) assert.deepEqual(soCache(bloco), []);
   });
 
-  test("HF_TOKEN no ambiente não chega à TRANSCRIÇÃO — só caminho de cache passa", async () => {
+  test("r5: HF_TOKEN no servidor NÃO chega a processo NENHUM — nem ao download", async () => {
+    // Na r4 o download herdava o servidor inteiro (com HF_TOKEN junto) e o
+    // contrato aceitava: o stderr do download era descartado. A r5 fecha a
+    // classe por construção — ambiente IGUAL ao da transcrição — e a
+    // credencial deixa de existir para o download também.
     const hfHome = path.join(raiz, "cache-c");
-    const blocos = await rodarCenario({ HF_HOME: hfHome, HF_TOKEN: "hf-segredo-do-teste" });
-    assert.equal(blocos.length, 3);
-    const [download, ...transcricao] = blocos;
-    // A transcrição (sonda + mlx) é onde o stderr vira `jobs.error_message`:
-    // lá, credencial NUNCA — só o caminho de cache, que não é segredo.
-    assert.deepEqual(
-      transcricao,
-      [[`HF_HOME=${hfHome}`], [`HF_HOME=${hfHome}`]],
-      "a credencial do HF vazou para o processo de transcrição",
-    );
-    // O download herda o servidor inteiro (é a opção (a): precisa do ambiente
-    // de rede — proxies, CAs — e o stderr dele é DESCARTADO por
-    // instalarWhisper, nunca persistido). O que o repasse explícito lhe
-    // garante é o cache — não mais que isso:
-    assert.ok(
-      download.includes(`HF_HOME=${hfHome}`),
-      "o download recebe a variável de cache repassada",
-    );
+    const blocos = await rodarCenario({ HF_HOME: hfHome }, { hfToken: true });
+    exigirMesmoAmbiente(blocos, "HF_TOKEN no servidor");
+    for (const bloco of blocos) assert.deepEqual(soCache(bloco), [`HF_HOME=${hfHome}`]);
   });
 });
 
-describe("r4 — a marca de prontidão é coerente com o cache (mesmo repo, mesmo cache)", () => {
+describe("r5 — a marca de prontidão retrata a allowlist de cache INTEIRA", () => {
+  test("a HUGGINGFACE_HUB_CACHE (antiga) também invalida a marca ao mudar", async () => {
+    const cacheA = path.join(raiz, "marca-hhc-a");
+    const cacheB = path.join(raiz, "marca-hhc-b");
+
+    process.env.HUGGINGFACE_HUB_CACHE = cacheA;
+    __rearmarParaTestes();
+    await instalarWhisper();
+    assert.equal(whisperInstalado(), true, "instalado com HUGGINGFACE_HUB_CACHE=cacheA deve estar pronto");
+
+    // A marca só vale para a MESMA decisão de cache com que nasceu: trocar a
+    // variável ANTIGA troca o cache que o Python vai resolver — o modelo
+    // ficou no cache velho e a prontidão cai (mesmo defeito da r4, só que
+    // pela variável que a allowlist da r4 não cobria).
+    process.env.HUGGINGFACE_HUB_CACHE = cacheB;
+    assert.equal(
+      whisperInstalado(),
+      false,
+      "mudou o cache (HUGGINGFACE_HUB_CACHE) → a marca de um cache outro não vale prontidão",
+    );
+
+    // E reinstalar baixa DE NOVO (o registro prova a 2ª execução do Python).
+    fs.rmSync(registroPython, { force: true });
+    __rearmarParaTestes();
+    await instalarWhisper();
+    assert.equal(whisperInstalado(), true, "reinstalado no cache novo, pronto de novo");
+    assert.equal(blocosDoRegistro().length, 1, "a reinstalação refaz o download no cache novo");
+    delete process.env.HUGGINGFACE_HUB_CACHE;
+  });
+
   test("trocar HF_HOME depois de instalado derruba a prontidão (o modelo ficou no cache velho)", async () => {
     const cacheA = path.join(raiz, "marca-a");
     const cacheB = path.join(raiz, "marca-b");

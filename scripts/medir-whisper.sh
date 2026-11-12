@@ -78,6 +78,26 @@ achar_python() {
   command -v python3 2>/dev/null
 }
 
+# Diretório do hub do cache do HF, na MESMA ordem que o huggingface_hub
+# resolve (constants.py da 2.0.0, conferido no venv do mlx-whisper em
+# 12/11/2026): HF_HUB_CACHE > HUGGINGFACE_HUB_CACHE (a ANTIGA, ainda
+# honrada) > HF_HOME/hub > XDG_CACHE_HOME/huggingface/hub >
+# ~/.cache/huggingface/hub. Espelho da allowlist de modelo-whisper.ts
+# (`VARS_CACHE_MODELO`) — ao mexer lá, mexa aqui.
+hub_dir() {
+  if [ -n "${HF_HUB_CACHE:-}" ]; then
+    printf '%s\n' "$HF_HUB_CACHE"
+  elif [ -n "${HUGGINGFACE_HUB_CACHE:-}" ]; then
+    printf '%s\n' "$HUGGINGFACE_HUB_CACHE"
+  elif [ -n "${HF_HOME:-}" ]; then
+    printf '%s\n' "$HF_HOME/hub"
+  elif [ -n "${XDG_CACHE_HOME:-}" ]; then
+    printf '%s\n' "$XDG_CACHE_HOME/huggingface/hub"
+  else
+    printf '%s\n' "$HOME/.cache/huggingface/hub"
+  fi
+}
+
 # Tamanho (MB) da pasta do modelo no cache do Hugging Face, depois da
 # transcrição. `models--<org>--<nome>` é o formato do cache do hub.
 # Mede a pasta `snapshots/` COM symlinks seguidos (-L): no cache xet os
@@ -86,13 +106,7 @@ achar_python() {
 # do padrão do hub), cai para o `du -smL` da pasta toda.
 tamanho_modelo_mb() {
   local repo=$1 cache dir
-  if [ -n "${HF_HUB_CACHE:-}" ]; then
-    cache=$HF_HUB_CACHE
-  elif [ -n "${HF_HOME:-}" ]; then
-    cache=$HF_HOME/hub
-  else
-    cache=$HOME/.cache/huggingface/hub
-  fi
+  cache=$(hub_dir)
   dir="$cache/models--${repo//\//--}"
   if [ -d "$dir/snapshots" ]; then
     du -smL "$dir/snapshots" | awk '{print $1}'

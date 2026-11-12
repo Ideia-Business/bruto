@@ -34,6 +34,7 @@ import path from "node:path";
 import { juntarCaminho } from "@/lib/caminho-opaco";
 import { FILHO_EM_GRUPO_PROPRIO, registrarFilho } from "@/pipeline/lib/cancelamento";
 import { pythonDaFerramentaUv } from "@/pipeline/lib/binario";
+import { ambienteMinimo } from "@/pipeline/lib/ambiente-processo";
 import { ambienteCacheModelo, modeloWhisper, repositorioMlx } from "@/pipeline/lib/modelo-whisper";
 import { PipelineError } from "@/pipeline/types";
 
@@ -105,28 +106,25 @@ function executavel(caminho: string): boolean {
 const ARGS_PYTHON_GERENCIADO = ["--python-preference", "only-managed"];
 
 /**
- * Roda o instalador (uv, ou o node da CLI do Playwright) com teto de tempo e
- * registro de cancelamento: se o processo rodar DENTRO de um job, cancelar o
- * job o mata em grupo. Rejeita em timeout ou exit != 0 com o rabo do stderr.
- *
- * `envExtra` ACRESCENTA variáveis por cima do ambiente herdado (nunca
- * subtrai) — é por ele que o download do modelo repassa o cache do HF pela
- * função única de modelo-whisper.ts (r4), explícito no call site.
+ * Roda um processo externo de preparação com teto de tempo e registro de
+ * cancelamento: se o processo rodar DENTRO de um job, cancelar o job o mata
+ * em grupo. Rejeita em timeout ou exit != 0 com o rabo do stderr. O `env` é o
+ * ambiente COMPLETO do filho — a política de quem entra é de quem chama:
+ * `rodarInstalacao` (abaixo) herda o servidor e impõe a preferência de
+ * Python do uv; o download do modelo (r5) usa EXATAMENTE o ambiente da
+ * transcrição (`ambienteMinimo`, ambiente-processo.ts).
  */
-function rodarInstalacao(
+function rodarComTeto(
   cmd: string,
   args: string[],
   timeoutMs: number,
-  envExtra: Record<string, string> = {},
+  env: NodeJS.ProcessEnv,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
       shell: false,
       detached: FILHO_EM_GRUPO_PROPRIO,
-      // As variáveis UV_* e PLAYWRIGHT_BROWSERS_PATH chegam pelo ambiente do
-      // processo (o lançador as define) — o filho herda. UV_PYTHON_PREFERENCE
-      // é imposta AQUI, não delegada ao lançador (ver ARGS_PYTHON_GERENCIADO).
-      env: { ...process.env, UV_PYTHON_PREFERENCE: "only-managed", ...envExtra },
+      env,
     });
     registrarFilho(child);
 
@@ -167,6 +165,29 @@ function rodarInstalacao(
       }
       resolve();
     });
+  });
+}
+
+/**
+ * Roda o instalador (uv, ou o node da CLI do Playwright) com teto de tempo e
+ * registro de cancelamento (o corpo vive em `rodarComTeto`).
+ *
+ * `envExtra` ACRESCENTA variáveis por cima do ambiente herdado (nunca
+ * subtrai) — os INSTALADORES precisam do ambiente do servidor (as variáveis
+ * UV_* e PLAYWRIGHT_BROWSERS_PATH chegam pelo lançador; o uv também honra
+ * proxies e CAs do sistema para baixar pacotes). UV_PYTHON_PREFERENCE é
+ * imposta AQUI, não delegada ao lançador (ver ARGS_PYTHON_GERENCIADO).
+ */
+function rodarInstalacao(
+  cmd: string,
+  args: string[],
+  timeoutMs: number,
+  envExtra: Record<string, string> = {},
+): Promise<void> {
+  return rodarComTeto(cmd, args, timeoutMs, {
+    ...process.env,
+    UV_PYTHON_PREFERENCE: "only-managed",
+    ...envExtra,
   });
 }
 
@@ -535,8 +556,9 @@ export function venvWhisperInstalado(): boolean {
  * de caminho dinâmico (os `snapshots/<rev>/weights.*` do HF) é
  * `readdirSync`/glob que o tracer do build standalone pune com varredura no
  * projeto inteiro, e a marca é UMA leitura de arquivo; (2) o diretório do
- * cache é decisão do processo PYTHON (HF_HOME/HF_HUB_CACHE/XDG_CACHE_HOME) —
- * e desde r4 download e transcrição resolvem essas variáveis pela MESMA
+ * cache é decisão do processo PYTHON (HF_HUB_CACHE/HUGGINGFACE_HUB_CACHE/
+ * HF_HOME/XDG_CACHE_HOME — `VARS_CACHE_MODELO`) — e desde r4 download e
+ * transcrição resolvem essas variáveis pela MESMA
  * função (`ambienteCacheModelo`), então replicar a resolução de CAMINHO em
  * TS continua sendo uma segunda verdade desnecessária: a marca grava o
  * SNAPSHOT da decisão (as variáveis, não o caminho resolvido) e a prontidão
@@ -652,6 +674,25 @@ export function codigoPythonBaixarModelo(repo: string): string {
  * mesmo interpretador que vai transcrever, o mesmo cache do Hugging Face
  * que `mlx_whisper.transcribe` leria. Sem isto, a instalação terminava
  * "pronta" e o 1º vídeo parava ~1,6 GB de download depois, sem aviso.
+ *
+ * r5/CLASS — o download roda com EXATAMENTE o ambiente da transcrição
+ * (`ambienteMinimo`, ambiente-processo.ts; a allowlist de cache do HF já vem
+ * embutida nela, pela função única `ambienteCacheModelo`). Nada é herdado do
+ * servidor, e NADA é acrescentado — cada acréscimo candidato foi avaliado:
+ *
+ *  - `UV_*`/`UV_PYTHON_PREFERENCE`: inertes aqui. O executado é o Python do
+ *    venv JÁ CRIADO, invocado diretamente — nenhum `uv` roda neste processo.
+ *  - Rede/proxies (`HTTPS_PROXY` etc.): a transcrição também baixa o modelo
+ *    quando ele falta (é o `load_model` DENTRO do `mlx_whisper.transcribe`) e
+ *    sempre rodou sem essas variáveis — dar ao download um poder de rede que
+ *    a transcrição não teria reintroduziria a divergência que esta correção
+ *    fecha. Proxies, além disso, podem embutir credencial na URL.
+ *  - `HF_TOKEN`: nunca — credencial não atravessa processo externo.
+ *
+ * A igualdade é o que fecha a família POR CONSTRUÇÃO: o download é a MESMA
+ * chamada (`load_model`) que a transcrição faria, com o MESMO ambiente — se
+ * algo faltar para a rede aqui, falta para o 1º vídeo também, e o bug aparece
+ * no download antecipado (avisado pela UI), não no primeiro uso.
  */
 function baixarModeloWhisper(timeoutMs: number): Promise<void> {
   const python = pythonDaFerramentaUv("mlx-whisper");
@@ -660,17 +701,12 @@ function baixarModeloWhisper(timeoutMs: number): Promise<void> {
     return Promise.reject(new Error("o venv do mlx-whisper não apareceu após a instalação"));
   }
   const repo = repositorioMlx(modeloWhisper());
-  return rodarInstalacao(
+  return rodarComTeto(
     python,
     // Sem shell: argv puro, o código vai como um argumento único seguro.
     ["-c", codigoPythonBaixarModelo(repo)],
     timeoutMs,
-    // r4/P2: o MESMO ambiente de cache da transcrição — função única em
-    // modelo-whisper.ts. Hoje o env herdado já contém essas variáveis e o
-    // acréscimo é no-op; explícito para o contrato SOBREVIVER se o env base
-    // do rodarInstalacao um dia estreitar (ex.: allowlist de rede) — o
-    // download passaria a receber o cache daqui, não por acidente.
-    ambienteCacheModelo(),
+    ambienteMinimo(),
   );
 }
 
