@@ -26,8 +26,9 @@ sem instalar nada.
 ## 1. No MACBOOK AIR — fechar o Bruto, listar e mandar o arquivo
 
 1. Feche o Bruto e o que possa estar rodando dele:
-   - **Bruto aberto?** Feche a janela com **Cmd+Q** — atenção: isso fecha só a
-     janela; o servidor do Bruto continua rodando em segundo plano.
+   - **Bruto aberto?** Desligue pelo próprio app: **Configurações → Encerrar o
+     Bruto** (no fim da tela). O `⌘Q` não serve aqui: fecha só a janela, e o
+     servidor do Bruto continua rodando em segundo plano.
    - **Rodou o `serve.sh` do clone noutra janela do Terminal?** Feche **aquela** janela
      (**Cmd+W**) ou pare o comando com **Ctrl+C** nela.
    - **Não souber o que está aberto?** **Reinicie o Mac** — é a forma mais simples de
@@ -66,9 +67,11 @@ daria erro nenhum: moveria a origem PARA DENTRO do destino, em silêncio.
 ### Confirme que o Bruto parou (obrigatório antes do primeiro comando)
 
 `⌘Q` fecha só a janela: o servidor do Bruto continua rodando em segundo plano
-e pode estar escrevendo na biblioteca que você vai mover agora. Feche a janela
-do Bruto com `⌘Q` (isso fecha só a janela) e a janela do Terminal se o
-`serve.sh` estiver rodando; depois confirme de verdade, com a saída **vazia**:
+e pode estar escrevendo na biblioteca que você vai mover agora. Desligue pelo
+próprio app — com o Bruto aberto, Configurações, role até o fim e use o botão
+**“Encerrar o Bruto”** (a seção pede confirmação) — e feche a janela do
+Terminal se o `serve.sh` estiver rodando; depois confirme de verdade, com a
+saída **vazia**:
 
 ```bash
 lsof -nP -iTCP:3000 -sTCP:LISTEN
@@ -146,18 +149,22 @@ quarentena e pularia justamente a parte mais assustadora para quem nunca usou te
 
 ### Confirme que o Bruto parou (obrigatório antes do primeiro comando)
 
-Feche a janela do Bruto com `⌘Q` — mas atenção: `⌘Q` fecha só a janela e o
-servidor do Bruto continua rodando em segundo plano (feche também a janela do
-Terminal se o `serve.sh` estiver rodando). Confirme de verdade, com a saída
-**vazia**:
+Desligue o Bruto pelo próprio app: com o Bruto aberto, vá em Configurações,
+role até o fim e use o botão **“Encerrar o Bruto”** — ele pede confirmação; se
+houver vídeo em processamento, ele avisa (os vídeos retomam na próxima
+abertura) e você escolhe “Encerrar mesmo assim”. Feche também a janela do
+Terminal se o `serve.sh` estiver rodando. O `⌘Q` fecha só a janela; o
+servidor continuaria rodando em segundo plano. A prova de que parou é a
+saída **vazia** do:
 
 ```bash
 lsof -nP -iTCP:3000 -sTCP:LISTEN
 ```
 
-A saída tem de ser **vazia**. Se não for, **reinicie o Mac** — o servidor do
-Bruto não volta sozinho depois de reiniciar — e rode o `lsof` de novo; só
-avançe para os comandos abaixo com a saída vazia. Depois, um comando por linha,
+A saída tem de ser **vazia**. Se não for (ou o botão não aparecer), **reinicie o Mac**
+— o plano B: o servidor do Bruto não volta sozinho depois de
+reiniciar — e rode o `lsof` de novo; só
+avance para os comandos abaixo com a saída vazia. Depois, um comando por linha,
 conferindo o resultado de cada um com `ls -ld`:
 
 1. Arraste `/Applications/Bruto.app` para o **Lixo** (pelo Finder).

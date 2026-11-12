@@ -34,4 +34,8 @@ instalador de script, porque carregam Node e ffmpeg; o Python das ferramentas pa
 cópia gerenciada pelo `uv` em `~/.bruto/ferramentas` (cpython 3.15) — tira o sistema da jogada,
 mas instala duplicata; sem assinatura Apple, o Gatekeeper bloqueia a primeira abertura e a
 pessoa precisa passar por Ajustes do Sistema → Privacidade e Segurança → "Abrir Mesmo Assim"
-(custo aceito da conta adiada); e Mac Intel ficam fora deste caminho.
+(custo aceito da conta adiada); e Mac Intel ficam fora deste caminho. A janela do app é o
+Chrome em `--app`, então o ⌘Q fecha a janela, nunca o servidor — para desligar, Configurações
+→ "Encerrar o Bruto" (`POST /api/encerrar`): o servidor mata os filhos que lançou
+(yt-dlp/Whisper/ffmpeg, em grupo), apaga `servidor.pid` e sai, liberando a porta; abrir de novo
+é papel do lançador, e reiniciar o Mac continua sendo o plano B.

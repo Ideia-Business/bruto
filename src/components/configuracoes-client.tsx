@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { FolderOpen, FolderCheck, FolderX, RotateCw, Download, CheckCircle2 } from "lucide-react";
+import { FolderOpen, FolderCheck, FolderX, RotateCw, Download, CheckCircle2, PowerOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { fetchApp } from "@/lib/fetch-app";
@@ -28,10 +28,11 @@ type EstadoPasta =
 /**
  * Tela de configurações do app — seções INDEPENDENTES (a decisão de quais
  * aparecem é a função pura `secoesDasConfiguracoes`): pasta de exportação +
- * exportar automaticamente, e a transcrição local (Whisper) no app instalado.
- * Um navegador sem a API de pasta (Safari/Firefox) troca só a exportação
- * pelo aviso — o Whisper continua visível, porque a instalação dele roda no
- * servidor. A extensão do Chrome tem sua própria `options.html`.
+ * exportar automaticamente, a transcrição local (Whisper) no app instalado e
+ * o Encerrar o Bruto (sempre). Um navegador sem a API de pasta
+ * (Safari/Firefox) troca só a exportação pelo aviso — o Whisper continua
+ * visível, porque a instalação dele roda no servidor. A extensão do Chrome
+ * tem sua própria `options.html`.
  */
 export function ConfiguracoesClient() {
   const [suportado, setSuportado] = useState(true);
@@ -280,6 +281,134 @@ export function ConfiguracoesClient() {
           )}
         </section>
       )}
+
+      {secoes.encerrar && <SecaoEncerrar />}
     </div>
+  );
+}
+
+/**
+ * "Encerrar o Bruto" — desliga o servidor do próprio app e libera a porta (o
+ * ⌘Q fecha só a janela; ADR 0005). Confirmação embutida (nada de confirm()),
+ * aviso próprio quando há vídeos processando (409 → "Encerrar mesmo assim") e
+ * estado final "pode fechar esta janela" depois do 202.
+ */
+type FaseEncerrar = "disponivel" | "confirmando" | "avisar-ativos" | "enviando" | "encerrado" | "erro";
+
+function SecaoEncerrar() {
+  const [fase, setFase] = useState<FaseEncerrar>("disponivel");
+  const [ativos, setAtivos] = useState(0);
+  const [erro, setErro] = useState("");
+
+  async function encerrar(corpo: Record<string, unknown>): Promise<void> {
+    setFase("enviando");
+    try {
+      const res = await fetchApp("/api/encerrar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(corpo),
+      });
+      if (res.status === 202) {
+        setFase("encerrado");
+        return;
+      }
+      const dados = (await res.json().catch(() => null)) as
+        | { code?: string; ativos?: number; error?: string }
+        | null;
+      if (res.status === 409 && dados?.code === "processamento-em-andamento") {
+        setAtivos(dados.ativos ?? 0);
+        setFase("avisar-ativos");
+        return;
+      }
+      setErro(dados?.error ?? "Não foi possível encerrar o Bruto agora.");
+      setFase("erro");
+    } catch {
+      setErro("Não foi possível falar com o servidor do Bruto.");
+      setFase("erro");
+    }
+  }
+
+  if (fase === "encerrado") {
+    return (
+      <section className="rounded-lg border border-border bg-card p-4">
+        <h2 className="font-semibold">Encerrar o Bruto</h2>
+        <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+          <CheckCircle2 className="size-4 text-emerald-500" />
+          O Bruto foi encerrado. Pode fechar esta janela.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="space-y-4 rounded-lg border border-border bg-card p-4">
+      <div>
+        <h2 className="font-semibold">Encerrar o Bruto</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Desliga o Bruto neste Mac; para abrir de novo, use o Bruto em Aplicativos. (Fechar a
+          janela com ⌘Q não desliga — o servidor continua rodando.)
+        </p>
+      </div>
+
+      {fase === "disponivel" && (
+        <Button variant="outline" onClick={() => setFase("confirmando")} className="gap-1.5">
+          <PowerOff className="size-4" />
+          Encerrar o Bruto
+        </Button>
+      )}
+
+      {fase === "confirmando" && (
+        <div className="space-y-3 rounded-md border border-border bg-muted/40 px-3 py-3">
+          <p className="text-sm">
+            O servidor do Bruto vai parar neste Mac. Vídeos que estiverem processando retomam
+            quando você abrir o Bruto de novo.
+          </p>
+          <div className="flex gap-2">
+            <Button variant="destructive" size="sm" onClick={() => void encerrar({})}>
+              Encerrar agora
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setFase("disponivel")}>
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {fase === "avisar-ativos" && (
+        <div className="space-y-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-3">
+          <p className="text-sm">
+            {ativos === 1
+              ? "Há 1 vídeo sendo processado agora."
+              : `Há ${ativos} vídeos sendo processados agora.`}{" "}
+            Se encerrar, ele{ativos === 1 ? "" : "s"} para{ativos === 1 ? "" : "m"} e retoma
+            {ativos === 1 ? "" : "m"} do ponto onde estava{ativos === 1 ? "" : "vam"} quando você
+            abrir o Bruto de novo.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => void encerrar({ confirmar: true })}
+            >
+              Encerrar mesmo assim
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setFase("disponivel")}>
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {fase === "enviando" && <p className="text-sm text-muted-foreground">Encerrando…</p>}
+
+      {fase === "erro" && (
+        <div className="space-y-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-3">
+          <p className="text-sm">{erro}</p>
+          <Button variant="ghost" size="sm" onClick={() => setFase("disponivel")}>
+            Voltar
+          </Button>
+        </div>
+      )}
+    </section>
   );
 }

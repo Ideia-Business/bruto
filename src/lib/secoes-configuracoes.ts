@@ -24,6 +24,14 @@ export interface SecoesConfiguracoes {
   exportacao: "completa" | "aviso-navegador";
   /** A seção do Whisper, independente da exportação. */
   whisper: boolean;
+  /**
+   * A seção "Encerrar o Bruto" — SEMPRE presente (nos dois modos, em qualquer
+   * navegador): é a única forma de dentro do app de desligar o servidor (o ⌘Q
+   * só fecha a janela). Sair como campo, e não como JSX fora da decisão, para
+   * o contrato "a falta de capacidade de UMA seção nunca esconde OUTRA" já
+   * nascer cobrindo ela também.
+   */
+  encerrar: boolean;
 }
 
 export function secoesDasConfiguracoes(entrada: {
@@ -33,5 +41,6 @@ export function secoesDasConfiguracoes(entrada: {
   return {
     exportacao: entrada.suportaPasta ? "completa" : "aviso-navegador",
     whisper: entrada.whisper?.suportado === true,
+    encerrar: true,
   };
 }
