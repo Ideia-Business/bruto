@@ -12,7 +12,13 @@ para resposta.
 
 **O servidor não é uma IA genérica grátis.** Ele recebe só a transcrição e os metadados do vídeo e
 monta, ele mesmo, o prompt da aula (`studyPrompt` de `src/pipeline/prompts/study.ts`). O modelo é
-fixado no servidor. Quem chamar a rota com outra intenção recebe, no máximo, uma aula.
+fixado no servidor. A rota não tem outra resposta: quem a chama com outra intenção recebe uma aula
+por pedido — sempre uma aula montada pelo próprio servidor sobre o texto enviado, nunca um chat
+genérico — até bater nos limites. O volume é contido pelos tetos da seção "Limites" e pelo firewall
+da Vercel (seção "Firewall da Vercel (borda)"). O que isso NÃO segura: sem autenticação, ~25 redes
+diferentes (6 aulas/dia cada) esgotam o teto geral de 150/dia — risco aceito pelo dono em
+05/11/2026 (relatório local `.security/relatorios-2026-11-05/seg-servidor-extensao.md`, achado
+S-02); o firewall por IP não resolve esse caso, só a rajada de um mesmo IP.
 
 ## Rotas
 
@@ -68,6 +74,23 @@ cabeçalho CORS.
 - O IP nunca é gravado como está: grava-se `sha256(ip + BRUTO_SAL)`, e `BRUTO_SAL` é variável de ambiente.
 - Incrementa ANTES de chamar o Ollama (evita corrida); se o Ollama falhar, devolve a unidade.
 
+## Firewall da Vercel (borda)
+
+Duas regras de WAF ativas no projeto `bruto-gratis` (time `ideia-business`), criadas em 12/11/2026
+(demanda `4657c736`). Contador por IP, janela fixa de 10 min (o máximo que a Vercel Pro aceita),
+resposta `429` na borda — o pedido morre antes de chegar à função e ao Redis:
+
+| Regra | Condição | Limite |
+|---|---|---|
+| `bruto: POST /api/aula por IP` | método POST e caminho = `/api/aula` | 6 por 10 min |
+| `bruto: /api/ por IP` | caminho começa com `/api/` (cota, aula, preflight) | 60 por 10 min |
+
+Prova medida: rajada de 65 `GET /api/cota` do mesmo IP → 60 chegaram à função (e responderam 400)
+e as demais receberam `429` com `x-vercel-mitigated: deny`. Os contadores da Vercel são por
+região. O plano Pro cobra o firewall por uso (pedidos verificados). Para mudar as regras: painel
+do projeto → Firewall, ou API `PATCH /v1/security/firewall/config` (`rules.insert`,
+`mitigate.action: "rate_limit"`).
+
 ## Chamada ao Ollama
 
 `POST https://ollama.com/v1/chat/completions`, `Authorization: Bearer $OLLAMA_API_KEY`, modelo
@@ -95,3 +118,23 @@ Chave, transcrição, título, IP ou instalação. Log só com contagens e statu
 2. Criar o projeto `bruto-gratis` no time e ligar o Redis a ele.
 3. Dono coloca `OLLAMA_API_KEY` e `BRUTO_SAL` nas variáveis de ambiente, sem passar pelo chat.
 4. Deploy por `vercel-deploy-isolado`, só com a ordem do dono em palavras.
+
+Estado atual do Redis: plano Free do Upstash pela integração da Vercel — 500 mil comandos por mês,
+região `iad1`. Store atual `upstash-kv-crimson-fence`, ligado ao `bruto-gratis` em 12/11/2026.
+
+### Se o Redis sumir de novo (já sumiu uma vez)
+
+O store anterior (`upstash-kv-cinnabar-island`) foi desinstalado em data não registrada; o host
+deixou de existir (`ENOTFOUND`) e todo `/api/cota` e `/api/aula` respondia 500. Foi assim que o
+dono recuperou, em 12/11/2026:
+
+1. Recriar a integração do Upstash na Vercel e criar o store novo.
+2. Desligar a ligação morta do store antigo ANTES de ligar o novo ao projeto — senão a Vercel
+   recusa com `env_var_prefix_not_unique`.
+3. Remover as variáveis de ambiente antigas, que apontavam para o host morto.
+4. Redeploy isolado (`vercel-deploy-isolado`), só com a ordem do dono.
+
+Verificação barata para repetir: `GET /api/cota` com `X-Bruto-Cliente: extensao` e
+`X-Bruto-Instalacao: <uuid v4>` qualquer → espera-se `200` com `{ "restantes": n, "limite": 3 }`.
+Provado na recuperação de 12/11/2026: cota `200 {restantes:3}`, uma aula `200`, cota depois
+`{restantes:2}`.
