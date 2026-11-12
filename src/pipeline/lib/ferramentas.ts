@@ -34,7 +34,7 @@ import path from "node:path";
 import { juntarCaminho } from "@/lib/caminho-opaco";
 import { FILHO_EM_GRUPO_PROPRIO, registrarFilho } from "@/pipeline/lib/cancelamento";
 import { pythonDaFerramentaUv } from "@/pipeline/lib/binario";
-import { modeloWhisper, repositorioMlx } from "@/pipeline/lib/modelo-whisper";
+import { ambienteCacheModelo, modeloWhisper, repositorioMlx } from "@/pipeline/lib/modelo-whisper";
 import { PipelineError } from "@/pipeline/types";
 
 /** Verdade quando o servidor roda dentro do Bruto.app (o lançador define "1"). */
@@ -108,8 +108,17 @@ const ARGS_PYTHON_GERENCIADO = ["--python-preference", "only-managed"];
  * Roda o instalador (uv, ou o node da CLI do Playwright) com teto de tempo e
  * registro de cancelamento: se o processo rodar DENTRO de um job, cancelar o
  * job o mata em grupo. Rejeita em timeout ou exit != 0 com o rabo do stderr.
+ *
+ * `envExtra` ACRESCENTA variáveis por cima do ambiente herdado (nunca
+ * subtrai) — é por ele que o download do modelo repassa o cache do HF pela
+ * função única de modelo-whisper.ts (r4), explícito no call site.
  */
-function rodarInstalacao(cmd: string, args: string[], timeoutMs: number): Promise<void> {
+function rodarInstalacao(
+  cmd: string,
+  args: string[],
+  timeoutMs: number,
+  envExtra: Record<string, string> = {},
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
       shell: false,
@@ -117,7 +126,7 @@ function rodarInstalacao(cmd: string, args: string[], timeoutMs: number): Promis
       // As variáveis UV_* e PLAYWRIGHT_BROWSERS_PATH chegam pelo ambiente do
       // processo (o lançador as define) — o filho herda. UV_PYTHON_PREFERENCE
       // é imposta AQUI, não delegada ao lançador (ver ARGS_PYTHON_GERENCIADO).
-      env: { ...process.env, UV_PYTHON_PREFERENCE: "only-managed" },
+      env: { ...process.env, UV_PYTHON_PREFERENCE: "only-managed", ...envExtra },
     });
     registrarFilho(child);
 
@@ -526,18 +535,21 @@ export function venvWhisperInstalado(): boolean {
  * de caminho dinâmico (os `snapshots/<rev>/weights.*` do HF) é
  * `readdirSync`/glob que o tracer do build standalone pune com varredura no
  * projeto inteiro, e a marca é UMA leitura de arquivo; (2) o diretório do
- * cache é decisão do processo PYTHON (HF_HOME/HF_HUB_CACHE/XDG_CACHE_HOME)
- * — e os dois momentos que importam rodam com ambientes DIFERENTES (o
- * download herda o env do servidor; a transcrição, `ambienteMinimo()`),
- * então replicar essa resolução em TS seria uma segunda verdade que pode
- * discordar das duas.
+ * cache é decisão do processo PYTHON (HF_HOME/HF_HUB_CACHE/XDG_CACHE_HOME) —
+ * e desde r4 download e transcrição resolvem essas variáveis pela MESMA
+ * função (`ambienteCacheModelo`), então replicar a resolução de CAMINHO em
+ * TS continua sendo uma segunda verdade desnecessária: a marca grava o
+ * SNAPSHOT da decisão (as variáveis, não o caminho resolvido) e a prontidão
+ * compara com a decisão ATUAL — se o lançador trocar HF_HOME depois da
+ * instalação, o modelo ficou no cache velho e a marca não vale mais.
  *
  * A marca é gravada SÓ depois do download ter sucesso, e o NOME leva o
  * repositório (`/` vira `--`, a convenção do próprio HF): trocar de modelo
  * (`BRUTO_WHISPER_MODEL`) invalida na hora. Quem já tem o modelo no cache
  * mas não tem a marca (baixou fora — ex.: mlx da 1ª transcrição) vê o botão
  * uma única vez: o `load_model` é idempotente (com o modelo em cache só
- * confere) e a marca nasce.
+ * confere) e a marca nasce. Marca antiga sem o campo de cache vale "não
+ * pronto" pelo mesmo motivo — o custo é um `load_model` que só confere.
  */
 const PREFIXO_MARCA_MODELO_WHISPER = "whisper-modelo";
 
@@ -548,17 +560,37 @@ function caminhoMarcaModeloWhisper(): string {
   return path.join(base, `${PREFIXO_MARCA_MODELO_WHISPER}-${repo}.json`);
 }
 
-/** O modelo padrão está pronto (marca presente E do repositório atual)? */
+/** O modelo padrão está pronto (marca presente, do repositório E cache atuais)? */
 function modeloWhisperPronto(): boolean {
   try {
     const marca = JSON.parse(fs.readFileSync(caminhoMarcaModeloWhisper(), "utf8")) as {
       repo?: unknown;
+      cache?: unknown;
     };
-    return marca.repo === repositorioMlx(modeloWhisper());
+    if (marca.repo !== repositorioMlx(modeloWhisper())) return false;
+    return cacheDaMarcaIgualAoAtual(marca.cache);
   } catch {
     // ausente, ilegível ou de outro formato: não pronto
     return false;
   }
+}
+
+/**
+ * r4: a marca só vale para a MESMA decisão de cache com que nasceu. Compara
+ * o snapshot gravado com as variáveis ATUAIS (`ambienteCacheModelo`) — sem
+ * resolver o caminho final, que continua sendo decisão do Python: se
+ * qualquer variável mudou (ex.: HF_HOME no lançador), o modelo ficou no
+ * cache velho e a prontidão cai.
+ */
+function cacheDaMarcaIgualAoAtual(gravado: unknown): boolean {
+  if (typeof gravado !== "object" || gravado === null) return false;
+  const registro = gravado as Record<string, unknown>;
+  const atual = ambienteCacheModelo();
+  const nomes = new Set([...Object.keys(registro), ...Object.keys(atual)]);
+  for (const nome of nomes) {
+    if (registro[nome] !== atual[nome]) return false;
+  }
+  return true;
 }
 
 /** Grava a marca depois de um download bem-sucedido (best-effort). */
@@ -569,6 +601,7 @@ function gravarMarcaModeloWhisper(): void {
       caminhoMarcaModeloWhisper(),
       JSON.stringify({
         repo: repositorioMlx(modeloWhisper()),
+        cache: ambienteCacheModelo(),
         gravadoEm: new Date().toISOString(),
       }),
     );
@@ -632,6 +665,12 @@ function baixarModeloWhisper(timeoutMs: number): Promise<void> {
     // Sem shell: argv puro, o código vai como um argumento único seguro.
     ["-c", codigoPythonBaixarModelo(repo)],
     timeoutMs,
+    // r4/P2: o MESMO ambiente de cache da transcrição — função única em
+    // modelo-whisper.ts. Hoje o env herdado já contém essas variáveis e o
+    // acréscimo é no-op; explícito para o contrato SOBREVIVER se o env base
+    // do rodarInstalacao um dia estreitar (ex.: allowlist de rede) — o
+    // download passaria a receber o cache daqui, não por acidente.
+    ambienteCacheModelo(),
   );
 }
 

@@ -274,6 +274,37 @@ describe("ambienteMinimo — allowlist por plataforma", () => {
     assert.equal(env.PATHEXT, undefined);
   });
 
+  test("r4: as variáveis de CACHE do HF entram (download e transcrição precisam resolver o mesmo cache) — HF_TOKEN NÃO", () => {
+    // A invariante r4/P2: quem instala (`rodarInstalacao`, que herda o
+    // servidor) e quem transcreve (`ambienteMinimo`) têm de ver as MESMAS
+    // variáveis de cache do Hugging Face — senão o download grava a marca de
+    // "pronto" num cache e o 1º vídeo baixa ~1,6 GB de novo noutro. São
+    // CAMINHOS, não credenciais: `HF_TOKEN` segue fora (o propósito da
+    // allowlist — nenhuma credencial chega ao stderr persistido — não muda).
+    const original = {
+      HF_HOME: process.env.HF_HOME,
+      HF_HUB_CACHE: process.env.HF_HUB_CACHE,
+      XDG_CACHE_HOME: process.env.XDG_CACHE_HOME,
+      HF_TOKEN: process.env.HF_TOKEN,
+    };
+    process.env.HF_HOME = "/bruto-teste/hf";
+    process.env.HF_HUB_CACHE = "/bruto-teste/hf/hub";
+    process.env.XDG_CACHE_HOME = "/bruto-teste/xdg";
+    process.env.HF_TOKEN = "hf-segredo-do-teste";
+    try {
+      const env = ambienteMinimo();
+      assert.equal(env.HF_HOME, "/bruto-teste/hf");
+      assert.equal(env.HF_HUB_CACHE, "/bruto-teste/hf/hub");
+      assert.equal(env.XDG_CACHE_HOME, "/bruto-teste/xdg");
+      assert.equal(env.HF_TOKEN, undefined, "credencial do HF jamais entra no ambiente mínimo");
+    } finally {
+      for (const [chave, valor] of Object.entries(original)) {
+        if (valor === undefined) delete process.env[chave];
+        else process.env[chave] = valor;
+      }
+    }
+  });
+
   test("no win32, inclui as variáveis que os backends dependem (Python precisa de SYSTEMROOT)", () => {
     const original = {
       USERPROFILE: process.env.USERPROFILE,

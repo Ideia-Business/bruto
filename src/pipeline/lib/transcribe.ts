@@ -30,7 +30,7 @@ import { FILHO_EM_GRUPO_PROPRIO, registrarFilho } from "@/pipeline/lib/cancelame
 import { caminhoDe, modoPacote } from "@/pipeline/lib/ferramentas";
 import { DATA_ROOT } from "@/pipeline/lib/paths";
 import { redact } from "@/pipeline/lib/llm/redact";
-import { modeloWhisper, repositorioMlx } from "@/pipeline/lib/modelo-whisper";
+import { ambienteCacheModelo, modeloWhisper, repositorioMlx } from "@/pipeline/lib/modelo-whisper";
 import { PipelineError } from "@/pipeline/types";
 
 export type Backend = "mlx" | "whisper" | "whisper-cpp";
@@ -47,7 +47,9 @@ const CACHE_DIR = path.join(DATA_ROOT, "transcripts");
 /**
  * O que um processo externo de transcrição legitimamente precisa: achar
  * binários, saber onde é a casa, escrever temporário e formatar texto. Nenhuma
- * credencial atravessa.
+ * credencial atravessa — as variáveis de CACHE do modelo (`HF_HOME` etc.) sim,
+ * porque são caminhos, não segredos, e porque a transcrição tem de resolver o
+ * MESMO cache onde a instalação baixou o modelo (r4/P2; ver abaixo).
  *
  * Isto não é zelo decorativo: o que estes processos imprimem no stderr entra na
  * mensagem de erro, e a mensagem de erro é PERSISTIDA em `jobs.error_message`.
@@ -79,6 +81,13 @@ export function ambienteMinimo(): NodeJS.ProcessEnv {
     const v = process.env[nome];
     if (v !== undefined) env[nome] = v;
   }
+  // r4/P2: as variáveis de cache do Hugging Face entram pela FUNÇÃO ÚNICA
+  // compartilhada com o download do modelo (modelo-whisper.ts) — sem isto, a
+  // instalação (que herda o servidor) baixava o modelo num cache e a
+  // transcrição lia noutro: com HF_HOME/XDG_CACHE_HOME definidos, o 1º vídeo
+  // baixava ~1,6 GB de novo ou falhava sem rede. São CAMINHOS, não
+  // credenciais — HF_TOKEN segue fora desta lista para sempre.
+  Object.assign(env, ambienteCacheModelo());
   return env as NodeJS.ProcessEnv;
 }
 

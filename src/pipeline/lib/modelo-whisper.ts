@@ -66,3 +66,39 @@ export function repositorioMlx(nome: string): string {
   if (conhecido) return conhecido;
   return `mlx-community/whisper-${nome}-mlx`;
 }
+
+// ── cache do Hugging Face: função ÚNICA para download e transcrição ─────────
+
+/**
+ * As variáveis que decidem ONDE o Python do Whisper põe (e lê) o cache do
+ * Hugging Face — na precedência que o huggingface_hub honra: `HF_HUB_CACHE`
+ * (o lugar exato) > `HF_HOME` (a casa do `hub`) > `XDG_CACHE_HOME` (a casa
+ * do `.cache`). É a mesma resolução do `scripts/medir-whisper.sh` — ao
+ * mexer aqui, mexa lá.
+ *
+ * `HF_TOKEN` NÃO está aqui de propósito: estas são CAMINHOS de cache, não
+ * credenciais. Repassar credencial a processo externo é o que
+ * `ambienteMinimo()` (transcribe.ts) existe para impedir — o stderr da
+ * transcrição vira `jobs.error_message`, gravado no banco.
+ */
+export const VARS_CACHE_MODELO = ["HF_HOME", "HF_HUB_CACHE", "XDG_CACHE_HOME"] as const;
+
+/**
+ * O ambiente de cache do modelo, lido do processo na hora. FUNÇÃO ÚNICA
+ * (r4/P2): o download antecipado (`baixarModeloWhisper`, ferramentas.ts) e
+ * a transcrição (`ambienteMinimo`, transcribe.ts) chamam ESTA função — os
+ * dois processos Python resolvem o MESMO cache. Antes, o download herda o
+ * servidor inteiro (com `HF_HOME` etc.) e a transcrição via allowlist os
+ * tirava: a instalação baixava num cache, gravava "pronto", e o 1º vídeo
+ * baixava ~1,6 GB de novo noutro (ou falhava sem rede). A marca de
+ * prontidão também grava o resultado daqui, para a prontidão cair se a
+ * decisão de cache mudar depois.
+ */
+export function ambienteCacheModelo(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const nome of VARS_CACHE_MODELO) {
+    const valor = process.env[nome];
+    if (valor !== undefined) env[nome] = valor;
+  }
+  return env;
+}
