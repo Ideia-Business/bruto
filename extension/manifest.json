@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Bruto — vídeo vira aula",
   "short_name": "Bruto",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Vira o vídeo do YouTube numa aula em português: grátis, pelo seu plano de IA ou por chave. Instagram e TikTok: app local.",
   "homepage_url": "https://github.com/Ideia-Business/bruto",
   "action": {
