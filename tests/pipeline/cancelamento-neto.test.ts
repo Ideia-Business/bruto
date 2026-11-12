@@ -60,7 +60,15 @@ async function lerPidDoStdout(child: ChildProcess, padrao: RegExp, prazoMs = 10_
 describe("encerramento do app — o neto que ignora SIGTERM também morre", () => {
   test(
     "filho sai no SIGTERM, neto (mesmo grupo, stdio ignorado) IGNORA o sinal: encerrarFilhosRegistrados mata o grupo mesmo assim",
-    { timeout: 30_000 },
+    {
+      timeout: 30_000,
+      // A prova exige kill de GRUPO de processo e sinais POSIX: no Windows o
+      // encerramento mata só o filho direto, de propósito — não é bug lá.
+      skip:
+        process.platform === "win32"
+          ? "matar grupo de processo é POSIX-only; no Windows encerrarFilhosRegistrados mata só o filho direto"
+          : false,
+    },
     async () => {
       // Filho em grupo próprio (como o app spawna), que lança um NETO no
       // MESMO grupo (detached: false) com stdio "ignore" — não herda os pipes

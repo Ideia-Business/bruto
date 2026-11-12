@@ -69,7 +69,16 @@ async function lerPidDoStdout(child: ChildProcess, padrao: RegExp, prazoMs = 10_
 describe("encerramento do app — o grace vale para o GRUPO inteiro, não só para os líderes", () => {
   test(
     "filho sai logo no SIGTERM, neto (mesmo grupo, stdio ignorado) precisa de ~300 ms de limpeza: o grace de 1000 ms deixa a limpeza terminar",
-    { timeout: 30_000 },
+    {
+      timeout: 30_000,
+      // A prova exige kill de GRUPO de processo e um marcador gravado no
+      // handler de SIGTERM: sinais/grupo são POSIX — no Windows o
+      // encerramento mata só o filho direto, de propósito — não é bug lá.
+      skip:
+        process.platform === "win32"
+          ? "depende de grupo de processo e SIGTERM no neto (POSIX-only); no Windows encerrarFilhosRegistrados mata só o filho direto"
+          : false,
+    },
     async () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bruto-neto-grace-"));
       const marca = path.join(dir, "marca.txt");
