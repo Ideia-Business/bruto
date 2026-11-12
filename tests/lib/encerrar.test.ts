@@ -9,6 +9,8 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { encerrarFilhosRegistrados, registrarFilho } from "@/pipeline/lib/cancelamento";
 import {
   ATRASO_ENCERRAMENTO_MS,
   origemRecusada,
@@ -16,24 +18,30 @@ import {
   type DepsEncerrar,
 } from "@/lib/encerrar";
 
-/** Deps 100% falsas + fita de execução (ordem das chamadas) e fn agendada. */
+/** Deps 100% falsas + fita de execução (ordem das chamadas) e fns agendadas. */
 function cenario(
   overrides: {
     pidNoArquivo?: string | null;
     jobsAtivos?: number;
     encerrarFilhos?: DepsEncerrar["encerrarFilhos"];
+    exit?: DepsEncerrar["exit"];
+    marcarEncerrando?: DepsEncerrar["marcarEncerrando"];
   } = {},
 ) {
   const fita: string[] = [];
-  let agendada: (() => void | Promise<void>) | null = null;
+  // Todos os agendamentos (o single-flight é testado com DOIS pedidos — o
+  // helper antigo guardava só a última fn e o primeiro pedido sumia).
+  const agendadas: Array<() => void | Promise<void>> = [];
   const deps: DepsEncerrar = {
     agendar: (fn, ms) => {
       fita.push(`agendar:${ms}`);
-      agendada = fn;
+      agendadas.push(fn);
     },
-    exit: (codigo) => {
-      fita.push(`exit:${codigo}`);
-    },
+    exit:
+      overrides.exit ??
+      ((codigo) => {
+        fita.push(`exit:${codigo}`);
+      }),
     lerPid: () => {
       fita.push("lerPid");
       return overrides.pidNoArquivo === undefined ? "4242" : overrides.pidNoArquivo;
@@ -47,9 +55,19 @@ function cenario(
       (async () => {
         fita.push("encerrarFilhos");
       }),
+    marcarEncerrando:
+      overrides.marcarEncerrando ??
+      (() => {
+        fita.push("marcarEncerrando");
+      }),
     pid: 4242,
   };
-  return { deps, fita, dispararAgendado: () => agendada?.() };
+  return {
+    deps,
+    fita,
+    agendadas,
+    dispararAgendado: () => agendadas[agendadas.length - 1]?.(),
+  };
 }
 
 describe("origemRecusada — a trava de outro site (CSRF de localhost)", () => {
@@ -125,12 +143,13 @@ describe("pedirEncerramento — a decisão 202 × 409", () => {
 });
 
 describe("o desligamento agendado — ordem e a regra do pid", () => {
-  test("pid é o do próprio processo: encerra filhos, apaga o pid, exit(0) — nesta ordem", async () => {
+  test("pid é o do próprio processo: marca a fila, encerra filhos, apaga o pid, exit(0) — nesta ordem", async () => {
     const c = cenario(); // lerPid devolve "4242" e pid é 4242 — é o próprio
     pedirEncerramento({}, c.deps);
     await c.dispararAgendado();
     assert.deepEqual(c.fita, [
       `agendar:${ATRASO_ENCERRAMENTO_MS}`,
+      "marcarEncerrando",
       "encerrarFilhos",
       "lerPid",
       "removerPid",
@@ -155,6 +174,7 @@ describe("o desligamento agendado — ordem e a regra do pid", () => {
     await c.dispararAgendado();
     assert.deepEqual(c.fita, [
       `agendar:${ATRASO_ENCERRAMENTO_MS}`,
+      "marcarEncerrando",
       "filhos:inicio",
       "filhos:fim",
       "lerPid",
@@ -192,4 +212,109 @@ describe("o desligamento agendado — ordem e a regra do pid", () => {
     await c.dispararAgendado(); // não pode lançar
     assert.ok(c.fita.includes("exit:0"), "exit(0) deve rodar mesmo com encerramento de filhos falhando");
   });
+});
+
+describe("single-flight [P2, r4] — no máximo UMA operação de encerramento por processo", () => {
+  // O bug (4ª rodada): duas janelas confirmam juntas; cada 202 agenda o seu
+  // desligamento. O primeiro limpa o registro de filhos e entra no grace;
+  // o segundo acha o registro VAZIO (encerrarFilhos resolve na hora), pula a
+  // espera e chama exit(0) ANTES do SIGKILL do primeiro — e com o registro
+  // limpo a rede de segurança do handler de `exit` também não vê o filho.
+  // Órfão. O contrato: pedidos seguintes COMPARTILHAM a promessa da primeira
+  // operação — nunca um segundo `encerrarFilhos`, nunca um segundo `exit`.
+
+  test("dois disparos compartilham a MESMA operação: um marcar+encerrarFilhos+pid+exit", async () => {
+    const c = cenario({
+      encerrarFilhos: async () => {
+        c.fita.push("encerrarFilhos");
+        await new Promise((r) => setTimeout(r, 25)); // a "espera" do grace
+      },
+    });
+    const r1 = pedirEncerramento({}, c.deps);
+    const r2 = pedirEncerramento({}, c.deps);
+    assert.equal(r1.status, 202);
+    assert.equal(r2.status, 202);
+    // Os dois timers da produção disparam quase juntos — aqui também.
+    await Promise.all(c.agendadas.map((fn) => fn()));
+    assert.deepEqual(c.fita, [
+      `agendar:${ATRASO_ENCERRAMENTO_MS}`, // um agendamento por pedido…
+      `agendar:${ATRASO_ENCERRAMENTO_MS}`,
+      "marcarEncerrando", // …mas UMA operação só (invariante 1)
+      "encerrarFilhos",
+      "lerPid",
+      "removerPid",
+      "exit:0",
+    ]);
+  });
+
+  test(
+    "dois pedidos com confirmar:true e filho que IGNORA SIGTERM: UM encerrarFilhos, UM exit — e o exit só depois da morte do filho",
+    { timeout: 30_000 },
+    async () => {
+      // Filho resistente REAL (padrão do teste da r3 em cancelamento.test.ts):
+      // handler de SIGTERM que não faz nada — um yt-dlp/whisper travado. Em
+      // grupo próprio, do jeito que o app spawna.
+      const filho = spawn(
+        process.execPath,
+        ["-e", 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);'],
+        { stdio: "ignore", detached: process.platform !== "win32" },
+      );
+      const pid = filho.pid ?? -1;
+      const pidsDeTeste: number[] = pid > 0 ? [pid] : [];
+      let encerrarFilhosChamadas = 0;
+      let filhoVivoNoExit = false;
+      const exits: number[] = [];
+
+      try {
+        registrarFilho(filho); // registrado como o app registra
+        await new Promise((r) => setTimeout(r, 400)); // de pé COM o handler
+        const vivo = (p: number): boolean => {
+          try {
+            process.kill(p, 0);
+            return true;
+          } catch (err) {
+            return (err as NodeJS.ErrnoException).code === "EPERM";
+          }
+        };
+        assert.ok(vivo(pid), "filho resistente de pé antes dos pedidos");
+
+        const c = cenario({
+          jobsAtivos: 1, // há job rodando: os dois pedidos precisam de confirmar
+          encerrarFilhos: async () => {
+            encerrarFilhosChamadas++;
+            await encerrarFilhosRegistrados(200); // grace curto INJETÁVEL
+          },
+          exit: (codigo) => {
+            exits.push(codigo);
+            filhoVivoNoExit = vivo(pid); // a ORDEM: como estava o filho NO exit?
+          },
+          marcarEncerrando: () => {},
+        });
+
+        // Duas janelas confirmam o encerramento ao mesmo tempo.
+        const r1 = pedirEncerramento({ confirmar: true }, c.deps);
+        const r2 = pedirEncerramento({ confirmar: true }, c.deps);
+        assert.equal(r1.status, 202);
+        assert.equal(r2.status, 202);
+        assert.equal(c.agendadas.length, 2, "cada pedido agenda o seu desligamento");
+
+        // Os dois timers disparam quase juntos (produção: 300ms cada).
+        await Promise.all(c.agendadas.map((fn) => fn()));
+
+        assert.equal(encerrarFilhosChamadas, 1, "UMA operação de encerramento de filhos — nunca duas");
+        assert.deepEqual(exits, [0], "UM exit — o segundo pedido compartilha, não repete");
+        assert.equal(filhoVivoNoExit, false, "no instante do exit o filho já estava morto (ordem (b)→(d))");
+        assert.ok(!vivo(pid), "filho morto de verdade (reaped)");
+      } finally {
+        // Filho de teste é do teste: mata no grupo mesmo se algo falhar.
+        for (const p of pidsDeTeste) {
+          try {
+            process.kill(-p, "SIGKILL");
+          } catch {
+            /* já saiu */
+          }
+        }
+      }
+    },
+  );
 });

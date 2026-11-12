@@ -8,19 +8,52 @@
  * pessoa reiniciar o Mac (ADR 0005). O botão desliga o servidor DESTE
  * processo e libera a porta; abrir de novo é papel do lançador.
  *
- * Contrato do desligamento (na ordem):
- *   1. encerra os filhos registrados em `cancelamento.ts` (yt-dlp/whisper/
- *      ffmpeg) COM O EVENT LOOP VIVO: SIGTERM no grupo de cada um, espera o
- *      grace, SIGKILL no grupo de quem sobrou, e só segue quando todos
- *      saíram (ou no teto — o desligamento não pendura). Só DEPOIS da limpeza
- *      terminada é que o processo sai; o handler de `exit` instalado por
- *      `garantirLimpezaDeFilhosNoFim()` segue como rede de segurança — depois
+ * ─────────────────────────────────────────────────────────────────────────────
+ * O CICLO DE ENCERRAMENTO COMPLETO (desenhado na 4ª rodada). A correção da
+ * 3ª — esperar os filhos com o event loop vivo — criou os dois buracos
+ * daqui: a espera abriu uma janela em que um SEGUNDO pedido confirmava junto
+ * e dava `exit` antes do SIGKILL do primeiro [P2], e a morte dos filhos
+ * rejeitava a etapa do job, que o runner gravava como `error` — estado que o
+ * boot não ressuscita, quebrando a promessa do botão ("vídeos que estiverem
+ * processando retomam") [P1].
+ *
+ * SEQUÊNCIA — nesta ordem, dentro da operação ÚNICA:
+ *   (a) marcar o runner como "encerrando" (`marcarEncerramento`, em
+ *       pipeline/lib/marca-de-encerramento.ts): a fila (`drain`, em
+ *       runner.ts) para de começar jobs novos no mesmo instante — o job que
+ *       já roda segue até a morte dos filhos do passo seguinte;
+ *   (b) encerrar os filhos registrados em `cancelamento.ts` (yt-dlp/whisper/
+ *       ffmpeg) COM O EVENT LOOP VIVO: SIGTERM no grupo de cada um, espera o
+ *       grace, SIGKILL no grupo de quem sobrou, e só segue quando todos
+ *       saíram (ou no teto — o desligamento não pendura);
+ *   (c) regra do pid: apagar `$BRUTO_DATA_ROOT/servidor.pid` SÓ se o
+ *       conteúdo for o `process.pid` DESTE processo — pid de outra instalação
+ *       no arquivo não é tocado (o lançador tem a mesma regra, INVARIANTE P3);
+ *   (d) `exit(0)` — exatamente UMA vez por processo.
+ *
+ * INVARIANTES (todo caminho deste arquivo é conferido contra elas):
+ *   1. ENCERRAMENTO ÚNICO (single-flight): no máximo UMA operação de
+ *      encerramento por processo. Pedidos seguintes (a segunda janela que
+ *      confirma junto) recebem 202 e COMPARTILHAM a promessa da primeira —
+ *      nunca um segundo `encerrarFilhos` (a chamada extra esvaziaria o
+ *      registro de filhos de novo) e nunca um segundo `exit` independente.
+ *   2. A ordem (a)→(b)→(c)→(d), sempre. O `exit` só existe DEPOIS de (b)
+ *      completar: filho que ignora SIGTERM não sobrevive ao botão. O handler
+ *      de `exit` instalado por `garantirLimpezaDeFilhosNoFim()` segue como
+ *      rede de segurança — para quem NASCER durante a espera de (b); depois
  *      do `exit` nenhum timer dispara, então ele sozinho nunca derrubaria um
- *      filho resistente a SIGTERM [P2];
- *   2. apaga `$BRUTO_DATA_ROOT/servidor.pid` SÓ se o conteúdo for o
- *      `process.pid` DESTE processo — pid de outra instalação no arquivo não
- *      é tocado (o lançador tem a mesma regra, INVARIANTE P3);
- *   3. `process.exit(0)`.
+ *      filho resistente a SIGTERM.
+ *   3. JOB INTERROMPIDO CONTINUA RECUPERÁVEL: com a marca de (a) ligada, a
+ *      falha causada pela morte dos filhos NÃO grava `error` nem `canceled`
+ *      no job — ele fica `running` no banco para o `recoverOrphans()` do
+ *      próximo boot re-enfileirar (é a promessa do botão). Cancelamento do
+ *      usuário (`signal.aborted`) continua `canceled`; job que termina `done`
+ *      ou falha por causa própria ANTES da marca segue normal. Esta
+ *      invariante é implementada em runner.ts, que lê a MESMA marca.
+ *   4. O REGISTRO DE FILHOS NUNCA FICA CEGO COM FILHO VIVO: só a operação
+ *      única toca o registro (consequência da 1) — não existe um segundo
+ *      pedido para esvaziá-lo enquanto o primeiro ainda espera a escalada, e
+ *      no momento do (d) o lote já morreu todo (consequência da 2).
  *
  * Jobs interrompidos ficam como estão (`running`/`queued` no banco): o boot
  * re-enfileira órfãos (`recoverOrphans`), então eles retomam na próxima vez
@@ -30,6 +63,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { hostEhLoopback } from "@/lib/endpoint-local";
 import { encerrarFilhosRegistrados } from "@/pipeline/lib/cancelamento";
+import { marcarEncerramento } from "@/pipeline/lib/marca-de-encerramento";
 import { DATA_ROOT } from "@/pipeline/lib/paths";
 
 /** A resposta 202 já foi entregue quando o desligamento dispara. */
@@ -73,6 +107,12 @@ export function origemRecusada(
 
 /** Tudo que o encerramento toca — injetável, e o teste injeta tudo. */
 export interface DepsEncerrar {
+  /**
+   * Passo (a): liga a marca de encerramento — a fila de jobs para de
+   * começar jobs novos e o catch do job passa a tratar falha como
+   * interrupção recuperável. Produção: `marcarEncerramento`.
+   */
+  marcarEncerrando: () => void;
   /** O relógio: agenda a execução (produção: `setTimeout`). */
   agendar: (fn: () => void | Promise<void>, ms: number) => void;
   /** O fim do processo — produção: `process.exit`. Teste: registro. */
@@ -114,17 +154,70 @@ export function pedirEncerramento(
   return { status: 202, corpo: { ok: true } };
 }
 
-/** O desligamento em si — o que o `setTimeout` da produção dispara. */
+/**
+ * O estado do single-flight (INVARIANTE 1) — a operação ÚNICA de
+ * encerramento deste processo. Em `globalThis` como o RunnerState: sobrevive
+ * ao hot reload do Next dev, e o `depsDeEncerramento` de cada request cria
+ * um objeto de deps NOVO sem quebrar o "no máximo uma por processo".
+ */
+interface EstadoDoEncerramento {
+  emCurso: Promise<void> | null;
+}
+const globalForEncerrar = globalThis as unknown as { __brutoEncerramentoUnico?: EstadoDoEncerramento };
+const encerramentoUnico: EstadoDoEncerramento =
+  globalForEncerrar.__brutoEncerramentoUnico ?? { emCurso: null };
+globalForEncerrar.__brutoEncerramentoUnico = encerramentoUnico;
+
+/**
+ * O desligamento em si — o que o `setTimeout` da produção dispara.
+ * INVARIANTE 1: no máximo UMA operação por processo. O segundo pedido que
+ * confirmar junto (a segunda janela) cai no `if` e COMPARTILHA a promessa da
+ * primeira — o seu `encerrarFilhos` nunca roda (rodaria com o registro de
+ * filhos já tomado pela primeira operação e resolveria na hora, vazando) e o
+ * seu `exit` nunca roda (saía ANTES do SIGKILL da primeira, deixando filho
+ * órfão com o registro limpo — a rede de segurança do `exit` também não via
+ * mais [P2, r4]).
+ */
 async function encerrarAgora(deps: DepsEncerrar): Promise<void> {
-  // A limpeza TERMINA antes de sair: filho que ignora SIGTERM não pode
-  // sobreviver ao encerramento por um timer que nunca dispara.
+  if (encerramentoUnico.emCurso) return encerramentoUnico.emCurso;
+  const operacao = operacaoUnicaDeEncerramento(deps);
+  encerramentoUnico.emCurso = operacao;
   try {
+    return await operacao;
+  } finally {
+    // Na produção isto é inalcançável: o passo (d) da operação é
+    // `process.exit` e o processo acaba DENTRO dela — nada roda depois, a
+    // marca de "em curso" fica para sempre e qualquer pedido tardio (se o
+    // processo sobrevivesse) compartilharia a operação já resolvida. O reset
+    // existe para o TESTE, onde o exit é falso e cada cenário é um
+    // "processo" novo que precisa começar sem operação em curso.
+    encerramentoUnico.emCurso = null;
+  }
+}
+
+/**
+ * A sequência (a)→(b)→(c)→(d) do ciclo desenhado no topo do arquivo, na
+ * ordem, sem pulos — rodada UMA vez por processo (INVARIANTE 1 + 2).
+ */
+async function operacaoUnicaDeEncerramento(deps: DepsEncerrar): Promise<void> {
+  // (a) A fila para de começar jobs novos ANTES da primeira morte: quem
+  // estiver rodando será interrompido no passo (b) e fica RECUPERÁVEL
+  // (INVARIANTE 3, aplicada no catch do runner); começar job novo agora só
+  // fabricaria mais interrupção.
+  deps.marcarEncerrando();
+  try {
+    // (b) A limpeza TERMINA antes de sair (a correção da r3): SIGTERM no
+    // GRUPO de cada filho registrado, espera o grace, SIGKILL no grupo de
+    // quem sobrou — tudo com o event loop VIVO. Filho que ignora SIGTERM
+    // não pode sobreviver ao encerramento por um timer que nunca dispara.
     await deps.encerrarFilhos();
   } catch {
     /* não pendura o desligamento: quem sobrar é da rede de segurança do exit */
   }
+  // (c) A regra do pid: só apaga o arquivo se ele aponta para ESTE processo.
   const gravado = deps.lerPid();
   if (gravado !== null && gravado === String(deps.pid)) deps.removerPid();
+  // (d) O ÚNICO `exit` do processo — sempre depois de (b) ter completado.
   deps.exit(0);
 }
 
@@ -138,6 +231,11 @@ export function depsDeEncerramento(
   overrides: Partial<DepsEncerrar> & Pick<DepsEncerrar, "contarJobsAtivos">,
 ): DepsEncerrar {
   const base: Omit<DepsEncerrar, "contarJobsAtivos"> = {
+    marcarEncerrando: () => {
+      // Passo (a): módulo sem dependência nenhuma — não arrasta o runner (e
+      // o banco dele) para quem só testa a lógica do botão com deps falsas.
+      marcarEncerramento();
+    },
     agendar: (fn, ms) => {
       setTimeout(fn, ms);
     },
