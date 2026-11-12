@@ -86,31 +86,33 @@ export function recusarSeCancelado(signal: AbortSignal | null | undefined): void
   if (signal?.aborted) throw new JobCanceladoError();
 }
 
-/** Mata o GRUPO do filho (filho + netos): SIGTERM, e SIGKILL após o grace. */
-function matarGrupoDoFilho(filho: ChildProcess): void {
+/**
+ * Manda `sinal` ao GRUPO do filho (filho + netos): `-pid` = o grupo inteiro.
+ * Só funciona porque quem spawnou usou `detached` (ver
+ * FILHO_EM_GRUPO_PROPRIO) — sem isso, `-pid` miraria o grupo do PRÓPRIO
+ * SERVIDOR, o oposto do invarianto B. Retorna false se o alvo já não existe
+ * (grupo sumido, pid ausente) — "nada a fazer" não é erro.
+ */
+function sinalNoGrupoDoFilho(filho: ChildProcess, sinal: NodeJS.Signals): boolean {
   const pid = filho.pid;
-  if (pid === undefined) return;
-  const sinalGrupo = (sinal: NodeJS.Signals) => {
+  if (pid === undefined) return false;
+  try {
     if (process.platform === "win32") {
       filho.kill(sinal);
     } else {
-      // `-pid` = o grupo inteiro. Só funciona porque quem spawnou usou
-      // `detached` (ver FILHO_EM_GRUPO_PROPRIO) — sem isso, `-pid` miraria o
-      // grupo do PRÓPRIO SERVIDOR, o oposto do invarianto B.
       process.kill(-pid, sinal);
     }
-  };
-  try {
-    sinalGrupo("SIGTERM");
+    return true;
   } catch {
-    /* grupo já não existe — nada a fazer */
+    return false; // grupo já não existe — nada a fazer
   }
+}
+
+/** Mata o GRUPO do filho (filho + netos): SIGTERM, e SIGKILL após o grace. */
+function matarGrupoDoFilho(filho: ChildProcess): void {
+  sinalNoGrupoDoFilho(filho, "SIGTERM");
   const escalada = setTimeout(() => {
-    try {
-      sinalGrupo("SIGKILL");
-    } catch {
-      /* já morreu com o SIGTERM */
-    }
+    sinalNoGrupoDoFilho(filho, "SIGKILL");
   }, GRACE_SIGKILL_MS);
   escalada.unref();
 }
@@ -215,6 +217,67 @@ export function garantirLimpezaDeFilhosNoFim(): void {
     };
     process.on(sig, aoReceber);
   }
+}
+
+/**
+ * Teto de espera depois do SIGKILL: `encerrarFilhosRegistrados` resolve no
+ * máximo em `graceMs + 1 s` — o desligamento do app não pendura em filho
+ * que nem SIGKILL no grupo derrubou.
+ */
+const TETO_APOS_SIGKILL_MS = 1_000;
+
+/** Resolve quando o set esvazia (todos os filhos saíram) ou no prazo — o que vier primeiro. */
+function esperarSairem(vivos: Set<ChildProcess>, prazoMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (vivos.size === 0) return resolve();
+    const conferir = setInterval(() => {
+      if (vivos.size === 0) {
+        clearInterval(conferir);
+        clearTimeout(teto);
+        resolve();
+      }
+    }, 20);
+    const teto = setTimeout(() => {
+      clearInterval(conferir);
+      resolve(); // prazo: seguir o desligamento vale mais que esperar o impossível
+    }, prazoMs);
+  });
+}
+
+/**
+ * Encerra TODO filho registrado com o event loop VIVO — o caminho do botão
+ * "Encerrar o Bruto" (`encerrarAgora`), não o do `exit`.
+ *
+ * Por que não o handler de `exit`: depois do `exit` nenhum timer dispara, e
+ * o SIGKILL que `matarGrupoDoFilho` agenda para o grace nunca era enviado —
+ * um filho que ignora SIGTERM (yt-dlp/whisper/ffmpeg travado) ficava vivo
+ * depois de o app dizer que encerrou [P2]. Aqui a limpeza TERMINA antes de
+ * sair: SIGTERM no GRUPO de cada filho, espera até o grace (ou todos
+ * saírem), SIGKILL no grupo de quem sobrou, e resolve quando todos saíram —
+ * ou no teto (`graceMs + TETO_APOS_SIGKILL_MS`), sem pendurar.
+ *
+ * O lote é tirado do registro na hora (chamadas a mais são no-op); filho que
+ * nascer durante a espera fica para a rede de segurança do `exit`. Jobs
+ * interrompidos NÃO são marcados como cancelados — o boot os re-enfileira.
+ * Nunca rejeita: em encerramento não há quem trate erro; quem sobrar é do
+ * handler de `exit`.
+ */
+export async function encerrarFilhosRegistrados(graceMs: number = GRACE_SIGKILL_MS): Promise<void> {
+  const filhos = Array.from(filhosConhecidos);
+  filhosConhecidos.clear();
+  if (filhos.length === 0) return;
+
+  // `close` = processo saiu E foi reaped: o PID sumiu de verdade.
+  const vivos = new Set<ChildProcess>(filhos);
+  for (const filho of filhos) {
+    filho.once("close", () => vivos.delete(filho));
+  }
+
+  for (const filho of vivos) sinalNoGrupoDoFilho(filho, "SIGTERM");
+  await esperarSairem(vivos, graceMs);
+
+  for (const filho of vivos) sinalNoGrupoDoFilho(filho, "SIGKILL");
+  await esperarSairem(vivos, TETO_APOS_SIGKILL_MS);
 }
 
 garantirLimpezaDeFilhosNoFim();

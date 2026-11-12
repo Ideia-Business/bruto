@@ -25,9 +25,12 @@ const RAIZ = process.cwd();
 
 let rodarComCancelamento: typeof import("@/pipeline/lib/cancelamento").rodarComCancelamento;
 let registrarFilho: typeof import("@/pipeline/lib/cancelamento").registrarFilho;
+let encerrarFilhosRegistrados: typeof import("@/pipeline/lib/cancelamento").encerrarFilhosRegistrados;
 
 before(async () => {
-  ({ rodarComCancelamento, registrarFilho } = await import("@/pipeline/lib/cancelamento"));
+  ({ rodarComCancelamento, registrarFilho, encerrarFilhosRegistrados } = await import(
+    "@/pipeline/lib/cancelamento"
+  ));
 });
 
 /** PIDs que ESTE arquivo criou — limpos no after, mesmo se um teste falhar. */
@@ -325,4 +328,72 @@ setInterval(() => {}, 1000);
       }
     },
   );
+});
+
+describe("encerramento do app — filhos morrem de verdade ANTES do exit", () => {
+  // O bug (achado do Codex): o handler de `exit` manda SIGTERM e AGENDA o
+  // SIGKILL num setTimeout — que nunca dispara depois do exit. Filho que
+  // ignora SIGTERM sobrevivia ao próprio "Encerrar o Bruto". O caminho novo
+  // termina a limpeza com o event loop VIVO e só então sai.
+  test(
+    "filho que IGNORA SIGTERM morre mesmo assim: encerrarFilhosRegistrados espera o grace e escala para SIGKILL",
+    { timeout: 30_000 },
+    async () => {
+      // Filho resistente com processo REAL: handler de SIGTERM que não faz
+      // nada — como um yt-dlp/whisper/ffmpeg travado. Em grupo próprio, do
+      // jeito que o app spawna (FILHO_EM_GRUPO_PROPRIO).
+      const filho = spawn(
+        process.execPath,
+        ["-e", 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);'],
+        { stdio: "ignore", detached: process.platform !== "win32" },
+      );
+      filhosCriados.push(filho);
+      const pid = filho.pid ?? -1;
+      if (pid > 0) pidsCriados.add(pid);
+      // Registrado como o app registra: fora de job, entra na lista global
+      // que o encerramento do app varre.
+      registrarFilho(filho);
+
+      try {
+        // Filho de pé COM o handler instalado.
+        await dormir(400);
+        assert.ok(processoVivo(pid), "filho resistente de pé antes do encerramento");
+
+        // Sanity da fixture: SIGTERM no grupo NÃO pode matá-lo — senão o
+        // teste não provaria a escalada para SIGKILL.
+        try {
+          process.kill(-pid, "SIGTERM");
+        } catch {
+          /* grupo já sumiu: fixture ruim, o assert seguinte pega */
+        }
+        await dormir(200);
+        assert.ok(processoVivo(pid), "fixture: o filho deve IGNORAR SIGTERM (senão nada está sendo provado)");
+
+        // O encerramento com grace curto INJETÁVEL: SIGTERM (ignorado) →
+        // 200 ms → SIGKILL no grupo → resolve. A promessa é que resolve COM o
+        // filho morto — o assert é imediato, sem espera que mascare.
+        await encerrarFilhosRegistrados(200);
+        assert.ok(
+          !processoVivo(pid),
+          "encerrarFilhosRegistrados resolveu com o filho ainda vivo — só prometeu matar",
+        );
+      } finally {
+        // Filho de teste é do teste: mata no grupo mesmo se o teste falhar.
+        if (pid > 0) {
+          try {
+            process.kill(-pid, "SIGKILL");
+          } catch {
+            /* já saiu */
+          }
+        }
+      }
+    },
+  );
+
+  test("sem filho registrado: resolve imediato, sem esperar grace nenhum", async () => {
+    const inicio = Date.now();
+    await encerrarFilhosRegistrados(5_000); // se esperasse o grace, o teto do teste estouraria
+    const durou = Date.now() - inicio;
+    assert.ok(durou < 2_000, `resolveu em ${durou}ms — sem filhos não há o que esperar`);
+  });
 });

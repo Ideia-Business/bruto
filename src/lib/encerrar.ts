@@ -9,11 +9,14 @@
  * processo e libera a porta; abrir de novo é papel do lançador.
  *
  * Contrato do desligamento (na ordem):
- *   1. mata os filhos registrados em `cancelamento.ts` (yt-dlp/whisper/ffmpeg)
- *      pelo mecanismo existente — a rede de segurança de shutdown: o handler
- *      de `exit` instalado por `garantirLimpezaDeFilhosNoFim()` mata cada
- *      filho em GRUPO quando o processo sai ("quem o servidor lançou, o
- *      servidor mata ao sair");
+ *   1. encerra os filhos registrados em `cancelamento.ts` (yt-dlp/whisper/
+ *      ffmpeg) COM O EVENT LOOP VIVO: SIGTERM no grupo de cada um, espera o
+ *      grace, SIGKILL no grupo de quem sobrou, e só segue quando todos
+ *      saíram (ou no teto — o desligamento não pendura). Só DEPOIS da limpeza
+ *      terminada é que o processo sai; o handler de `exit` instalado por
+ *      `garantirLimpezaDeFilhosNoFim()` segue como rede de segurança — depois
+ *      do `exit` nenhum timer dispara, então ele sozinho nunca derrubaria um
+ *      filho resistente a SIGTERM [P2];
  *   2. apaga `$BRUTO_DATA_ROOT/servidor.pid` SÓ se o conteúdo for o
  *      `process.pid` DESTE processo — pid de outra instalação no arquivo não
  *      é tocado (o lançador tem a mesma regra, INVARIANTE P3);
@@ -26,7 +29,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { hostEhLoopback } from "@/lib/endpoint-local";
-import { garantirLimpezaDeFilhosNoFim } from "@/pipeline/lib/cancelamento";
+import { encerrarFilhosRegistrados } from "@/pipeline/lib/cancelamento";
 import { DATA_ROOT } from "@/pipeline/lib/paths";
 
 /** A resposta 202 já foi entregue quando o desligamento dispara. */
@@ -71,7 +74,7 @@ export function origemRecusada(
 /** Tudo que o encerramento toca — injetável, e o teste injeta tudo. */
 export interface DepsEncerrar {
   /** O relógio: agenda a execução (produção: `setTimeout`). */
-  agendar: (fn: () => void, ms: number) => void;
+  agendar: (fn: () => void | Promise<void>, ms: number) => void;
   /** O fim do processo — produção: `process.exit`. Teste: registro. */
   exit: (codigo: number) => void;
   /** Conteúdo atual de `servidor.pid`, ou null se não há arquivo legível. */
@@ -80,8 +83,11 @@ export interface DepsEncerrar {
   removerPid: () => void;
   /** Jobs `running`/`queued` — o 409 avisa quem está processando. */
   contarJobsAtivos: () => number;
-  /** Mata os filhos registrados (mecanismo de `cancelamento.ts`). */
-  matarFilhos: () => void;
+  /**
+   * Encerra os filhos registrados E espera a morte deles (event loop vivo).
+   * Produção: `encerrarFilhosRegistrados` de `cancelamento.ts`.
+   */
+  encerrarFilhos: () => Promise<void>;
   /** O pid DESTE processo, para a regra "só apago o meu". */
   pid: number;
 }
@@ -109,8 +115,14 @@ export function pedirEncerramento(
 }
 
 /** O desligamento em si — o que o `setTimeout` da produção dispara. */
-function encerrarAgora(deps: DepsEncerrar): void {
-  deps.matarFilhos();
+async function encerrarAgora(deps: DepsEncerrar): Promise<void> {
+  // A limpeza TERMINA antes de sair: filho que ignora SIGTERM não pode
+  // sobreviver ao encerramento por um timer que nunca dispara.
+  try {
+    await deps.encerrarFilhos();
+  } catch {
+    /* não pendura o desligamento: quem sobrar é da rede de segurança do exit */
+  }
   const gravado = deps.lerPid();
   if (gravado !== null && gravado === String(deps.pid)) deps.removerPid();
   deps.exit(0);
@@ -140,11 +152,11 @@ export function depsDeEncerramento(
     removerPid: () => {
       fs.rmSync(CAMINHO_PID, { force: true });
     },
-    matarFilhos: () => {
-      // Idempotente: a rede já é instalada no import de cancelamento.ts;
-      // chamar aqui documenta e GARANTE que o exit(0) abaixo mata os filhos
-      // registrados (yt-dlp/whisper/ffmpeg) em grupo.
-      garantirLimpezaDeFilhosNoFim();
+    encerrarFilhos: () => {
+      // Com o event loop VIVO: SIGTERM no grupo, grace, SIGKILL em quem
+      // sobrou, e só resolve com todos mortos (ou no teto). O import de
+      // cancelamento.ts já instala a rede de segurança do `exit`.
+      return encerrarFilhosRegistrados();
     },
     pid: process.pid,
   };

@@ -88,11 +88,11 @@ function semearJob(id: string, status: "queued" | "running" | "done"): void {
 
 /** Deps falsas só para o que é perigoso (agendar/exit); o resto é o de produção. */
 function depsSegurasParaTeste() {
-  const agendadas: Array<() => void> = [];
+  const agendadas: Array<() => void | Promise<void>> = [];
   const exitados: number[] = [];
   return {
     deps: {
-      agendar: (fn: () => void) => {
+      agendar: (fn: () => void | Promise<void>) => {
         agendadas.push(fn);
       },
       exit: (codigo: number) => {
@@ -101,8 +101,8 @@ function depsSegurasParaTeste() {
     },
     agendadas,
     exitados,
-    disparar: () => {
-      for (const fn of agendadas) fn();
+    disparar: async () => {
+      for (const fn of agendadas) await fn();
     },
   };
 }
@@ -226,7 +226,7 @@ describe("202 e o desligamento agendado (deps falsas; exit real NUNCA roda)", ()
     assert.equal(res.status, 202);
     assert.deepEqual(await res.json(), { ok: true });
     assert.equal(t.agendadas.length, 1);
-    t.disparar();
+    await t.disparar();
     assert.deepEqual(t.exitados, [0]);
     assert.equal(fs.existsSync(caminhoPid), false, "o servidor.pid do próprio processo devia sumir");
   });
@@ -236,7 +236,7 @@ describe("202 e o desligamento agendado (deps falsas; exit real NUNCA roda)", ()
     const t = depsSegurasParaTeste();
     const res = await criarPostEncerrar(t.deps)(requisicao({ origin: "http://127.0.0.1:3000" }));
     assert.equal(res.status, 202);
-    t.disparar();
+    await t.disparar();
     assert.deepEqual(t.exitados, [0]);
     assert.equal(fs.existsSync(caminhoPid), true, "pid alheio não é removido");
   });
@@ -246,7 +246,7 @@ describe("202 e o desligamento agendado (deps falsas; exit real NUNCA roda)", ()
     const t = depsSegurasParaTeste();
     const res = await criarPostEncerrar(t.deps)(requisicao({ origin: "http://localhost:3000" }));
     assert.equal(res.status, 202);
-    t.disparar();
+    await t.disparar();
     assert.deepEqual(t.exitados, [0]);
   });
 });
