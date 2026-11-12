@@ -58,7 +58,7 @@ Em macOS recentes, o clique-direito no app → **Abrir** **não basta** para lib
 #### 4. O primeiro vídeo (o app se completa sozinho)
 
 - Na primeira vez que você usar um vídeo, o app baixa sozinho o baixador de vídeos. São alguns minutos a mais — só na primeira vez.
-- O transcritor (**Whisper**, uns 3,5 GB entre ferramenta e modelo) **não** baixa sozinho: ele só é instalado se você pedir, nas **Configurações** do app — e já vem com o modelo que transcreve (o primeiro vídeo não espera nada). Ele lê o áudio de vídeos de Instagram e TikTok (que não têm legenda).
+- O transcritor (**Whisper**, uns 3 GB entre ferramenta e modelo) **não** baixa sozinho: ele só é instalado se você pedir, nas **Configurações** do app — e já vem com o modelo que transcreve (o primeiro vídeo não espera nada). Ele lê o áudio de vídeos de Instagram e TikTok (que não têm legenda).
 - O primeiro **export** (resumo em PDF/Word) baixa o navegador que gera os arquivos. Também é só na primeira vez.
 
 #### 5. Ligar a IA

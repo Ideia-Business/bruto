@@ -13,7 +13,13 @@
 /** Estado da integração com o Whisper, como vem de `/api/ferramentas/whisper`. */
 export interface EstadoWhisper {
   suportado: boolean;
+  /** Prontidão de verdade: o backend E o modelo padrão baixado até o fim. */
   instalado: boolean;
+  /**
+   * O venv do mlx-whisper existe (mesmo sem o modelo)? Decide o texto do
+   * botão: "Baixar o modelo" quando true, "Instalar" quando false.
+   */
+  venvInstalado: boolean;
 }
 
 export interface SecoesConfiguracoes {

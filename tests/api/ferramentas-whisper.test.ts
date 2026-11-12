@@ -1,9 +1,12 @@
 /**
  * O pedido de Whisper (modo pacote): o Whisper NÃO vem no pacote — só é
  * instalado quando a pessoa pede (Configurações → Instalar, com aviso de
- * ~3,5 GB entre ferramenta e modelo). Este endpoint é a ação:
+ * ~3 GB entre ferramenta e modelo). Este endpoint é a ação:
  *
- *   GET  /api/ferramentas/whisper → { suportado, instalado }
+ *   GET  /api/ferramentas/whisper → { suportado, instalado, venvInstalado }
+ *          `instalado` = prontidão de VDD (venv E modelo padrão baixado até
+ *          o fim — r3/P2); `venvInstalado` é o que decide o texto do botão
+ *          ("Baixar o modelo" quando o venv já existe, "Instalar" quando não).
  *   POST /api/ferramentas/whisper → instala via `uv tool install
  *          --python-preference only-managed mlx-whisper` e, com o Python do
  *          próprio venv, JÁ BAIXA o modelo padrão (large-v3-turbo) — sem
@@ -35,6 +38,7 @@ const VARS = [
   "BRUTO_UV",
   "BRUTO_FERRAMENTAS",
   "BRUTO_DATA_ROOT",
+  "BRUTO_WHISPER_MODEL",
   "UV_TOOL_DIR",
   "UV_TOOL_BIN_DIR",
   "UV_CACHE_DIR",
@@ -131,19 +135,34 @@ function req(metodo: string, cliente: string | null = "app"): Request {
   });
 }
 
+/** Apaga as marcas de "modelo baixado" ($BRUTO_FERRAMENTAS/whisper-modelo-*). */
+function limparMarcasDeModelo(): void {
+  for (const nome of fs.readdirSync(ferramentas)) {
+    if (nome.startsWith("whisper-modelo-")) {
+      fs.rmSync(path.join(ferramentas, nome), { force: true });
+    }
+  }
+}
+
 beforeEach(() => {
   fs.rmSync(registroUv, { force: true });
   fs.rmSync(registroPython, { force: true });
   fs.rmSync(uvToolDir, { recursive: true, force: true });
+  limparMarcasDeModelo();
   delete process.env.BRUTO_UV_FALHA;
   delete process.env.BRUTO_PYTHON_FALHA;
+  delete process.env.BRUTO_WHISPER_MODEL;
 });
 
 describe("GET /api/ferramentas/whisper — estado", () => {
-  test("não instalado: instalado=false, suportado=true em modo pacote", async () => {
+  test("nada instalado: instalado=false E venvInstalado=false em modo pacote", async () => {
     const res = await GET();
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { suportado: true, instalado: false });
+    assert.deepEqual(await res.json(), {
+      suportado: true,
+      instalado: false,
+      venvInstalado: false,
+    });
   });
 
   test("modo clone: suportado=false (a instalação por endpoint não se aplica)", async () => {
@@ -170,31 +189,44 @@ describe("POST /api/ferramentas/whisper — instalação sob pedido", () => {
     assert.equal(res.status, 200, JSON.stringify(await res.json().catch(() => null)));
     assert.deepEqual(chamadasUv(), ["tool install --python-preference only-managed mlx-whisper"]);
 
-    // O download antecipado: o Python do próprio venv recebe o repositório
-    // RESOLVIDO do padrão novo — sem isto, o 1º vídeo parava ~1,6 GB de
-    // download depois, sem aviso.
+    // O download antecipado: o Python do próprio venv recebe o código de
+    // produção COMPLETO — o import da API real (r3/P1: `load_model` vive em
+    // mlx_whisper.load_models, e `mlx_whisper.load_model` NÃO existe) e o
+    // repositório RESOLVIDO do padrão novo.
     const python = chamadasPython();
     assert.equal(python.length, 1, `esperava 1 chamada ao Python do venv, veio: ${python.join(" | ")}`);
-    assert.match(python[0], /mlx-community\/whisper-large-v3-turbo/);
+    assert.match(
+      python[0],
+      /from mlx_whisper\.load_models import load_model; load_model\("mlx-community\/whisper-large-v3-turbo"\)/,
+    );
 
     const estado = await GET();
-    assert.deepEqual(await estado.json(), { suportado: true, instalado: true });
+    assert.deepEqual(await estado.json(), {
+      suportado: true,
+      instalado: true,
+      venvInstalado: true,
+    });
   });
 
-  test("segunda chamada com o venv já pronto: pula o uv e só confere o modelo", async () => {
+  test("segunda chamada com tudo pronto: não roda NADA (nem o uv, nem o Python)", async () => {
     await POST(req("POST"));
-    const uvDepoisDaPrimeira = chamadasUv().length;
+    const uvApos = chamadasUv().length;
+    const pythonApos = chamadasPython().length;
 
     const res = await POST(req("POST"));
     assert.equal(res.status, 200);
-    assert.equal(chamadasUv().length, uvDepoisDaPrimeira, "o uv não deve rodar de novo (venv já existe)");
-    // O modelo é baixado/conferido em CADA pedido (idempotente: com o modelo
-    // já em cache, o load_model só confere; é o preço aceito de não manter
-    // mais uma marca de presença além das que o contrato já tem).
-    assert.equal(chamadasPython().length, 2, "o Python do venv roda uma vez por pedido");
+    assert.equal(chamadasUv().length, uvApos, "o uv não deve rodar de novo (venv já existe)");
+    // r3/P2: a marca de "modelo baixado até o fim" pula também o Python —
+    // antes, cada pedido re-executava o load_model (idempotente, mas caro
+    // à toa) mesmo com o modelo garantido.
+    assert.equal(
+      chamadasPython().length,
+      pythonApos,
+      "o download é pulado quando a marca diz pronto",
+    );
   });
 
-  test("download do modelo quebra (rede caiu no meio): erro legível, e o venv instalado segue de pé", async () => {
+  test("download do modelo quebra (rede caiu no meio): erro legível, venv de pé — e o botão CONTINUA (P2)", async () => {
     // 1ª tentativa instala o venv mas o Python falha no download do modelo.
     process.env.BRUTO_PYTHON_FALHA = "1";
     const falha = await POST(req("POST"));
@@ -203,14 +235,58 @@ describe("POST /api/ferramentas/whisper — instalação sob pedido", () => {
     assert.match(corpo.error, /transcrição|Whisper|internet/i);
     delete process.env.BRUTO_PYTHON_FALHA;
 
-    // O venv sobrevive (o Whisper funciona; só o modelo antecipado faltou) —
-    // e a pessoa pode tentar o download de novo sem reinstalar nada.
+    // O venv sobrevive, mas prontidão AGORA exige o modelo (r3/P2): sem ele,
+    // `instalado` é false e `venvInstalado` é true — é esse par que faz a
+    // tela mostrar "Baixar o modelo" em vez de sumir com o botão.
     const estado = await GET();
-    assert.deepEqual(await estado.json(), { suportado: true, instalado: true });
+    assert.deepEqual(await estado.json(), {
+      suportado: true,
+      instalado: false,
+      venvInstalado: true,
+    });
 
     const retry = await POST(req("POST"));
     assert.equal(retry.status, 200);
     assert.equal(chamadasUv().length, 1, "o retry não repete o uv tool install");
+
+    const depois = await GET();
+    assert.deepEqual(await depois.json(), {
+      suportado: true,
+      instalado: true,
+      venvInstalado: true,
+    });
+  });
+
+  test("trocar BRUTO_WHISPER_MODEL invalida a prontidão: o botão volta e baixa SÓ o outro modelo", async () => {
+    await POST(req("POST")); // turbo (o padrão) fica pronto
+    const pronto = await GET();
+    assert.equal(((await pronto.json()) as { instalado: boolean }).instalado, true);
+
+    process.env.BRUTO_WHISPER_MODEL = "base";
+    try {
+      // A marca leva o nome do repositório: modelo diferente = não pronto.
+      const estado = await GET();
+      assert.deepEqual(await estado.json(), {
+        suportado: true,
+        instalado: false,
+        venvInstalado: true,
+      });
+
+      const res = await POST(req("POST"));
+      assert.equal(res.status, 200);
+      assert.equal(chamadasUv().length, 1, "o venv já existe; só o modelo novo desce");
+      const ultima = chamadasPython().at(-1) ?? "";
+      assert.match(ultima, /mlx-community\/whisper-base-mlx/);
+
+      const depois = await GET();
+      assert.deepEqual(await depois.json(), {
+        suportado: true,
+        instalado: true,
+        venvInstalado: true,
+      });
+    } finally {
+      delete process.env.BRUTO_WHISPER_MODEL;
+    }
   });
 
   test("duas instalações concorrentes: o uv e o download rodam UMA vez (F3)", async () => {
@@ -231,5 +307,6 @@ describe("POST /api/ferramentas/whisper — instalação sob pedido", () => {
     const estado = await GET();
     const corpoEstado = await estado.json();
     assert.equal(corpoEstado.instalado, false);
+    assert.equal(corpoEstado.venvInstalado, false);
   });
 });

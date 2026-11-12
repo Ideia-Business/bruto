@@ -495,24 +495,123 @@ export async function garantirChromium(opcoes: { timeoutMs?: number } = {}): Pro
   return instalacaoChromium;
 }
 
-// ── Whisper: só instala quando a pessoa pede (~3,5 GB, modelo incluído) ─────
+// ── Whisper: só instala quando a pessoa pede (~3 GB, modelo incluído) ───────
 
-// Venv (~1 GB) + modelo large-v3-turbo (~1,5 GB) na MESMA promessa: o teto
+// Venv (~1,1 GB) + modelo large-v3-turbo (~1,5 GB) na MESMA promessa: o teto
 // cobre os dois downloads. 45 min porque 30 min só davam conta do venv.
 const TIMEOUT_WHISPER_MS = 45 * 60 * 1000;
 
 let instalacaoWhisper: Promise<void> | null = null;
 
 /**
- * O Whisper está instalado? Detecção barata (só filesystem): o venv do
- * `uv tool install mlx-whisper` (o backend preferido do app) ou a CLI
- * `whisper` instalada pelo uv. Cara demais seria sondar o Python — a sonda
- * fica em `transcribe.ts`, memoizada, e é rearmada depois da instalação.
+ * O venv do mlx-whisper (o backend preferido do app) já existe? Detecção
+ * barata (só filesystem). É o que decide o TEXTO do botão das
+ * Configurações: com o venv e sem o modelo, "Baixar o modelo"; sem o venv,
+ * "Instalar".
+ */
+export function venvWhisperInstalado(): boolean {
+  if (!modoPacote()) return false;
+  return pythonDaFerramentaUv("mlx-whisper") !== null;
+}
+
+/**
+ * Marca de "o modelo padrão foi baixado ATÉ O FIM" (r3/P2). Prontidão de
+ * verdade é venv E modelo: se o venv instala mas o download do modelo
+ * falha, o GET precisa continuar dizendo `instalado: false` — senão as
+ * Configurações mostram "Instalado", somem com o botão e a pessoa fica sem
+ * como tentar de novo.
+ *
+ * Por que uma MARCA em `$BRUTO_FERRAMENTAS` (e não sondar o cache do
+ * Hugging Face): (1) o precedente do Chromium logo acima — varrer diretório
+ * de caminho dinâmico (os `snapshots/<rev>/weights.*` do HF) é
+ * `readdirSync`/glob que o tracer do build standalone pune com varredura no
+ * projeto inteiro, e a marca é UMA leitura de arquivo; (2) o diretório do
+ * cache é decisão do processo PYTHON (HF_HOME/HF_HUB_CACHE/XDG_CACHE_HOME)
+ * — e os dois momentos que importam rodam com ambientes DIFERENTES (o
+ * download herda o env do servidor; a transcrição, `ambienteMinimo()`),
+ * então replicar essa resolução em TS seria uma segunda verdade que pode
+ * discordar das duas.
+ *
+ * A marca é gravada SÓ depois do download ter sucesso, e o NOME leva o
+ * repositório (`/` vira `--`, a convenção do próprio HF): trocar de modelo
+ * (`BRUTO_WHISPER_MODEL`) invalida na hora. Quem já tem o modelo no cache
+ * mas não tem a marca (baixou fora — ex.: mlx da 1ª transcrição) vê o botão
+ * uma única vez: o `load_model` é idempotente (com o modelo em cache só
+ * confere) e a marca nasce.
+ */
+const PREFIXO_MARCA_MODELO_WHISPER = "whisper-modelo";
+
+function caminhoMarcaModeloWhisper(): string {
+  const base = process.env.BRUTO_FERRAMENTAS;
+  if (!base) throw new Error("modo pacote sem BRUTO_FERRAMENTAS definida");
+  const repo = repositorioMlx(modeloWhisper()).split("/").join("--");
+  return path.join(base, `${PREFIXO_MARCA_MODELO_WHISPER}-${repo}.json`);
+}
+
+/** O modelo padrão está pronto (marca presente E do repositório atual)? */
+function modeloWhisperPronto(): boolean {
+  try {
+    const marca = JSON.parse(fs.readFileSync(caminhoMarcaModeloWhisper(), "utf8")) as {
+      repo?: unknown;
+    };
+    return marca.repo === repositorioMlx(modeloWhisper());
+  } catch {
+    // ausente, ilegível ou de outro formato: não pronto
+    return false;
+  }
+}
+
+/** Grava a marca depois de um download bem-sucedido (best-effort). */
+function gravarMarcaModeloWhisper(): void {
+  try {
+    fs.mkdirSync(path.dirname(caminhoMarcaModeloWhisper()), { recursive: true });
+    fs.writeFileSync(
+      caminhoMarcaModeloWhisper(),
+      JSON.stringify({
+        repo: repositorioMlx(modeloWhisper()),
+        gravadoEm: new Date().toISOString(),
+      }),
+    );
+  } catch (err) {
+    console.warn(
+      `[bruto] modelo do Whisper baixado, mas a marca de prontidão não pôde ser gravada: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+/**
+ * O Whisper está instalado? Prontidão de VERDADE (r3/P2): o backend (venv
+ * do `uv tool install mlx-whisper`, ou a CLI `whisper` do uv) E o modelo
+ * padrão baixado até o fim (a marca acima). Só filesystem, sem sondar o
+ * Python — a sonda fica em `transcribe.ts`, memoizada, e é rearmada depois
+ * da instalação.
  */
 export function whisperInstalado(): boolean {
   if (!modoPacote()) return false;
-  if (pythonDaFerramentaUv("mlx-whisper") !== null) return true;
-  return executavel(caminhoDe("whisper"));
+  const backend =
+    pythonDaFerramentaUv("mlx-whisper") !== null || executavel(caminhoDe("whisper"));
+  return backend && modeloWhisperPronto();
+}
+
+/**
+ * O código Python (uma linha, `-c`) que baixa/carrega o modelo padrão —
+ * função ÚNICA: produção e prova contra o pacote real
+ * (`tests/pipeline/lib/ferramentas-whisper-mlx-real.test.ts`) usam o MESMO
+ * texto, trocando a prova só a CHAMADA final por uma checagem de símbolo
+ * (nada é baixado).
+ *
+ * `from mlx_whisper.load_models import load_model` porque É ESSA a API no
+ * pacote instalado: `hasattr(mlx_whisper, "load_model")` dá False no venv
+ * real (conferido pela orquestradora, r3) — o texto anterior
+ * (`import mlx_whisper; mlx_whisper.load_model(...)`) montava o venv e
+ * morria com 500 na certeira. `load_model` (e não um download cru) porque
+ * é a chamada que a transcrição faz: o que baixa aqui é exatamente o que
+ * seria baixado lá.
+ */
+export function codigoPythonBaixarModelo(repo: string): string {
+  return `from mlx_whisper.load_models import load_model; load_model(${JSON.stringify(repo)})`;
 }
 
 /**
@@ -520,8 +619,6 @@ export function whisperInstalado(): boolean {
  * mesmo interpretador que vai transcrever, o mesmo cache do Hugging Face
  * que `mlx_whisper.transcribe` leria. Sem isto, a instalação terminava
  * "pronta" e o 1º vídeo parava ~1,6 GB de download depois, sem aviso.
- * `load_model` (e não um download cru) porque é a chamada que a transcrição
- * faz: o que baixa aqui é exatamente o que seria baixado lá.
  */
 function baixarModeloWhisper(timeoutMs: number): Promise<void> {
   const python = pythonDaFerramentaUv("mlx-whisper");
@@ -532,8 +629,8 @@ function baixarModeloWhisper(timeoutMs: number): Promise<void> {
   const repo = repositorioMlx(modeloWhisper());
   return rodarInstalacao(
     python,
-    // Sem shell: argv puro, o repo vai como um argumento único seguro.
-    ["-c", `import mlx_whisper; mlx_whisper.load_model(${JSON.stringify(repo)})`],
+    // Sem shell: argv puro, o código vai como um argumento único seguro.
+    ["-c", codigoPythonBaixarModelo(repo)],
     timeoutMs,
   );
 }
@@ -543,11 +640,13 @@ function baixarModeloWhisper(timeoutMs: number): Promise<void> {
  * `"$BRUTO_UV" tool install --python-preference only-managed mlx-whisper` e,
  * com o Python do venv, o download ANTECIPADO do modelo padrão
  * (large-v3-turbo; `BRUTO_WHISPER_MODEL`, se definido, manda no download
- * também) — ~3,5 GB no total de ferramenta e modelo, o aviso é da UI.
+ * também) — ~3 GB no total de ferramenta e modelo, o aviso é da UI.
  * Modo clone: rejeita — lá quem instala é o instalador do repositório.
  * UMA instalação por vez, com teto e cancelamento; cada etapa pula o que
- * já está pronto (venv existente → só o modelo; download idempotente), então
- * repetir o pedido depois de uma falha de rede não refaz o que deu certo.
+ * já está pronto (venv existente → só o modelo; marca de modelo → nada),
+ * então repetir o pedido depois de uma falha de rede não refaz o que deu
+ * certo. O download bem-sucedido grava a marca que faz a prontidão
+ * (`whisperInstalado`) virar true.
  */
 export function instalarWhisper(opcoes: { timeoutMs?: number } = {}): Promise<void> {
   if (!modoPacote()) {
@@ -566,16 +665,30 @@ export function instalarWhisper(opcoes: { timeoutMs?: number } = {}): Promise<vo
             timeoutMs,
           );
         }
-        await baixarModeloWhisper(timeoutMs);
+        if (!modeloWhisperPronto()) {
+          await baixarModeloWhisper(timeoutMs);
+          gravarMarcaModeloWhisper();
+        }
       } catch {
         throw new Error(
           "Não foi possível instalar a transcrição local (Whisper). " +
             "Verifique a internet e tente de novo.",
         );
-      } finally {
-        instalacaoWhisper = null;
       }
     })();
+    // O rearme da promessa compartilhada vive FORA do corpo, e condicional.
+    // Dentro do corpo, um `finally` clássico tem uma ratoeira: quando não há
+    // nada a fazer (venv e marca prontos), o corpo completa SEM nenhum await
+    // — o finally roda ANTES da atribuição abaixo, a promessa resolvida
+    // sobrescreve o null e fica guardada PARA SEMPRE: todo pedido seguinte
+    // "terminaria" sem checar nada (achado pela r3 ao pular o download já
+    // pronto). Condicional, para não desarumar uma instalação MAIS NOVA.
+    p.finally(() => {
+      if (instalacaoWhisper === p) instalacaoWhisper = null;
+    }).catch(() => {
+      // a rejeição de verdade é entregue a quem aguarda `p`; esta cadeia do
+      // finally não pode virar unhandledRejection
+    });
     instalacaoWhisper = p;
   }
   return instalacaoWhisper;

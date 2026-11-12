@@ -55,10 +55,7 @@ export function ConfiguracoesClient() {
           if (versao.origem === "pacote") {
             const resWhisper = await fetch("/api/ferramentas/whisper");
             if (resWhisper.ok) {
-              const estadoWhisper = (await resWhisper.json()) as {
-                suportado: boolean;
-                instalado: boolean;
-              };
+              const estadoWhisper = (await resWhisper.json()) as EstadoWhisper;
               if (!cancelado) setWhisper(estadoWhisper);
             }
           }
@@ -151,8 +148,8 @@ export function ConfiguracoesClient() {
         toast.error(corpo?.error ?? "Não foi possível instalar a transcrição local.");
         return;
       }
-      setWhisper({ suportado: true, instalado: true });
-      toast.success("Transcrição local instalada. Vídeos sem legenda já podem ser processados.");
+      setWhisper({ suportado: true, instalado: true, venvInstalado: true });
+      toast.success("Transcrição local pronta. Vídeos sem legenda já podem ser processados.");
     } catch {
       toast.error("Não foi possível instalar a transcrição local. Verifique a internet.");
     } finally {
@@ -258,7 +255,7 @@ export function ConfiguracoesClient() {
             <h2 className="font-semibold">Transcrição local (Whisper)</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               É o que permite destrinchar vídeo sem legenda (Instagram, TikTok). A instalação
-              baixa cerca de 3,5 GB de ferramenta e modelo de transcrição, uma única vez (o
+              baixa cerca de 3 GB de ferramenta e modelo de transcrição, uma única vez (o
               modelo já vem junto — o primeiro vídeo não espera nada), e roda toda no seu
               computador.
             </p>
@@ -276,7 +273,11 @@ export function ConfiguracoesClient() {
               className="shrink-0 gap-1.5"
             >
               <Download className="size-4" />
-              {instalandoWhisper ? "Instalando… (pode levar vários minutos)" : "Instalar (~3,5 GB)"}
+              {instalandoWhisper
+                ? "Preparando… (pode levar vários minutos)"
+                : whisper.venvInstalado
+                  ? "Baixar o modelo"
+                  : "Instalar (~3 GB)"}
             </Button>
           )}
         </section>
