@@ -34,6 +34,8 @@ import path from "node:path";
 import { juntarCaminho } from "@/lib/caminho-opaco";
 import { FILHO_EM_GRUPO_PROPRIO, registrarFilho } from "@/pipeline/lib/cancelamento";
 import { pythonDaFerramentaUv } from "@/pipeline/lib/binario";
+import { ambienteMinimo } from "@/pipeline/lib/ambiente-processo";
+import { ambienteCacheModelo, modeloWhisper, repositorioMlx } from "@/pipeline/lib/modelo-whisper";
 import { PipelineError } from "@/pipeline/types";
 
 /** Verdade quando o servidor roda dentro do Bruto.app (o lançador define "1"). */
@@ -104,19 +106,25 @@ function executavel(caminho: string): boolean {
 const ARGS_PYTHON_GERENCIADO = ["--python-preference", "only-managed"];
 
 /**
- * Roda o instalador (uv, ou o node da CLI do Playwright) com teto de tempo e
- * registro de cancelamento: se o processo rodar DENTRO de um job, cancelar o
- * job o mata em grupo. Rejeita em timeout ou exit != 0 com o rabo do stderr.
+ * Roda um processo externo de preparação com teto de tempo e registro de
+ * cancelamento: se o processo rodar DENTRO de um job, cancelar o job o mata
+ * em grupo. Rejeita em timeout ou exit != 0 com o rabo do stderr. O `env` é o
+ * ambiente COMPLETO do filho — a política de quem entra é de quem chama:
+ * `rodarInstalacao` (abaixo) herda o servidor e impõe a preferência de
+ * Python do uv; o download do modelo (r5) usa EXATAMENTE o ambiente da
+ * transcrição (`ambienteMinimo`, ambiente-processo.ts).
  */
-function rodarInstalacao(cmd: string, args: string[], timeoutMs: number): Promise<void> {
+function rodarComTeto(
+  cmd: string,
+  args: string[],
+  timeoutMs: number,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
       shell: false,
       detached: FILHO_EM_GRUPO_PROPRIO,
-      // As variáveis UV_* e PLAYWRIGHT_BROWSERS_PATH chegam pelo ambiente do
-      // processo (o lançador as define) — o filho herda. UV_PYTHON_PREFERENCE
-      // é imposta AQUI, não delegada ao lançador (ver ARGS_PYTHON_GERENCIADO).
-      env: { ...process.env, UV_PYTHON_PREFERENCE: "only-managed" },
+      env,
     });
     registrarFilho(child);
 
@@ -157,6 +165,29 @@ function rodarInstalacao(cmd: string, args: string[], timeoutMs: number): Promis
       }
       resolve();
     });
+  });
+}
+
+/**
+ * Roda o instalador (uv, ou o node da CLI do Playwright) com teto de tempo e
+ * registro de cancelamento (o corpo vive em `rodarComTeto`).
+ *
+ * `envExtra` ACRESCENTA variáveis por cima do ambiente herdado (nunca
+ * subtrai) — os INSTALADORES precisam do ambiente do servidor (as variáveis
+ * UV_* e PLAYWRIGHT_BROWSERS_PATH chegam pelo lançador; o uv também honra
+ * proxies e CAs do sistema para baixar pacotes). UV_PYTHON_PREFERENCE é
+ * imposta AQUI, não delegada ao lançador (ver ARGS_PYTHON_GERENCIADO).
+ */
+function rodarInstalacao(
+  cmd: string,
+  args: string[],
+  timeoutMs: number,
+  envExtra: Record<string, string> = {},
+): Promise<void> {
+  return rodarComTeto(cmd, args, timeoutMs, {
+    ...process.env,
+    UV_PYTHON_PREFERENCE: "only-managed",
+    ...envExtra,
   });
 }
 
@@ -494,30 +525,203 @@ export async function garantirChromium(opcoes: { timeoutMs?: number } = {}): Pro
   return instalacaoChromium;
 }
 
-// ── Whisper: só instala quando a pessoa pede (~2 GB) ─────────────────────────
+// ── Whisper: só instala quando a pessoa pede (~3 GB, modelo incluído) ───────
 
-const TIMEOUT_WHISPER_MS = 30 * 60 * 1000;
+// Venv (~1,1 GB) + modelo large-v3-turbo (~1,5 GB) na MESMA promessa: o teto
+// cobre os dois downloads. 45 min porque 30 min só davam conta do venv.
+const TIMEOUT_WHISPER_MS = 45 * 60 * 1000;
 
 let instalacaoWhisper: Promise<void> | null = null;
 
 /**
- * O Whisper está instalado? Detecção barata (só filesystem): o venv do
- * `uv tool install mlx-whisper` (o backend preferido do app) ou a CLI
- * `whisper` instalada pelo uv. Cara demais seria sondar o Python — a sonda
- * fica em `transcribe.ts`, memoizada, e é rearmada depois da instalação.
+ * O venv do mlx-whisper (o backend preferido do app) já existe? Detecção
+ * barata (só filesystem). É o que decide o TEXTO do botão das
+ * Configurações: com o venv e sem o modelo, "Baixar o modelo"; sem o venv,
+ * "Instalar".
+ */
+export function venvWhisperInstalado(): boolean {
+  if (!modoPacote()) return false;
+  return pythonDaFerramentaUv("mlx-whisper") !== null;
+}
+
+/**
+ * Marca de "o modelo padrão foi baixado ATÉ O FIM" (r3/P2). Prontidão de
+ * verdade é venv E modelo: se o venv instala mas o download do modelo
+ * falha, o GET precisa continuar dizendo `instalado: false` — senão as
+ * Configurações mostram "Instalado", somem com o botão e a pessoa fica sem
+ * como tentar de novo.
+ *
+ * Por que uma MARCA em `$BRUTO_FERRAMENTAS` (e não sondar o cache do
+ * Hugging Face): (1) o precedente do Chromium logo acima — varrer diretório
+ * de caminho dinâmico (os `snapshots/<rev>/weights.*` do HF) é
+ * `readdirSync`/glob que o tracer do build standalone pune com varredura no
+ * projeto inteiro, e a marca é UMA leitura de arquivo; (2) o diretório do
+ * cache é decisão do processo PYTHON (HF_HUB_CACHE/HUGGINGFACE_HUB_CACHE/
+ * HF_HOME/XDG_CACHE_HOME — `VARS_CACHE_MODELO`) — e desde r4 download e
+ * transcrição resolvem essas variáveis pela MESMA
+ * função (`ambienteCacheModelo`), então replicar a resolução de CAMINHO em
+ * TS continua sendo uma segunda verdade desnecessária: a marca grava o
+ * SNAPSHOT da decisão (as variáveis, não o caminho resolvido) e a prontidão
+ * compara com a decisão ATUAL — se o lançador trocar HF_HOME depois da
+ * instalação, o modelo ficou no cache velho e a marca não vale mais.
+ *
+ * A marca é gravada SÓ depois do download ter sucesso, e o NOME leva o
+ * repositório (`/` vira `--`, a convenção do próprio HF): trocar de modelo
+ * (`BRUTO_WHISPER_MODEL`) invalida na hora. Quem já tem o modelo no cache
+ * mas não tem a marca (baixou fora — ex.: mlx da 1ª transcrição) vê o botão
+ * uma única vez: o `load_model` é idempotente (com o modelo em cache só
+ * confere) e a marca nasce. Marca antiga sem o campo de cache vale "não
+ * pronto" pelo mesmo motivo — o custo é um `load_model` que só confere.
+ */
+const PREFIXO_MARCA_MODELO_WHISPER = "whisper-modelo";
+
+function caminhoMarcaModeloWhisper(): string {
+  const base = process.env.BRUTO_FERRAMENTAS;
+  if (!base) throw new Error("modo pacote sem BRUTO_FERRAMENTAS definida");
+  const repo = repositorioMlx(modeloWhisper()).split("/").join("--");
+  return path.join(base, `${PREFIXO_MARCA_MODELO_WHISPER}-${repo}.json`);
+}
+
+/** O modelo padrão está pronto (marca presente, do repositório E cache atuais)? */
+function modeloWhisperPronto(): boolean {
+  try {
+    const marca = JSON.parse(fs.readFileSync(caminhoMarcaModeloWhisper(), "utf8")) as {
+      repo?: unknown;
+      cache?: unknown;
+    };
+    if (marca.repo !== repositorioMlx(modeloWhisper())) return false;
+    return cacheDaMarcaIgualAoAtual(marca.cache);
+  } catch {
+    // ausente, ilegível ou de outro formato: não pronto
+    return false;
+  }
+}
+
+/**
+ * r4: a marca só vale para a MESMA decisão de cache com que nasceu. Compara
+ * o snapshot gravado com as variáveis ATUAIS (`ambienteCacheModelo`) — sem
+ * resolver o caminho final, que continua sendo decisão do Python: se
+ * qualquer variável mudou (ex.: HF_HOME no lançador), o modelo ficou no
+ * cache velho e a prontidão cai.
+ */
+function cacheDaMarcaIgualAoAtual(gravado: unknown): boolean {
+  if (typeof gravado !== "object" || gravado === null) return false;
+  const registro = gravado as Record<string, unknown>;
+  const atual = ambienteCacheModelo();
+  const nomes = new Set([...Object.keys(registro), ...Object.keys(atual)]);
+  for (const nome of nomes) {
+    if (registro[nome] !== atual[nome]) return false;
+  }
+  return true;
+}
+
+/** Grava a marca depois de um download bem-sucedido (best-effort). */
+function gravarMarcaModeloWhisper(): void {
+  try {
+    fs.mkdirSync(path.dirname(caminhoMarcaModeloWhisper()), { recursive: true });
+    fs.writeFileSync(
+      caminhoMarcaModeloWhisper(),
+      JSON.stringify({
+        repo: repositorioMlx(modeloWhisper()),
+        cache: ambienteCacheModelo(),
+        gravadoEm: new Date().toISOString(),
+      }),
+    );
+  } catch (err) {
+    console.warn(
+      `[bruto] modelo do Whisper baixado, mas a marca de prontidão não pôde ser gravada: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+/**
+ * O Whisper está instalado? Prontidão de VERDADE (r3/P2): o backend (venv
+ * do `uv tool install mlx-whisper`, ou a CLI `whisper` do uv) E o modelo
+ * padrão baixado até o fim (a marca acima). Só filesystem, sem sondar o
+ * Python — a sonda fica em `transcribe.ts`, memoizada, e é rearmada depois
+ * da instalação.
  */
 export function whisperInstalado(): boolean {
   if (!modoPacote()) return false;
-  if (pythonDaFerramentaUv("mlx-whisper") !== null) return true;
-  return executavel(caminhoDe("whisper"));
+  const backend =
+    pythonDaFerramentaUv("mlx-whisper") !== null || executavel(caminhoDe("whisper"));
+  return backend && modeloWhisperPronto();
+}
+
+/**
+ * O código Python (uma linha, `-c`) que baixa/carrega o modelo padrão —
+ * função ÚNICA: produção e prova contra o pacote real
+ * (`tests/pipeline/lib/ferramentas-whisper-mlx-real.test.ts`) usam o MESMO
+ * texto, trocando a prova só a CHAMADA final por uma checagem de símbolo
+ * (nada é baixado).
+ *
+ * `from mlx_whisper.load_models import load_model` porque É ESSA a API no
+ * pacote instalado: `hasattr(mlx_whisper, "load_model")` dá False no venv
+ * real (conferido pela orquestradora, r3) — o texto anterior
+ * (`import mlx_whisper; mlx_whisper.load_model(...)`) montava o venv e
+ * morria com 500 na certeira. `load_model` (e não um download cru) porque
+ * é a chamada que a transcrição faz: o que baixa aqui é exatamente o que
+ * seria baixado lá.
+ */
+export function codigoPythonBaixarModelo(repo: string): string {
+  return `from mlx_whisper.load_models import load_model; load_model(${JSON.stringify(repo)})`;
+}
+
+/**
+ * Baixa o modelo padrão com o Python do PRÓPRIO venv do mlx-whisper — o
+ * mesmo interpretador que vai transcrever, o mesmo cache do Hugging Face
+ * que `mlx_whisper.transcribe` leria. Sem isto, a instalação terminava
+ * "pronta" e o 1º vídeo parava ~1,6 GB de download depois, sem aviso.
+ *
+ * r5/CLASS — o download roda com EXATAMENTE o ambiente da transcrição
+ * (`ambienteMinimo`, ambiente-processo.ts; a allowlist de cache do HF já vem
+ * embutida nela, pela função única `ambienteCacheModelo`). Nada é herdado do
+ * servidor, e NADA é acrescentado — cada acréscimo candidato foi avaliado:
+ *
+ *  - `UV_*`/`UV_PYTHON_PREFERENCE`: inertes aqui. O executado é o Python do
+ *    venv JÁ CRIADO, invocado diretamente — nenhum `uv` roda neste processo.
+ *  - Rede/proxies (`HTTPS_PROXY` etc.): a transcrição também baixa o modelo
+ *    quando ele falta (é o `load_model` DENTRO do `mlx_whisper.transcribe`) e
+ *    sempre rodou sem essas variáveis — dar ao download um poder de rede que
+ *    a transcrição não teria reintroduziria a divergência que esta correção
+ *    fecha. Proxies, além disso, podem embutir credencial na URL.
+ *  - `HF_TOKEN`: nunca — credencial não atravessa processo externo.
+ *
+ * A igualdade é o que fecha a família POR CONSTRUÇÃO: o download é a MESMA
+ * chamada (`load_model`) que a transcrição faria, com o MESMO ambiente — se
+ * algo faltar para a rede aqui, falta para o 1º vídeo também, e o bug aparece
+ * no download antecipado (avisado pela UI), não no primeiro uso.
+ */
+function baixarModeloWhisper(timeoutMs: number): Promise<void> {
+  const python = pythonDaFerramentaUv("mlx-whisper");
+  if (!python) {
+    // Inalcançável na prática (o uv acabou de criar o venv); defensivo.
+    return Promise.reject(new Error("o venv do mlx-whisper não apareceu após a instalação"));
+  }
+  const repo = repositorioMlx(modeloWhisper());
+  return rodarComTeto(
+    python,
+    // Sem shell: argv puro, o código vai como um argumento único seguro.
+    ["-c", codigoPythonBaixarModelo(repo)],
+    timeoutMs,
+    ambienteMinimo(),
+  );
 }
 
 /**
  * Instala o backend de transcrição sob pedido (endpoint das Configurações):
- * `"$BRUTO_UV" tool install --python-preference only-managed mlx-whisper`
- * (~2 GB de modelo e dependências — o aviso é da UI). Modo clone: rejeita —
- * lá quem instala é o instalador do repositório, não o app. UMA instalação
- * por vez, com teto e cancelamento.
+ * `"$BRUTO_UV" tool install --python-preference only-managed mlx-whisper` e,
+ * com o Python do venv, o download ANTECIPADO do modelo padrão
+ * (large-v3-turbo; `BRUTO_WHISPER_MODEL`, se definido, manda no download
+ * também) — ~3 GB no total de ferramenta e modelo, o aviso é da UI.
+ * Modo clone: rejeita — lá quem instala é o instalador do repositório.
+ * UMA instalação por vez, com teto e cancelamento; cada etapa pula o que
+ * já está pronto (venv existente → só o modelo; marca de modelo → nada),
+ * então repetir o pedido depois de uma falha de rede não refaz o que deu
+ * certo. O download bem-sucedido grava a marca que faz a prontidão
+ * (`whisperInstalado`) virar true.
  */
 export function instalarWhisper(opcoes: { timeoutMs?: number } = {}): Promise<void> {
   if (!modoPacote()) {
@@ -525,25 +729,41 @@ export function instalarWhisper(opcoes: { timeoutMs?: number } = {}): Promise<vo
       new Error("A instalação sob pedido só existe no app instalado (.app)."),
     );
   }
-  if (whisperInstalado()) return Promise.resolve();
   if (!instalacaoWhisper) {
-    const timeoutMs = opcoes.timeoutMs ?? TIMEOUT_WHISPER_MS;
     const p = (async () => {
+      const timeoutMs = opcoes.timeoutMs ?? TIMEOUT_WHISPER_MS;
       try {
-        await rodarInstalacao(
-          caminhoDe("uv"),
-          ["tool", "install", ...ARGS_PYTHON_GERENCIADO, "mlx-whisper"],
-          timeoutMs,
-        );
+        if (!pythonDaFerramentaUv("mlx-whisper")) {
+          await rodarInstalacao(
+            caminhoDe("uv"),
+            ["tool", "install", ...ARGS_PYTHON_GERENCIADO, "mlx-whisper"],
+            timeoutMs,
+          );
+        }
+        if (!modeloWhisperPronto()) {
+          await baixarModeloWhisper(timeoutMs);
+          gravarMarcaModeloWhisper();
+        }
       } catch {
         throw new Error(
           "Não foi possível instalar a transcrição local (Whisper). " +
             "Verifique a internet e tente de novo.",
         );
-      } finally {
-        instalacaoWhisper = null;
       }
     })();
+    // O rearme da promessa compartilhada vive FORA do corpo, e condicional.
+    // Dentro do corpo, um `finally` clássico tem uma ratoeira: quando não há
+    // nada a fazer (venv e marca prontos), o corpo completa SEM nenhum await
+    // — o finally roda ANTES da atribuição abaixo, a promessa resolvida
+    // sobrescreve o null e fica guardada PARA SEMPRE: todo pedido seguinte
+    // "terminaria" sem checar nada (achado pela r3 ao pular o download já
+    // pronto). Condicional, para não desarumar uma instalação MAIS NOVA.
+    p.finally(() => {
+      if (instalacaoWhisper === p) instalacaoWhisper = null;
+    }).catch(() => {
+      // a rejeição de verdade é entregue a quem aguarda `p`; esta cadeia do
+      // finally não pode virar unhandledRejection
+    });
     instalacaoWhisper = p;
   }
   return instalacaoWhisper;

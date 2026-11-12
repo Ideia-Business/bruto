@@ -97,7 +97,7 @@ assinatura **ad-hoc**; Developer ID + notarização só ligam se `BRUTO_DEVELOPE
 | app Next (modo standalone + static + public + drizzle) | sim | `BRUTO_BUILD_STANDALONE=1` |
 | `ffmpeg` / `ffprobe` / `uv` | sim (`Contents/Resources/bin`) | idem |
 | `yt-dlp` | não | `uv` no primeiro uso, com **Python gerenciado** pelo próprio `uv` |
-| Whisper (~2 GB) | não | só quando a pessoa pede, com aviso de tamanho |
+| Whisper (~3 GB, modelo incluído) | não | só quando a pessoa pede, com aviso de tamanho |
 | Chromium dos exports | não | Playwright, no primeiro export |
 
 O que desce depois vai para `$BRUTO_FERRAMENTAS` (`~/.bruto/ferramentas`), nunca para o

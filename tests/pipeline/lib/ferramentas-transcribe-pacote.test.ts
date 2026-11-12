@@ -28,6 +28,7 @@ const VARS = [
   "BRUTO_UV",
   "BRUTO_FERRAMENTAS",
   "BRUTO_DATA_ROOT",
+  "BRUTO_WHISPER_MODEL",
   "UV_TOOL_DIR",
   "UV_TOOL_BIN_DIR",
   "PATH",
@@ -48,6 +49,7 @@ process.env.BRUTO_EMPACOTADO = "1";
 process.env.BRUTO_UV = path.join(raiz, "uv-duble-ausente");
 process.env.BRUTO_FERRAMENTAS = ferramentas;
 process.env.BRUTO_DATA_ROOT = dataRoot;
+delete process.env.BRUTO_WHISPER_MODEL; // o padrão (large-v3-turbo) é o testado
 // Sem mlx instalado (UV_TOOL_DIR vazio): o backend detectado é o whisper CLI.
 process.env.UV_TOOL_DIR = path.join(ferramentas, "uv", "tools");
 process.env.UV_TOOL_BIN_DIR = binDir;
@@ -88,10 +90,13 @@ before(async () => {
   process.env.BRUTO_FFMPEG = ffmpegDuble;
 
   // Dublê do whisper CLI (instalado pelo uv em $BRUTO_FERRAMENTAS/bin):
-  // escreve <stem>.txt no --output_dir, como a CLI de verdade.
+  // escreve <stem>.txt no --output_dir, como a CLI de verdade, e REGISTRA os
+  // args (é assim que o teste prova o --model do padrão novo).
+  const registroWhisper = path.join(raiz, "whisper-cli-args.txt");
   fs.writeFileSync(
     path.join(binDir, "whisper"),
     `#!/bin/sh
+printf '%s\\n' "$*" >> "${registroWhisper}"
 out=""
 prev=""
 for a in "$@"; do
@@ -132,6 +137,19 @@ describe("F1 — transcrição em modo pacote não toca ferramenta do PATH", () 
     const texto = await transcreverAudio(audio, "pt");
     assert.equal(texto, "texto transcrito pelo duble");
     assert.equal(pathFalsoFoiChamado(), false, "um binário falso do PATH foi executado");
+  });
+
+  test("a CLI whisper recebe --model large-v3-turbo (o padrão novo, não mais base)", async () => {
+    const audio = path.join(raiz, "audio-modelo-novo.m4a");
+    fs.writeFileSync(audio, "audio-falso-2");
+    await transcreverAudio(audio, "pt");
+
+    const chamadas = fs.readFileSync(path.join(raiz, "whisper-cli-args.txt"), "utf8");
+    assert.match(
+      chamadas,
+      /--model large-v3-turbo /,
+      `a CLI deve receber o padrão novo; args registrados: ${chamadas}`,
+    );
   });
 });
 

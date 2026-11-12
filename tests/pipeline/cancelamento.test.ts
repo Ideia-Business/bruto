@@ -25,9 +25,17 @@ const RAIZ = process.cwd();
 
 let rodarComCancelamento: typeof import("@/pipeline/lib/cancelamento").rodarComCancelamento;
 let registrarFilho: typeof import("@/pipeline/lib/cancelamento").registrarFilho;
+let encerrarFilhosRegistrados: typeof import("@/pipeline/lib/cancelamento").encerrarFilhosRegistrados;
+let marcarEncerramento: typeof import("@/pipeline/lib/marca-de-encerramento").marcarEncerramento;
+let resetarMarca: typeof import("@/pipeline/lib/marca-de-encerramento").resetarMarcaDeEncerramentoParaTestes;
 
 before(async () => {
-  ({ rodarComCancelamento, registrarFilho } = await import("@/pipeline/lib/cancelamento"));
+  ({ rodarComCancelamento, registrarFilho, encerrarFilhosRegistrados } = await import(
+    "@/pipeline/lib/cancelamento"
+  ));
+  ({ marcarEncerramento, resetarMarcaDeEncerramentoParaTestes: resetarMarca } = await import(
+    "@/pipeline/lib/marca-de-encerramento"
+  ));
 });
 
 /** PIDs que ESTE arquivo criou — limpos no after, mesmo se um teste falhar. */
@@ -325,4 +333,219 @@ setInterval(() => {}, 1000);
       }
     },
   );
+});
+
+describe("encerramento do app — filhos morrem de verdade ANTES do exit", () => {
+  // O bug (achado do Codex): o handler de `exit` manda SIGTERM e AGENDA o
+  // SIGKILL num setTimeout — que nunca dispara depois do exit. Filho que
+  // ignora SIGTERM sobrevivia ao próprio "Encerrar o Bruto". O caminho novo
+  // termina a limpeza com o event loop VIVO e só então sai.
+  test(
+    "filho que IGNORA SIGTERM morre mesmo assim: encerrarFilhosRegistrados espera o grace e escala para SIGKILL",
+    { timeout: 30_000 },
+    async () => {
+      // Filho resistente com processo REAL: handler de SIGTERM que não faz
+      // nada — como um yt-dlp/whisper/ffmpeg travado. Em grupo próprio, do
+      // jeito que o app spawna (FILHO_EM_GRUPO_PROPRIO).
+      const filho = spawn(
+        process.execPath,
+        ["-e", 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);'],
+        { stdio: "ignore", detached: process.platform !== "win32" },
+      );
+      filhosCriados.push(filho);
+      const pid = filho.pid ?? -1;
+      if (pid > 0) pidsCriados.add(pid);
+      // Registrado como o app registra: fora de job, entra na lista global
+      // que o encerramento do app varre.
+      registrarFilho(filho);
+
+      try {
+        // Filho de pé COM o handler instalado.
+        await dormir(400);
+        assert.ok(processoVivo(pid), "filho resistente de pé antes do encerramento");
+
+        // Sanity da fixture: SIGTERM no grupo NÃO pode matá-lo — senão o
+        // teste não provaria a escalada para SIGKILL.
+        try {
+          process.kill(-pid, "SIGTERM");
+        } catch {
+          /* grupo já sumiu: fixture ruim, o assert seguinte pega */
+        }
+        await dormir(200);
+        assert.ok(processoVivo(pid), "fixture: o filho deve IGNORAR SIGTERM (senão nada está sendo provado)");
+
+        // O encerramento com grace curto INJETÁVEL: SIGTERM (ignorado) →
+        // 200 ms → SIGKILL no grupo → resolve. A promessa é que resolve COM o
+        // filho morto — o assert é imediato, sem espera que mascare.
+        await encerrarFilhosRegistrados(200);
+        assert.ok(
+          !processoVivo(pid),
+          "encerrarFilhosRegistrados resolveu com o filho ainda vivo — só prometeu matar",
+        );
+      } finally {
+        // Filho de teste é do teste: mata no grupo mesmo se o teste falhar.
+        if (pid > 0) {
+          try {
+            process.kill(-pid, "SIGKILL");
+          } catch {
+            /* já saiu */
+          }
+        }
+      }
+    },
+  );
+
+  test("sem filho registrado: resolve imediato, sem esperar grace nenhum", async () => {
+    const inicio = Date.now();
+    await encerrarFilhosRegistrados(5_000); // se esperasse o grace, o teto do teste estouraria
+    const durou = Date.now() - inicio;
+    assert.ok(durou < 2_000, `resolveu em ${durou}ms — sem filhos não há o que esperar`);
+  });
+});
+
+describe("saída do processo — nenhum filho sobrevive (r5: SIGKILL síncrono no exit, registro único, nada novo com a marca)", () => {
+  // Os achados [P2] da r4: (i) o handler de `exit` mandava SIGTERM e agendava
+  // o SIGKILL num setTimeout — que NUNCA dispara depois do exit; (ii) cada
+  // bundle do Next tem a sua instância de cancelamento.ts, cada uma com o seu
+  // `filhosConhecidos` — a limpeza de um bundle não via os filhos do outro;
+  // (iii) filho nascido DEPOIS do retrato da limpeza (retry do runLLM)
+  // escapava. Os três testes daqui provam as três peças do conserto.
+
+  test(
+    "handler de exit com SIGKILL SÍNCRONO: filho registrado que IGNORA SIGTERM morre junto com o processo",
+    { timeout: 60_000 },
+    async () => {
+      // Fixture em tmpdir: processo REAL que importa o módulo REAL por
+      // caminho absoluto, registra um filho que ignora SIGTERM e chama
+      // `process.exit(0)` — disparando o handler de `exit` de verdade.
+      // Depois do exit NENHUM timer dispara: se o handler depender do
+      // SIGKILL agendado, o filho sobrevive (o bug da r4). O filho só é
+      // registrado DEPOIS de anunciar que o handler de SIGTERM dele está
+      // instalado — senão o SIGTERM do handler chega antes da instalação e
+      // mata pelo default, provando nada.
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bruto-cancelamento-exit-"));
+      const fixture = path.join(dir, "fixture-exit.ts");
+      const modulo = path.join(RAIZ, "src", "pipeline", "lib", "cancelamento.ts");
+      fs.writeFileSync(
+        fixture,
+        `import fs from "node:fs";
+import { spawn } from "node:child_process";
+import { registrarFilho } from ${JSON.stringify(modulo)};
+// Sem top-level await: fixture em tmpdir compila como CJS.
+async function main(): Promise<void> {
+  const filho = spawn(
+    process.execPath,
+    ["-e", "process.on('SIGTERM', () => {}); require('node:fs').writeSync(1, 'FILHO_COM_HANDLER\\\\n'); setInterval(() => {}, 1000);"],
+    { stdio: ["ignore", "pipe", "ignore"], detached: process.platform !== "win32" },
+  );
+  await new Promise<void>((resolver) => {
+    filho.stdout!.setEncoding("utf8");
+    filho.stdout!.on("data", (c: string) => {
+      if (c.includes("FILHO_COM_HANDLER")) resolver();
+    });
+  });
+  registrarFilho(filho);
+  fs.writeSync(1, "PRONTO " + filho.pid + "\\n");
+  process.exit(0);
+}
+void main();
+`,
+      );
+
+      const proc = spawn(process.execPath, ["--import", "tsx", fixture], {
+        stdio: ["ignore", "pipe", "pipe"],
+        cwd: RAIZ,
+      });
+      let pidFilho = -1;
+      try {
+        pidFilho = await lerPidDoStdout(proc, /PRONTO (\d+)/, 30_000);
+        assert.ok(processoVivo(pidFilho), "filho do fixture de pé antes do exit");
+
+        const codigo = await new Promise<number | null>((resolve) => {
+          proc.on("exit", (c) => resolve(c));
+        });
+        assert.equal(codigo, 0, "fixture deveria sair com exit(0)");
+
+        // O filho ignora SIGTERM: só um SIGKILL SÍNCRONO disparado pelo
+        // handler de `exit` derruba ele aqui.
+        await esperarMorrer(pidFilho, 10_000);
+      } finally {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          /* já saiu */
+        }
+        if (pidFilho > 0) {
+          try {
+            process.kill(-pidFilho, "SIGKILL");
+          } catch {
+            /* já saiu */
+          }
+        }
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test("registro único por PROCESSO: filhosConhecidos vive em globalThis (dois bundles, uma lista)", async () => {
+    const globalParaFilhos = globalThis as unknown as {
+      __brutoFilhosConhecidos?: Set<ChildProcess>;
+    };
+    const filho = spawnSobTeste([]);
+    try {
+      registrarFilho(filho);
+      const registro = globalParaFilhos.__brutoFilhosConhecidos;
+      assert.ok(registro instanceof Set, "esperava um Set em globalThis.__brutoFilhosConhecidos");
+      assert.ok(registro.has(filho), "filho registrado por 'uma instância' aparece na lista global");
+
+      // Saiu do ar → sai da lista: o close remove do Set compartilhado.
+      try {
+        filho.kill("SIGKILL");
+      } catch {
+        /* já saiu */
+      }
+      await new Promise<void>((r) => filho.once("close", () => r()));
+      assert.ok(!registro.has(filho), "filho que saiu é removido da lista global");
+    } finally {
+      try {
+        filho.kill("SIGKILL");
+      } catch {
+        /* já saiu */
+      }
+    }
+  });
+
+  test("registrarFilho com a marca de encerramento LIGADA: mata na hora (SIGKILL no grupo) e NÃO registra", async () => {
+    marcarEncerramento();
+    const globalParaFilhos = globalThis as unknown as {
+      __brutoFilhosConhecidos?: Set<ChildProcess>;
+    };
+    let pid = -1;
+    try {
+      // Ignora SIGTERM: a morte rápida só se explica por SIGKILL no grupo.
+      const filho = spawn(
+        process.execPath,
+        ["-e", 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);'],
+        { stdio: "ignore", detached: process.platform !== "win32" },
+      );
+      filhosCriados.push(filho);
+      pid = filho.pid ?? -1;
+      if (pid > 0) pidsCriados.add(pid);
+
+      registrarFilho(filho);
+
+      const registro = globalParaFilhos.__brutoFilhosConhecidos;
+      assert.ok(!registro?.has(filho), "filho nascido com a marca ligada não deve entrar no registro");
+      await esperarMorrer(pid, 2_000); // SIGKILL direto: não há grace para esperar
+    } finally {
+      resetarMarca();
+      if (pid > 0) {
+        try {
+          process.kill(-pid, "SIGKILL");
+        } catch {
+          /* já saiu */
+        }
+      }
+    }
+  });
 });

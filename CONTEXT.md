@@ -65,6 +65,14 @@ App local quando a pessoa clica em "Ligar o app" na extensão. Aceita só dois c
 App local que ele liga continua de pé sozinho. Fica registrado por navegador pelo instalador.
 _Evite_: daemon, serviço, agente, helper
 
+**Encerrar o Bruto**:
+O botão de Configurações que desliga o App local: encerra os processos que ele lançou
+(baixador de vídeos, transcrição local), apaga o registro do servidor e libera a porta. Existe
+porque a janela é um navegador em modo app — fechá-la (⌘Q) nunca desliga o App local. É a
+exceção aceita à regra "Bruto é o material, nunca o programa": aqui o nome é o da ação na tela,
+decisão do dono, e o que ela desliga é o App local.
+_Evite_: sair do Bruto, fechar o Bruto (fechar é a janela; encerrar é o App local)
+
 **Pacote**:
 O `Bruto.app` autocontido que vem dentro do `.dmg`: carrega o próprio Node e o ffmpeg, e se
 instala arrastando para Aplicativos — sem terminal e sem Homebrew. Só para macOS com chip
@@ -86,5 +94,6 @@ _Evite_: dependências, cache
 **Primeiro uso**:
 A primeira vez que cada função roda, o app baixa o que ela precisa — o baixador de vídeos no
 primeiro vídeo, o Chromium no primeiro export; alguns minutos a mais, só dessa vez. O
-Whisper (~2 GB) só desce quando a pessoa pede em Configurações.
+Whisper (~3 GB entre ferramenta e modelo, já com o large-v3-turbo) só desce quando a pessoa
+pede em Configurações.
 _Evite_: instalação (as ferramentas vêm depois dela, sozinhas)

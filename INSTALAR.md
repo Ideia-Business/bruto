@@ -14,7 +14,8 @@ O Bruto é um programa que roda **no seu computador** (o endereço é `http://lo
 | Linux | Menu de aplicativos → `Bruto` (Ubuntu: grid de pontinhos; Fedora: Activities) |
 
 - **Fechei a janela sem querer.** Clique no atalho de novo. O servidor do Bruto continua rodando em segundo plano; o atalho só abre a janela outra vez.
-- **A janela abre, mas a página fica em branco.** Espere alguns segundos e atualize com `⌘ + R` (macOS) ou `Ctrl + R`. Depois de uma atualização do Bruto, a primeira abertura leva mais tempo porque o app é reconstruído.
+- **Como desligo o Bruto de verdade?** Dentro do app: **Configurações → Encerrar o Bruto** (no Mac, o **⌘Q** fecha só a janela — o servidor continua rodando). Depois de encerrar, abrir de novo é pelo atalho da tabela acima (Launchpad/Aplicativos, no Mac). Se o botão não resolver, reiniciar o computador também desliga o servidor.
+- **A janela abre, mas a página fica em branco.** Espere alguns segundos e atualize com `⌘ + R` (macOS) ou `Ctrl + R` (Windows/Linux). Depois de uma atualização do Bruto, a primeira abertura leva mais tempo porque o app é reconstruído.
 - **O atalho não aparece.** Recrie com o comando do seu sistema (seção "Atalho no computador" do [README](README.md#atalho-no-computador)).
 - **No macOS e no Linux, pelo terminal** (serve quando o atalho não funciona):
 
@@ -36,7 +37,7 @@ No macOS há dois caminhos. O novo — baixar o app pronto — não pede termina
 
 #### 1. Baixar o instalador
 
-Abra o navegador e acesse **https://github.com/Ideia-Business/bruto/releases/latest**. Baixe o arquivo chamado `Bruto-<versão>-arm64.dmg` (por exemplo, `Bruto-0.2.0-arm64.dmg`) — o que termina em `-arm64.dmg`. Ele fica na pasta **Downloads**.
+Abra o navegador e acesse **https://github.com/Ideia-Business/bruto/releases/latest**. Baixe o arquivo chamado `Bruto-<versão>-arm64.dmg` (por exemplo, `Bruto-0.3.0-arm64.dmg`) — o que termina em `-arm64.dmg`. Ele fica na pasta **Downloads**.
 
 #### 2. Instalar
 
@@ -58,7 +59,7 @@ Em macOS recentes, o clique-direito no app → **Abrir** **não basta** para lib
 #### 4. O primeiro vídeo (o app se completa sozinho)
 
 - Na primeira vez que você usar um vídeo, o app baixa sozinho o baixador de vídeos. São alguns minutos a mais — só na primeira vez.
-- O transcritor (**Whisper**, uns 2 GB) **não** baixa sozinho: ele só é instalado se você pedir, nas **Configurações** do app. Ele lê o áudio de vídeos de Instagram e TikTok (que não têm legenda).
+- O transcritor (**Whisper**, uns 3 GB entre ferramenta e modelo) **não** baixa sozinho: ele só é instalado se você pedir, nas **Configurações** do app — e já vem com o modelo que transcreve (o primeiro vídeo não espera nada). Ele lê o áudio de vídeos de Instagram e TikTok (que não têm legenda).
 - O primeiro **export** (resumo em PDF/Word) baixa o navegador que gera os arquivos. Também é só na primeira vez.
 
 #### 5. Ligar a IA
@@ -87,7 +88,7 @@ Quando houver versão nova, o app avisa, com o link. Para atualizar: baixe o `.d
 
 ### Desinstalar o app baixado
 
-Arraste o **Bruto** (em **Aplicativos**) para o **Lixo**. Os vídeos e as ferramentas ficam na pasta `~/.bruto`: ela cresce com os vídeos e passa de 2 GB quando o Whisper é instalado. Quer apagar tudo mesmo? Apagar a pasta `~/.bruto` **apaga os seus vídeos** — não volta.
+Arraste o **Bruto** (em **Aplicativos**) para o **Lixo**. Os vídeos e as ferramentas ficam na pasta `~/.bruto`: ela cresce com os vídeos e passa de 2 GB quando o Whisper é instalado (o modelo dele, de ~1,5 GB, fica em `~/.cache`, fora desta pasta). Quer apagar tudo mesmo? Apagar a pasta `~/.bruto` **apaga os seus vídeos** — não volta.
 
 ### Caminho antigo: o terminal (Mac Intel e quem prefere assim)
 

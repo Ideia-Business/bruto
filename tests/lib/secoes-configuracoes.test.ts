@@ -17,7 +17,7 @@ describe("secoesDasConfiguracoes", () => {
   test("navegador sem API de pasta + pacote: exportação vira aviso, Whisper VISÍVEL", () => {
     const secoes = secoesDasConfiguracoes({
       suportaPasta: false,
-      whisper: { suportado: true, instalado: false },
+      whisper: { suportado: true, instalado: false, venvInstalado: false },
     });
     assert.equal(secoes.exportacao, "aviso-navegador");
     assert.equal(secoes.whisper, true);
@@ -26,7 +26,7 @@ describe("secoesDasConfiguracoes", () => {
   test("navegador com API de pasta + pacote: as duas seções", () => {
     const secoes = secoesDasConfiguracoes({
       suportaPasta: true,
-      whisper: { suportado: true, instalado: false },
+      whisper: { suportado: true, instalado: false, venvInstalado: true },
     });
     assert.equal(secoes.exportacao, "completa");
     assert.equal(secoes.whisper, true);
@@ -41,9 +41,24 @@ describe("secoesDasConfiguracoes", () => {
   test("pacote sem suporte a Whisper: sem a seção, mas o aviso de navegador não muda", () => {
     const secoes = secoesDasConfiguracoes({
       suportaPasta: false,
-      whisper: { suportado: false, instalado: false },
+      whisper: { suportado: false, instalado: false, venvInstalado: false },
     });
     assert.equal(secoes.exportacao, "aviso-navegador");
     assert.equal(secoes.whisper, false);
+  });
+
+  test("Encerrar o Bruto: a seção aparece SEMPRE — nos dois modos e em qualquer navegador", () => {
+    // O botão de encerrar é a única forma de dentro do app de desligar o
+    // servidor (⌘Q só fecha a janela) — nenhuma combinação de capacidades do
+    // navegador nem de modo (pacote/clone) pode escondê-lo.
+    const combinacoes: Array<Parameters<typeof secoesDasConfiguracoes>[0]> = [
+      { suportaPasta: true, whisper: null },
+      { suportaPasta: false, whisper: null },
+      { suportaPasta: true, whisper: { suportado: true, instalado: false, venvInstalado: false } },
+      { suportaPasta: false, whisper: { suportado: false, instalado: false, venvInstalado: false } },
+    ];
+    for (const entrada of combinacoes) {
+      assert.equal(secoesDasConfiguracoes(entrada).encerrar, true);
+    }
   });
 });
