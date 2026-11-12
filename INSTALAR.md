@@ -37,7 +37,7 @@ No macOS há dois caminhos. O novo — baixar o app pronto — não pede termina
 
 #### 1. Baixar o instalador
 
-Abra o navegador e acesse **https://github.com/Ideia-Business/bruto/releases/latest**. Baixe o arquivo chamado `Bruto-<versão>-arm64.dmg` (por exemplo, `Bruto-0.2.0-arm64.dmg`) — o que termina em `-arm64.dmg`. Ele fica na pasta **Downloads**.
+Abra o navegador e acesse **https://github.com/Ideia-Business/bruto/releases/latest**. Baixe o arquivo chamado `Bruto-<versão>-arm64.dmg` (por exemplo, `Bruto-0.3.0-arm64.dmg`) — o que termina em `-arm64.dmg`. Ele fica na pasta **Downloads**.
 
 #### 2. Instalar
 
