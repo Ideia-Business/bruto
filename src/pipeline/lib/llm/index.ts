@@ -17,6 +17,7 @@
 
 import { PipelineError } from "@/pipeline/types";
 import { modoPacote } from "@/pipeline/lib/ferramentas";
+import { encerramentoEmAndamento } from "@/pipeline/lib/marca-de-encerramento";
 import { claudeCliProvider } from "./providers/claude-cli";
 import { codexCliProvider } from "./providers/codex-cli";
 import { anthropicProvider } from "./providers/anthropic";
@@ -195,6 +196,9 @@ function classificar(err: unknown, provedor: LlmProvider): PipelineError {
 /**
  * Executa uma chamada e devolve o texto, já sem cercas de markdown.
  * Uma tentativa inicial e um retry — o mesmo que o wrapper anterior fazia.
+ * O retry NÃO roda com a marca de encerramento ligada: a segunda tentativa
+ * spawnaria filho novo (claude/codex CLI) DEPOIS do retrato da limpeza — o
+ * filho que escapa [P2, r4].
  */
 export async function runLLM(req: LlmRequest): Promise<LlmResult> {
   return runLLMComProvedor(await resolverProvedor(), req);
@@ -233,6 +237,9 @@ export async function runLLMComProvedor(
       // Credencial errada e capacidade ausente não melhoram na segunda vez.
       if (err instanceof LlmHttpError && (err.status === 401 || err.status === 403)) break;
       if (err instanceof PipelineError && err.code === "LLM_CAPABILITY") break;
+      // O app está encerrando: nova tentativa criaria filho novo depois do
+      // retrato da limpeza — e não há app vivo para ler a resposta.
+      if (encerramentoEmAndamento()) break;
     }
   }
 

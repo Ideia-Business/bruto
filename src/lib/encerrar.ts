@@ -40,9 +40,10 @@
  *   2. A ordem (a)→(b)→(c)→(d), sempre. O `exit` só existe DEPOIS de (b)
  *      completar: filho que ignora SIGTERM não sobrevive ao botão. O handler
  *      de `exit` instalado por `garantirLimpezaDeFilhosNoFim()` segue como
- *      rede de segurança — para quem NASCER durante a espera de (b); depois
- *      do `exit` nenhum timer dispara, então ele sozinho nunca derrubaria um
- *      filho resistente a SIGTERM.
+ *      rede de segurança — SIGKILL SÍNCRONO no grupo (depois do `exit`
+ *      nenhum timer dispara; sinal síncrono é o único que funciona lá) — e
+ *      quem nascer durante a espera de (b), com a marca de (a) ligada, morre
+ *      no próprio registro (`registrarFilho` mata em vez de registrar).
  *   3. JOB INTERROMPIDO CONTINUA RECUPERÁVEL: com a marca de (a) ligada, a
  *      falha causada pela morte dos filhos NÃO grava `error` nem `canceled`
  *      no job — ele fica `running` no banco para o `recoverOrphans()` do
