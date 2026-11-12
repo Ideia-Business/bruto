@@ -30,6 +30,7 @@ import { FILHO_EM_GRUPO_PROPRIO, registrarFilho } from "@/pipeline/lib/cancelame
 import { caminhoDe, modoPacote } from "@/pipeline/lib/ferramentas";
 import { DATA_ROOT } from "@/pipeline/lib/paths";
 import { redact } from "@/pipeline/lib/llm/redact";
+import { repositorioMlx } from "@/pipeline/lib/modelo-whisper";
 import { PipelineError } from "@/pipeline/types";
 
 export type Backend = "mlx" | "whisper" | "whisper-cpp";
@@ -365,8 +366,10 @@ warnings.filterwarnings("ignore")
 import io, contextlib
 from mlx_whisper import transcribe
 wav, model, lang = sys.argv[1], sys.argv[2], sys.argv[3]
-model_id = model if "/" in model else f"mlx-community/whisper-{model}-mlx"
-kwargs = {"path_or_hf_repo": model_id, "verbose": False}
+# "model" chega ja RESOLVIDO do TypeScript (repositorioMlx): e sempre o
+# repositorio real do Hugging Face (ex.: mlx-community/whisper-large-v3-turbo,
+# sem o sufixo -mlx que a regra antiga inventava e quebrava).
+kwargs = {"path_or_hf_repo": model, "verbose": False}
 if lang:
     kwargs["language"] = lang
 buf = io.StringIO()
@@ -385,7 +388,7 @@ async function rodarMlx(wav: string, lang: string): Promise<Execucao> {
   // é só defensivo: na prática `detectarBackend()` já garantiu `temMlx()`
   // true antes de qualquer chamada a esta função.
   const python = pythonParaMlx() ?? "python3";
-  return rodar(python, ["-", wav, MODELO, lang], {
+  return rodar(python, ["-", wav, repositorioMlx(MODELO), lang], {
     timeoutMs: TIMEOUT_TRANSCRICAO_MS,
     stdin: SCRIPT_MLX,
   });
