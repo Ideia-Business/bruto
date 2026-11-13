@@ -15,34 +15,48 @@ Nada disto é automatizável — exige conta, cartão e cliques:
    Passo a passo detalhado na seção **[Criar a conta de desenvolvedor](#criar-a-conta-de-desenvolvedor)**,
    no fim deste documento. Leia antes de abrir o console: a primeira decisão é irreversível.
 2. **Colar o endereço da política de privacidade** no console. Não precisa hospedar nada: o
-   arquivo está versionado e o endereço já responde publicamente (conferido em 12/09/2026,
+   arquivo está versionado e o endereço já responde publicamente (reconferido em 12/11/2026,
    `HTTP 200` sem nenhuma credencial). Cole exatamente isto:
 
    ```
    https://github.com/Ideia-Business/bruto/blob/main/extension/PRIVACIDADE.md
    ```
 
-3. **A captura que vende o produto** — a aula pronta na tela. Ela precisa da sua chave de IA e de
-   um vídeo real, então nenhum agente pode produzi-la: usar a sua chave gastaria o seu dinheiro, e
-   montar a tela com texto inventado seria captura falsa, que é motivo de recusa. São dois minutos:
+3. **A captura que vende o produto** — ✅ **feita em 12/11/2026.** Está em
+   `extension/pacote/capturas/aula.png` (1280×800): aula **de verdade**, destrinchada pelo dono
+   **no modo grátis**, numa instalação limpa, com o comando `--ao-vivo` abaixo — não tela montada
+   com texto inventado, que seria captura falsa e motivo de recusa. Saiu enquadrada na moldura da
+   marca; o original, sem moldura, está ao lado em `aula-original.png`. O comando fica aqui
+   **para refazer** — e para variar: a Bancada com algumas aulas, o Caderno com o botão Lapidar:
 
    ```bash
    npm run build:ext
    node scripts/captura-loja.mjs --ao-vivo
    ```
 
-   O Chromium abre com a extensão já carregada. Ponha a chave, destrinche um vídeo, deixe a aula na
-   tela e aperte ENTER no terminal — sai um PNG 1280×800 em `extension/pacote/capturas/`.
-   Vale repetir para a Bancada com algumas aulas e para o Caderno com o botão Lapidar.
+   O Chromium abre com a extensão já carregada. Destrinche um vídeo (a captura atual saiu do modo
+   grátis, sem chave nenhuma), deixe a aula na tela e aperte ENTER no terminal — sai um PNG
+   1280×800 em `extension/pacote/capturas/`.
 
-4. **Enviar o `.zip`** e responder o questionário de privacidade (respostas prontas abaixo).
+4. **Entrar no console e enviar** — é o que resta, e está tudo pronto neste documento:
+
+   1. **Criar o item** (é o primeiro envio) — ou abrir o rascunho já existente como atualização.
+   2. **Subir o pacote**: `extension/pacote/bruto-0.3.0.zip`.
+   3. **Listagem**: colar nome, descrição curta, descrição completa, categoria e idioma — seção
+      [Os campos da listagem](#os-campos-da-listagem).
+   4. **Imagens**: ícone, imagem promocional, capturas e marquee — arquivos na tabela de imagens,
+      acima.
+   5. **Privacidade**: colar o endereço da política (item 2 acima), responder o questionário e
+      justificar cada permissão — respostas prontas nas seções adiante.
+   6. **Instruções de teste**: colar o texto pronto da seção **Instruções de teste**, adiante.
+   7. **Enviar para revisão.**
 
 ## O que já está pronto
 
 ```bash
 npx playwright install chromium   # só na primeira vez — é o que gera os ícones
 npm run package:ext
-# → extension/pacote/bruto-0.2.0.zip
+# → extension/pacote/bruto-0.3.0.zip
 ```
 
 O empacotador reprova, com código de saída, antes de você gastar uma revisão: arquivo
@@ -63,8 +77,8 @@ node scripts/captura-loja.mjs
 # → extension/pacote/capturas/opcoes.png e popup-primeiro-uso.png (1280×800)
 ```
 
-Servem de apoio na listagem. A captura principal continua sendo a da aula pronta, que depende da
-sua chave — item 3 acima.
+Servem de apoio na listagem. A captura principal — a da aula pronta na tela — também já está
+feita: o item 3 acima diz onde está e como saiu.
 
 ---
 
@@ -72,10 +86,10 @@ sua chave — item 3 acima.
 
 | Peça | Tamanho | Situação |
 |---|---|---|
-| Ícone da loja | 128×128 | obrigatório · `extension/dist/icons/128.png` |
-| Imagem promocional pequena | 440×280 | **obrigatório** · `extension/pacote/capturas/promo-440x280.png` (gerada da marca) |
-| Capturas | 1280×800, de 1 a 5 | obrigatório ao menos 1 · falta a da aula (só o dono) |
-| Destaque (*marquee*) | 1400×560 | opcional · `extension/pacote/capturas/marquee-1400x560.png` |
+| Ícone da loja | 128×128 | obrigatório · `extension/dist/icons/128.png` — dentro do zip, conferido em 12/11/2026 |
+| Imagem promocional pequena | 440×280 | **obrigatório** · pronto: `extension/pacote/capturas/promo-440x280.png` (gerada da marca) |
+| Capturas | 1280×800, de 1 a 5 | obrigatório ao menos 1 · **prontas em 12/11/2026**: `aula.png` (a principal — aula real do modo grátis em instalação limpa, enquadrada na moldura da marca; original em `aula-original.png`), `popup-primeiro-uso.png`, `opcoes.png` |
+| Destaque (*marquee*) | 1400×560 | opcional · pronto: `extension/pacote/capturas/marquee-1400x560.png` |
 
 Guia passo a passo completo, com todos os textos para copiar: gerado em 25/09/2026 como HTML
 (`guia-chrome-web-store-bruto.html`, entregue ao dono).
@@ -154,7 +168,7 @@ CADERNO DE IDEIAS
 Ao fim de cada aula, uma pergunta: isso te deu alguma ideia? O que você escrever fica no Caderno. É a única coisa aqui que nasce de você — uma aula se refaz em trinta segundos, uma ideia que passou não volta.
 
 CÓDIGO ABERTO
-Licença MIT, auditável em github.com/Ideia-Business/bruto. O aplicativo local, do mesmo projeto, instala com um comando no macOS, no Linux e no Windows.
+Licença MIT, auditável em github.com/Ideia-Business/bruto. O aplicativo local, do mesmo projeto, instala com um comando no macOS, no Linux e no Windows; no Mac com chip Apple também vem como instalador .dmg, nos releases do projeto.
 
 Projeto independente, sem afiliação com YouTube, Instagram, TikTok, Anthropic, OpenAI ou Google.
 ```
@@ -243,13 +257,34 @@ do usuário, com o conteúdo que ele mesmo escreveu, para um destino nomeado na 
 
 ## Antes de clicar em enviar
 
-- [ ] a aula que sai numa instalação limpa tem mesmo as seções que a descrição promete —
-      objetivos, glossário e teste (o roteiro de `TESTANDO.md` cobre isso)
-- [ ] `npm run package:ext` rodou **com** Chromium instalado e não avisou "SEM ÍCONES"
-- [ ] a versão em `package.json` e no manifesto subiu desde o envio anterior
-- [ ] a política de privacidade está acessível no endereço informado
-- [ ] pelo menos uma captura de tela em 1280×800, e a principal mostra uma aula de verdade
-- [ ] o roteiro de [`TESTANDO.md`](TESTANDO.md) passou numa instalação limpa
+- [x] a aula que sai numa instalação limpa tem mesmo as seções que a descrição promete —
+      objetivos, glossário e teste · conferido em 12/11/2026 na aula real da captura (item 3,
+      modo grátis, instalação limpa): "O que você vai aprender", "Antes de começar", "A aula",
+      "Glossário essencial", "Teste seu entendimento" e "Aprofunde-se" — o roteiro completo de
+      `TESTANDO.md` fica pendente no item abaixo
+- [x] `npm run package:ext` rodou **com** Chromium instalado e não avisou "SEM ÍCONES" ·
+      conferido em 12/11/2026: `bruto-0.3.0.zip` gerado, os três ícones conferidos dentro do zip
+- [x] a versão em `package.json` e no manifesto subiu desde o envio anterior · 0.3.0
+- [x] a política de privacidade está acessível no endereço informado · `HTTP 200` em 12/11/2026
+- [x] pelo menos uma captura de tela em 1280×800, e a principal mostra uma aula de verdade ·
+      `aula.png`, aula real gerada no modo grátis
+- [ ] o roteiro de [`TESTANDO.md`](TESTANDO.md) passou numa instalação limpa — não rodou inteiro;
+      fica pendente
+
+---
+
+## Depois de enviado
+
+Demanda futura — **não faz parte do envio** — para quando o console mostrar o **ID do item**:
+
+1. **Registrá-lo como ID de produção**, conforme a
+   [ADR `0004`](../docs/decisions/0004-id-da-extensao-vem-da-loja.md): o ID de produção é o do
+   item da loja, nunca um gerado por conta própria. Na prática, a chave pública do item entra no
+   campo `key` do manifest, e o registrador recebe o ID em `--extensao-id` (ou `BRUTO_EXTENSAO_ID`).
+2. **Gerar um `.dmg` novo**, para o lançador registrar o host nativo para esse ID — o host só
+   atende a extensão cujo ID está registrado, e o `.dmg` 0.3.0 sai registrando **0 manifestos**
+   ("ID da extensão desconhecido"), porque o ID da loja ainda não existia. Sem isso, o botão
+   **Ligar o app** não funciona para quem instalou pela loja: a extensão só avisa.
 
 ---
 
@@ -321,7 +356,7 @@ distribuído na UE — e o console não deixa concluir o envio.
 **Add new item** → subir o zip:
 
 ```
-extension/pacote/bruto-0.2.0.zip
+extension/pacote/bruto-0.3.0.zip
 ```
 
 A partir daqui, tudo o que o console pedir já está pronto neste documento: nome, descrições,
