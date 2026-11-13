@@ -66,6 +66,21 @@ export function verModo(): Promise<Modo> {
   return modoEmVoo;
 }
 
+/**
+ * Joga fora a detecção memoizada: a próxima `verModo()` sonda de novo.
+ *
+ * A memoização é para o POPUP, que vive segundos e pergunta o modo mais de uma
+ * vez. Mas a página de opções vive aberta e MUDA o que a detecção leu — a
+ * chave guardada: depois de salvar ou apagar, quem pinta o aviso de modo tem
+ * de fazê-lo com detecção FRESCA, senão `verModo()` devolve o modo de quando
+ * a página abriu e o aviso mente até alguém recarregar (demanda 857dae37: o
+ * aviso seguia "modo grátis" depois de Salvar, embora o popup já usasse a
+ * chave). Quem muda provedor/chave guardados chama isto antes de reconsultar.
+ */
+export function esquecerModo(): void {
+  modoEmVoo = null;
+}
+
 export interface PedidoLlm {
   prompt: string;
   /** O que a tarefa é, no vocabulário do app. Default: "study". */
