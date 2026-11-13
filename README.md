@@ -166,7 +166,7 @@ Funciona de **três modos**, e a tela de opções diz em qual você está:
 npm run build:ext
 ```
 
-Depois, no Chrome: `chrome://extensions` → **Modo do desenvolvedor** → **Carregar sem compactação** → escolha `extension/dist`. Abra as opções: se o app do Bruto estiver de pé, ela já mostra *"usando o seu plano"* e não pede nada. Senão, escolha o provedor e cole a sua chave.
+Depois, no Chrome: `chrome://extensions` → **Modo do desenvolvedor** → **Carregar sem compactação** → escolha `extension/dist`. A extensão está em revisão na Chrome Web Store (enviada em 12/11/2026); até a aprovação, instala-se sem compactação, como acima. Abra as opções: se o app do Bruto estiver de pé, ela já mostra *"usando o seu plano"* e não pede nada. Senão, escolha o provedor e cole a sua chave.
 
 A chave, quando existe, fica em `chrome.storage.local` — **só neste navegador**, nunca sincronizada com sua conta Google, nunca enviada para servidor nenhum nosso. No modo do plano ela não é necessária, e **nunca trafega** para o app local: vão só o texto do vídeo e o pedido.
 

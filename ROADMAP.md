@@ -2,7 +2,7 @@
 
 Documento honesto de estado. O que está marcado como pronto foi **exercido de verdade** — com vídeo real, chave real e o resultado conferido —, não apenas compilado.
 
-Última revisão: 26/09/2026.
+Última revisão: 12/11/2026.
 
 ---
 
@@ -14,11 +14,17 @@ Cole um link de YouTube, Instagram ou TikTok e receba resumo, transcrição, map
 
 **Verificado em 10/09/2026** com um reel do Instagram: metadados → áudio → Whisper → resumo → mapa mental → 9 artefatos. Whisper errou palavras na transcrição e o resumo as corrigiu pelo contexto.
 
+### Instalador para macOS (.dmg)
+
+Releases [v0.2.0 (11/11)](https://github.com/Ideia-Business/bruto/releases) e [v0.3.0 (12/11)](https://github.com/Ideia-Business/bruto/releases) — `.dmg` autocontido para Mac com chip Apple, provado em instalação limpa no MacBook Air. Desde a 0.3.0, o botão **Encerrar o Bruto**, em Configurações, desliga o servidor e libera a porta; vídeos interrompidos retomam ao reabrir.
+
 ### Modo grátis — servidor público da Ideia Business
 
 No YouTube, quem não tem chave nem app local com plano recebe 3 aulas grátis por dia. O servidor `bruto-gratis` vive na Vercel (time ideia-business), recebe transcrição e metadados do vídeo, monta a aula com o Ollama Cloud (assinatura anual do dono) e não guarda nem transcrição nem aula — tudo some em 36 h. Limite por rede (IP) é 6 por dia; limite geral é 150. O identificador da instalação fica em `chrome.storage.local`, no navegador — reinstalar a extensão (ou limpar o storage) gera um novo; publicar de novo o servidor não tem efeito nenhum sobre ele.
 
 **Publicado em 26/09/2026 (PR #13), revisado por Codex + Grok 4.7, em produção.** Dívida aceita documentada em `servidor/lib/redis-contador.ts` (`// debt: resposta do EVAL perdida no meio de falha rara de rede consome 1 aula sem gerar`): o trade-off entre resolver (timeout complexo, retry não-trivial) e deixar aberto (risco <1 aula perdida em ano) foi decidido como "deixar" por custo desproporcional ao benefício. Teste da reserva compensada (falha no meio da sequência de incrementos desfaz o que já foi contado) em `tests/servidor/limites.test.ts`. Extensão mostra quantas aulas restam hoje e, no limite, oferece as duas saídas: chave ou app local.
+
+**Atualizado em 12/11/2026:** o Redis (Upstash, plano Free) foi recriado depois de ter sido desinstalado — o servidor ficou respondendo erro até a recuperação. Há também firewall da Vercel com limite por IP (detalhes em [`servidor/CONTRATO.md`](servidor/CONTRATO.md)).
 
 ### Transcrição local, sem script externo
 
@@ -41,6 +47,8 @@ conteúdo conhecido, que voltou correto em todos:
 Também exercidos: vídeo real baixado e transcrito de ponta a ponta; segunda chamada servida pelo
 cache; e o caminho de falha, com o PATH sem transcritor nenhum, devolvendo `NO_TRANSCRIPT` com as
 três instalações possíveis nomeadas.
+
+**Atualizado em 12/11/2026:** o modelo padrão agora é o `large-v3-turbo`, baixado junto com a instalação da transcrição (~3 GB no total). Medido num MacBook Air M5: 3 minutos de fala em português transcritos em 21 s, com metade dos erros do modelo `base` anterior.
 
 ### Sete caminhos para o modelo — dois pelo seu plano, cinco por chave
 
@@ -82,17 +90,20 @@ Tipos, lint, build do app, build da extensão, e conferência item a item do que
 
 ## A seguir
 
-### Extensão na Chrome Web Store — pronta para envio
+### Extensão na Chrome Web Store — enviada para revisão (12/11/2026)
 
-Tudo o que depende de código está feito: a [política de privacidade](extension/PRIVACIDADE.md),
+A extensão 0.3.0 foi enviada à revisão da Loja em 12/11/2026 — status "Revisão pendente", com publicação automática após a aprovação. ID do item: `oljceemhpdalpchggipjmiknogmdglgj`. Até a aprovação, a instalação continua sendo "Carregar sem compactação".
+
+Tudo o que dependia de código já estava pronto: a [política de privacidade](extension/PRIVACIDADE.md),
 os textos da listagem com as respostas do questionário de privacidade
 ([extension/LOJA.md](extension/LOJA.md)), e o empacotador `npm run package:ext`, que reprova
 antes de gastar uma revisão da Loja — arquivo faltando, versão divergente, texto acima do
 limite, ícone declarado e ausente, código remoto. O CI roda a mesma conferência a cada push.
+A descrição da loja reflete os três modos (grátis, plano, chave) — quem instala recebe 3 aulas
+por dia gratuitamente, sem chave nem cadastro. Imagem promocional obrigatória 440×280 gerada
+da marca em 25/09 e está em `extension/pacote/capturas/`.
 
-**Atualizado em 26/09/2026 (modo grátis publicado):** a descrição da loja reflete os três modos (grátis, plano, chave) e explica que quem instala recebe 3 aulas por dia gratuitamente — não precisa de chave nem cadastro para começar a testar. Imagem promocional obrigatória 440×280 gerada da marca em 25/09 e está em `extension/pacote/capturas/`. Pacote regenerado com todos os ícones presentes.
-
-Falta o que exige conta e cartão: conta de desenvolvedor (US$ 5, taxa única), captura da aula (só o dono, com sua chave) e o envio. O passo a passo está no `LOJA.md`.
+**Depois da aprovação, falta:** registrar o ID do item no host nativo e gerar um `.dmg` novo, para o botão "Ligar o app" funcionar com a extensão da loja (demanda 5a22d19c; ADR [docs/decisions/0004-id-da-extensao-vem-da-loja.md](docs/decisions/0004-id-da-extensao-vem-da-loja.md)).
 
 ---
 
@@ -103,7 +114,7 @@ Falta o que exige conta e cartão: conta de desenvolvedor (US$ 5, taxa única), 
 | A extensão destrincha sozinha só no YouTube | Instagram e TikTok não expõem transcrição na página. Em ambas, a extensão sempre encaminha ao app local (que precisa estar aberto) para transcrever o áudio — o modo grátis não se aplica a elas, só ao YouTube, onde a extensão já tem a transcrição e só falta a IA que escreve a aula |
 | A extensão precisa que o vídeo tenha o botão "Mostrar transcrição" | É de lá que ela lê. Sem transcrição publicada, não há o que capturar |
 | O endpoint `/api/timedtext` do YouTube está fechado | Desde ~09/2026 devolve resposta vazia com status de sucesso para requisição feita de dentro do navegador. Não afeta o app local, que usa `yt-dlp` |
-| Não está na Chrome Web Store | Exige conta de desenvolvedor, política de privacidade e revisão. Por ora, carrega-se sem compactação |
+| Em revisão na Chrome Web Store (desde 12/11/2026) | Enviada em 12/11/2026, aguardando aprovação. Por ora, carrega-se sem compactação |
 | Sem testes automatizados de unidade | O CI cobre tipos, lint e build. As verificações de comportamento foram feitas à mão, com vídeo real — e estão descritas nos commits |
 | Os modelos padrão envelhecem | O Gemini 2.0 Flash foi aposentado e virou 404. O campo **Modelo**, nas opções e no `.env`, existe para você contornar sem esperar correção |
 
