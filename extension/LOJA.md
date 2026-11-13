@@ -5,6 +5,9 @@ textos abaixo já respeitam os limites de caracteres de cada campo do console.
 
 Demanda no DevTasks: `7d0dff5e-ac73-4ff1-9dd3-24279f232fcd`.
 
+> ⏳ **Envio de 12/11/2026:** revisão pendente, ID `oljceemhpdalpchggipjmiknogmdglgj`,
+> publicação automática após aprovação.
+
 ---
 
 ## O que só você pode fazer
@@ -134,7 +137,9 @@ Vira o vídeo do YouTube numa aula em português: grátis, pelo seu plano de IA 
 > A versão anterior deste campo dizia "resumo, **transcrição** e **mapa mental**". Nenhum dos dois
 > últimos existe na extensão — são do aplicativo local. Ver a seção acima.
 
-**Categoria:** Produtividade · **Idioma principal:** Português (Brasil)
+**Categoria:** Educação (grupo Produtividade) · **Idioma principal:** Português (Brasil)
+
+**URL da página inicial:** https://github.com/Ideia-Business/bruto · **URL de suporte:** https://github.com/Ideia-Business/bruto/issues
 
 **Descrição completa** (máx. 16.000)
 
@@ -192,10 +197,10 @@ Transformar o vídeo que a pessoa está assistindo numa aula em português: obje
 
 **Justificativa do código remoto:** não há. Todo o código executado vem dentro do pacote.
 
-**Instruções de teste** (campo *Test instructions*)
+**Instruções de teste** (campo *Test instructions* — aceita no máximo **500 caracteres**; o texto abaixo, enviado em 12/11/2026, tem 486)
 
 ```
-Não é preciso chave nem conta. Recém-instalada, a extensão está no modo grátis (3 aulas por dia). Para testar: 1) abra um vídeo do YouTube com legenda publicada (ex.: uma palestra TED); 2) clique no ícone do Bruto e em Destrinchar; a aula aparece em até dois minutos e fica na Bancada; 3) em Opções, a tela mostra o modo grátis e quantas aulas restam hoje. Em uma aba do Instagram ou do TikTok, a extensão oferece encaminhar ao aplicativo local; sem o app rodando, ela avisa que ele não está aberto — é o comportamento esperado.
+Não é preciso chave nem conta. Recém-instalada, a extensão está no modo grátis (3 aulas por dia). Para testar: 1) abra um vídeo do YouTube com legenda publicada; 2) clique no ícone do Bruto e em Destrinchar; a aula aparece em até dois minutos e fica na Bancada; 3) em Opções, a tela mostra o modo grátis e quantas aulas restam hoje. No Instagram ou no TikTok, a extensão oferece encaminhar ao app local; sem o app rodando, ela avisa que ele não está aberto — é o comportamento esperado.
 ```
 
 ## Questionário de privacidade — as respostas
@@ -275,7 +280,8 @@ do usuário, com o conteúdo que ele mesmo escreveu, para um destino nomeado na 
 
 ## Depois de enviado
 
-Demanda futura — **não faz parte do envio** — para quando o console mostrar o **ID do item**:
+Demanda futura — **não faz parte do envio** — o console já mostrou o **ID do item**:
+`oljceemhpdalpchggipjmiknogmdglgj`.
 
 1. **Registrá-lo como ID de produção**, conforme a
    [ADR `0004`](../docs/decisions/0004-id-da-extensao-vem-da-loja.md): o ID de produção é o do
