@@ -7,7 +7,7 @@
 
 import type { Config } from "../lib/config";
 import { PROVEDORES, lerConfig, salvarConfig, limparConfig } from "../lib/config";
-import { testarCredencial, verModo } from "../lib/llm";
+import { testarCredencial, verModo, esquecerModo } from "../lib/llm";
 import { verCotaGratis } from "../lib/gratis";
 
 type Provedor = (typeof PROVEDORES)[number];
@@ -124,7 +124,12 @@ form.addEventListener("submit", (evento) => {
     return;
   }
   void salvarConfig(config).then(
-    () => dizer("Chave guardada neste navegador.", "ok"),
+    () => {
+      dizer("Chave guardada neste navegador.", "ok");
+      // O modo acabou de mudar (grátis → chave, ou continua app/chave): o
+      // aviso do topo é recalculado na hora, sem recarregar a página.
+      repintarModo();
+    },
     () => dizer("Não deu para guardar a chave. Tente de novo.", "ruim"),
   );
 });
@@ -157,12 +162,18 @@ btnApagar.addEventListener("click", () => {
       inputChave.value = "";
       inputModelo.value = "";
       dizer("Chave apagada deste navegador.", "ok");
+      // Sem chave guardada, o modo volta a ser o grátis (ou o app, se ele
+      // estiver de pé com plano) — o aviso do topo acompanha na hora.
+      repintarModo();
     },
     () => dizer("Não deu para apagar. Tente de novo.", "ruim"),
   );
 });
 
 // --- entrada ----------------------------------------------------------
+
+/** Número da pintura em andamento — mata a corrida de duas pinturas (abaixo). */
+let pintura = 0;
 
 /**
  * Diz em qual modo a extensão está e POR QUÊ.
@@ -172,9 +183,19 @@ btnApagar.addEventListener("click", () => {
  * teria como saber. O motivo vem do próprio app quando ele o fornece — se ele
  * sabe dizer "o `claude` não está instalado", isso vale mais que qualquer texto
  * genérico que a extensão invente.
+ *
+ * É A ÚNICA função que escreve o aviso de modo: ao carregar a página e depois
+ * de toda ação que muda o modo (ver `repintarModo`). A cota do modo grátis só
+ * é consultada quando o modo pintado É o grátis — recalcular para o modo chave
+ * não dispara consulta nenhuma à toa.
  */
 async function pintarModo(): Promise<void> {
+  // Duas pinturas podem coexistir (salvar logo após abrir, sondagem lenta): a
+  // que começa depois é a que vale; uma pintura velha que resolvesse por
+  // último escreveria o modo de cima do antigo — o mesmo defeito, noutra porta.
+  const minha = ++pintura;
   const modo = await verModo();
+  if (minha !== pintura) return;
   caixaModo.hidden = false;
 
   if (modo.qual === "app") {
@@ -202,9 +223,27 @@ async function pintarModo(): Promise<void> {
   caixaModo.className = "modo";
   modoTitulo.textContent = "Usando o modo grátis do Bruto";
   const cota = await verCotaGratis();
+  if (minha !== pintura) return;
   modoPorque.textContent =
     (cota ? `Grátis: restam ${cota.restantes} de ${cota.limite} aulas hoje. ` : "") +
     "Sem app com plano e sem chave, o Bruto usa uma cota diária grátis, paga pela Ideia Business. Cole uma chave abaixo, ou abra o app do Bruto nesta máquina, para sair do modo grátis.";
+}
+
+/**
+ * Repinta o aviso de modo com detecção FRESCA — a mesma `pintarModo` do
+ * carregamento, precedida de `esquecerModo` para não ler a detecção memoizada
+ * lá de quando a página abriu.
+ *
+ * A CLASSE do defeito (demanda 857dae37, 12/11/2026): o aviso de modo é
+ * recalculado depois de toda ação que muda o modo — salvar e apagar a chave —
+ * sempre por esta porta, nunca um texto de modo mantido à mão em paralelo.
+ * Antes, salvar a chave deixava o topo dizendo "modo grátis… restam 3 de 3" até
+ * a página ser recarregada, e quem salvava achava que não funcionou, quando o
+ * popup já usava a chave na hora.
+ */
+function repintarModo(): void {
+  esquecerModo();
+  void pintarModo();
 }
 
 async function iniciar(): Promise<void> {
